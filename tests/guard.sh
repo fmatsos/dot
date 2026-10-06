@@ -154,6 +154,8 @@ expect block "mode secrets : secret toujours bloqué" "betterleaks" env DOTFILES
 c config dotfiles.guard secrets
 echo "AcmeCorp" >"$R/s.txt"; c add s.txt
 expect pass  "dotfiles.guard secrets : terme interdit toléré" "" git -C "$R" commit -qm s
+expect pass  "dotfiles.guard secrets : push sans liste de termes" "" c push -q origin HEAD:refs/heads/secrets-mode
+c push -q origin --delete secrets-mode
 c reset -q --hard HEAD~1
 printf 'GITHUB_TOKEN=%s\n' "$(faketoken)" >"$R/s.txt"; c add s.txt
 expect block "dotfiles.guard secrets : secret toujours bloqué" "betterleaks" git -C "$R" commit -qm s; reset

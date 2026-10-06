@@ -207,6 +207,9 @@ func (in *Installer) install(batch, all []Profile, lenient bool, commit func() e
 
 // profileSteps: git identity of the clone, hooks path, links. A profile without home/ only warns.
 func (in *Installer) profileSteps(lk *link.Linker, l loaded) error {
+	if err := in.syncSparse(l); err != nil {
+		return err
+	}
 	for _, kv := range [][2]string{{"user.name", l.Name}, {"user.email", l.Email}, {"core.hooksPath", ".githooks"}} {
 		if err := in.run(l.Dir, "config", kv[0], kv[1]); err != nil {
 			return err
@@ -219,6 +222,27 @@ func (in *Installer) profileSteps(lk *link.Linker, l loaded) error {
 		return err
 	}
 	return nil
+}
+
+// syncSparse reapplies the manifest's deploy.sparse to a sparse clone, so a list changed by a
+// pull takes effect (added folders appear, removed ones leave). A clone that is not sparse
+// (a hand-made checkout) is left alone.
+func (in *Installer) syncSparse(l loaded) error {
+	if on, _ := gitText("-C", l.Dir, "config", "--get", "core.sparseCheckout"); on != "true" {
+		return nil
+	}
+	cur, err := gitOut(l.Dir, "sparse-checkout", "list")
+	if err != nil {
+		return err
+	}
+	have := strings.Fields(string(cur))
+	want := slices.Clone(l.M.Sparse)
+	slices.Sort(have)
+	slices.Sort(want)
+	if slices.Equal(have, want) {
+		return nil
+	}
+	return in.run(l.Dir, append([]string{"sparse-checkout", "set", "--cone"}, l.M.Sparse...)...)
 }
 
 // shared runs what is done once per run: backup purge, include.path, tools, modules.
