@@ -10,26 +10,45 @@ OpenCode.
 
 ## État
 
-**En conception : rien n'est utilisable pour l'instant.** Ce dépôt ne contient que le plan et
-la CI ; aucun code n'est écrit. L'implémentation actuelle est un CLI bash qui vit dans un dépôt
-de dotfiles ; cette réécriture en Go la remplacera, sans régression. Le détail des décisions, de
-l'architecture et des phases est dans [PLAN.md](PLAN.md).
+**Phases 1 à 3 du plan implémentées ; phases 4 (bascule de la machine) et 5 (profil travail)
+non commencées, et pas encore de release.** Le binaire Go couvre toutes les commandes du CLI bash,
+plus le multi-profil, et passe les tests boîte noire portés (`tests/*.sh`) et les tests Go.
 
-## Usage prévu
+Reste avant une première release `v0.1.0` (le scanner betterleaks est épinglé en 1.9.0, sha256 compilé
+dans le binaire ; `DOT_BETTERLEAKS=<chemin>` le remplace, pour les tests uniquement) :
 
-Rien de ce qui suit n'existe encore.
+- **L'amorce `install.sh`** (téléchargement vérifié de la release) n'est pas écrite : elle
+  suppose une release publiée dont on connaît la somme.
+- **Bascule de la machine** (phase 4) : déplacer `~/.config/dotfiles` vers `~/.dot/perso`, retirer
+  le bash du dépôt de données. Elle touche la machine réelle et se fait à blanc d'abord.
+- Les hooks du dépôt de données deviennent `exec dot guard staged`, `exec dot guard msg "$1"` et
+  `exec dot guard push "$@"`.
+
+Le détail des décisions, de l'architecture et des phases est dans [PLAN.md](PLAN.md).
+
+## Commandes
 
 ```text
-dot install <url> [-p <clé>]      clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
-dot install                       réinstalle tous les profils inscrits
-dot pull                          met à jour les profils
-dot doctor                        bilan en lecture seule
-dot config list|get|set|unset     lit et modifie le registre ~/.dot/profiles.json
+dot install <url> [-p <clé>] [-n]   clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
+dot install [-n]                    réinstalle tous les profils inscrits
+dot pull                            met à jour les profils (git pull --rebase, puis installation)
+dot push [message]                  commite les fichiers suivis modifiés des profils, puis pousse
+dot status                          changements des clones et fichiers détachés (alias st)
+dot uninstall -p <clé> [--purge]    retire les liens et l'entrée du registre
+dot doctor                          bilan en lecture seule
+dot config list|get|set|unset       lit et modifie le registre ~/.dot/profiles.json
+dot whoami | profile | terms | clone | repos
+dot secrets add|get|run|unlock|lock|status
+dot guard staged|msg|push|all       garde-fou des hooks git (termes interdits, secrets)
+dot settings [-n] | dot mcp [-n]   fusion des réglages Claude et des serveurs MCP
+dot <cmd>                           lance dot-<cmd> (bin/ du profil, puis PATH), sinon git sur le clone
 ```
 
 Le profil visé se choisit avec `-p/--profile <clé>`, puis `DOT_PROFILE`, puis le profil par
-défaut du registre. Sans `-p`, `pull` et `doctor` agissent sur tous les profils, les autres
-commandes sur le profil par défaut.
+défaut du registre. Sans `-p`, `pull`, `push`, `status`, `doctor`, `settings` et `mcp` agissent sur tous les
+profils inscrits, les autres commandes sur le profil par défaut. `DOTFILES_DEPLOY=<dossier>` désigne
+directement le dossier d'un profil (compatibilité de transition et point d'entrée des tests).
+La clé d'un `dot install <url>` sans `-p` est le nom du dépôt de l'URL.
 
 ## Installation prévue
 
@@ -41,12 +60,17 @@ sha256 contre la somme qu'il contient, l'installera dans `~/.local/bin/dot`, pui
 
 ## Développement
 
-Go, avec [cobra](https://github.com/spf13/cobra) pour la ligne de commande. Aucun code n'est
-écrit tant que la phase 0 du plan n'est pas close.
+Go, avec [cobra](https://github.com/spf13/cobra) pour la ligne de commande. `make test` lance
+`go vet` et `go test -race` ; `make build` produit le binaire statique `./dot`.
+
+Une commande vit dans son propre fichier `cmd/dot/cmd_<nom>.go` et s'enregistre avec
+`func init() { register(newXxxCmd) }` : aucun fichier partagé n'est modifié. Les tests boîte
+noire sont des scripts bash `tests/<nom>.sh` qui font `source tests/lib.sh` et appellent
+`dot` (le binaire de `$DOT_BIN`, construit au besoin).
 
 - `ci.yml` (push, pull request) : garde-fou (termes interdits dans les fichiers et les
-  métadonnées de commit, scan de secrets), puis `go vet`, `go test -race` et le build statique
-  dès qu'un `go.mod` existe.
+  métadonnées de commit, scan de secrets), puis `go vet`, `go test -race`, le build statique et
+  les tests boîte noire de `tests/*.sh`, dès qu'un `go.mod` existe.
 - `release.yml` (tag `vX.Y.Z`) : construit les quatre binaires statiques, calcule `SHA256SUMS`
   et publie la release.
 - `dependabot.yml` : mises à jour hebdomadaires des actions et des modules Go.

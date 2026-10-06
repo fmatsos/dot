@@ -1,0 +1,3 @@
+# Fake token used as a test fixture in tests/guard.sh (commit 95b3c1a). The file now builds its
+# fake token at run time; this entry only silences the historical commit in PR range scans.
+95b3c1a287c8be47625f39e2782e3a653b33c391:tests/guard.sh:github-pat:156

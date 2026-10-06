@@ -1,0 +1,7 @@
+{
+  "repo": "https://git.example.com/acmecorp/dots-b.git",
+  "deploy": { "sparse": ["home", "bin", ".githooks"] },
+  "profiles": { "b": "home/.config/git/profiles/b.gitconfig" },
+  "deployProfile": "b",
+  "modules": []
+}
