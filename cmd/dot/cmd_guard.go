@@ -92,6 +92,9 @@ func newGuard(env *Env) (*guard.Guard, error) {
 		if errors.Is(err, guard.ErrAbsent) {
 			return nil, fmt.Errorf("liste de termes interdits absente ou vide (%s), refus.", path)
 		}
+		if errors.Is(err, guard.ErrMatchesEmpty) {
+			return nil, fmt.Errorf("liste de termes interdits invalide (%s) : un terme correspond à la chaîne vide, donc à tout (a*, ^, x?…), refus.", path)
+		}
 		return nil, fmt.Errorf("liste de termes interdits invalide ou illisible (%s), refus.", path)
 	}
 	return g, nil

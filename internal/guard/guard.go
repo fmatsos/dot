@@ -159,19 +159,26 @@ func (g *Guard) Staged() error {
 			return err
 		}
 	}
-	names, err := g.output("-c", "core.quotePath=false", "diff", "--cached", "--name-only", "--diff-filter=d", "-z")
+	// --raw -z: ":<old mode> <new mode> ..." then the name, NUL-separated. No rename detection: a
+	// moved file is just its new name.
+	raw, err := g.output("-c", "core.quotePath=false", "diff", "--cached", "--raw", "-z", "--no-renames", "--diff-filter=d")
 	if err != nil {
 		return fail("liste des fichiers indexés illisible.")
 	}
+	fields := strings.Split(string(raw), "\x00")
 	var bad strings.Builder
 	n := 0
-	for _, f := range strings.Split(string(names), "\x00") {
+	for i := 0; i+1 < len(fields); i += 2 {
+		meta, f := fields[i], fields[i+1]
 		if f == "" {
 			continue
 		}
 		n++
 		if g.Terms.Match(f) { // the name itself is forbidden text: never printed
 			fmt.Fprintf(&bad, "  <nom masqué> (fichier %d)\n", n)
+			continue
+		}
+		if strings.Contains(meta, " 160000 ") { // a gitlink has no blob here; its URL lives in .gitmodules
 			continue
 		}
 		hit, err := g.hits(0, "show", ":0:"+f)
