@@ -64,8 +64,14 @@ func pushProfile(env *Env, dir, msg string) error {
 	err = gitCmd(dir, "diff", "--cached", "--quiet").Run()
 	var ee *exec.ExitError
 	if err == nil {
-		_, err = fmt.Fprintln(env.Stdout, "rien à envoyer")
-		return err
+		// A commit left unpushed by an earlier failed push must stay retryable.
+		ahead, aerr := gitText(dir, "rev-list", "--count", "@{upstream}..HEAD")
+		if aerr != nil || ahead == "0" {
+			_, err = fmt.Fprintln(env.Stdout, "rien à envoyer")
+			return err
+		}
+		fmt.Fprintf(env.Stdout, "rien à commiter, %s commit(s) à pousser\n", ahead)
+		return runWithStdio(env, gitCmd(dir, "push"))
 	} else if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 		return exitError{code: 1}
 	}
