@@ -331,10 +331,11 @@ func removeEmptyDir(d string) bool {
 }
 
 // Unlink removes the links of home that point into dir/home/ or dir/bin/ (nothing else, backups
-// stay) and the parent directories they leave empty, home excluded. It looks at the planned
-// destinations and, without recursing, at every symlink in their parent directories and in
-// ~/.local/bin, so a link to a file deleted from the profile since the install goes too.
-// ponytail: a leftover link in a directory the profile no longer has any file in is not found.
+// stay) and the parent directories they leave empty, home excluded. Besides the planned
+// destinations it looks at the symlinks directly in ~ and ~/.local/bin and, recursively without
+// ever entering a symlink, in every top-level directory of ~ the plan touches, so a link to a
+// file deleted from the profile since the install goes too, even from a folder the plan lost.
+// ponytail: an orphan link outside the root directories the profile manages is not found.
 func Unlink(dir, home string, out io.Writer) error {
 	if out == nil {
 		out = io.Discard
@@ -344,14 +345,17 @@ func Unlink(dir, home string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	var cands []string
-	dirs := []string{filepath.Join(home, ".local", "bin")}
+	var cands, roots []string
 	for _, k := range plan {
 		cands = append(cands, k.Dst)
-		dirs = append(dirs, filepath.Dir(k.Dst))
+		rel, err := filepath.Rel(home, k.Dst)
+		if top, _, nested := strings.Cut(rel, string(filepath.Separator)); err == nil && nested {
+			if fi, err := os.Lstat(filepath.Join(home, top)); err == nil && fi.IsDir() {
+				roots = append(roots, filepath.Join(home, top))
+			}
+		}
 	}
-	slices.Sort(dirs)
-	for _, d := range slices.Compact(dirs) {
+	for _, d := range []string{home, filepath.Join(home, ".local", "bin")} {
 		entries, _ := os.ReadDir(d)
 		for _, e := range entries {
 			if e.Type()&fs.ModeSymlink != 0 {
@@ -359,11 +363,27 @@ func Unlink(dir, home string, out io.Writer) error {
 			}
 		}
 	}
+	slices.Sort(roots)
+	for _, r := range slices.Compact(roots) {
+		// WalkDir never follows symlinks; an unreadable subdirectory is skipped, not fatal.
+		_ = filepath.WalkDir(r, func(p string, d fs.DirEntry, err error) error {
+			if err == nil && d.Type()&fs.ModeSymlink != 0 {
+				cands = append(cands, p)
+			}
+			return nil
+		})
+	}
 	slices.Sort(cands)
 	cands = slices.Compact(cands)
 	for _, p := range cands {
 		t, err := os.Readlink(p)
-		if err != nil || !(strings.HasPrefix(t, dir+"/home/") || strings.HasPrefix(t, dir+"/bin/")) {
+		if err != nil {
+			continue
+		}
+		if !filepath.IsAbs(t) {
+			t = filepath.Join(filepath.Dir(p), t)
+		}
+		if t = filepath.Clean(t); !(strings.HasPrefix(t, dir+"/home/") || strings.HasPrefix(t, dir+"/bin/")) {
 			continue
 		}
 		if err := os.Remove(p); err != nil {

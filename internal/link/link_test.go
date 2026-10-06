@@ -424,6 +424,40 @@ func TestUnlinkAfterSourceDeleted(t *testing.T) {
 	}
 }
 
+// The last source of a folder is deleted from the clone: the plan no longer mentions the folder,
+// but Unlink still walks the root directory (~/.config) and finds the dead links, at any depth.
+func TestUnlinkFindsLinksInFoldersTheProfileLost(t *testing.T) {
+	home, dir := fixture(t)
+	write(t, dir+"/home/.config/app/config", "c\n", 0o644)
+	write(t, dir+"/home/.config/app/sub/deep/file", "d\n", 0o644)
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	must(t, os.RemoveAll(dir+"/home/.config/app"))
+	ext := filepath.Join(t.TempDir(), "ext")
+	write(t, ext+"/inner", "x\n", 0o644)
+	must(t, os.Symlink(dir+"/home/.config/inner", ext+"/inside")) // behind a directory link
+	rel, err := filepath.Rel(home+"/.config/app/sub", dir+"/home/.config/app/sub/relative")
+	must(t, err)
+	must(t, os.Symlink(rel, home+"/.config/app/sub/relative"))
+	must(t, os.Symlink("/nowhere/x", home+"/.config/app/sub/foreign"))
+	must(t, os.Symlink(dir+"foo/home/x", home+"/.config/app/sub/fakeprefix"))
+	must(t, os.Symlink(ext, home+"/.config/app/sub/extdir"))
+	write(t, home+"/.config/app/sub/regular", "mine\n", 0o644)
+	must(t, Unlink(dir, home, nil))
+	for _, rel := range []string{".config/app/config", ".config/app/sub/deep/file", ".config/app/sub/relative", ".config/git/config", ".zshrc"} {
+		if _, err := os.Lstat(filepath.Join(home, rel)); err == nil {
+			t.Errorf("%s still there", rel)
+		}
+	}
+	if _, err := os.Lstat(home + "/.config/app/sub/deep"); err == nil {
+		t.Error("empty parent .config/app/sub/deep kept")
+	}
+	for _, p := range []string{home + "/.config/app/sub/foreign", home + "/.config/app/sub/fakeprefix", home + "/.config/app/sub/extdir", home + "/.config/app/sub/regular", ext + "/inner", ext + "/inside"} {
+		if _, err := os.Lstat(p); err != nil {
+			t.Errorf("%s touched: %v", p, err)
+		}
+	}
+}
+
 func moduleProfile(t *testing.T, name string) Profile {
 	t.Helper()
 	d := filepath.Join(t.TempDir(), name)

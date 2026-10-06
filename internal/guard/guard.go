@@ -327,10 +327,15 @@ func (g *Guard) All() error {
 	return g.leaks("git", ".")
 }
 
+// maxTagChain bounds the tags followed from one ref (git cannot make a cycle); a variable for tests.
+var maxTagChain = 1024
+
 // tags checks the annotated tag objects (tagger identity, name, message) on the chain from sha:
 // a tag of a tag is followed. Anything else, a commit included, is not a tag and passes.
+// A chain longer than maxTagChain is refused: what is not examined is not trusted.
 func (g *Guard) tags(sha string) error {
-	for range 16 { // ponytail: a chain deeper than 16 tags is not followed
+	start := sha
+	for range maxTagChain {
 		kind, err := g.output("cat-file", "-t", sha)
 		if err != nil {
 			return err
@@ -352,7 +357,7 @@ func (g *Guard) tags(sha string) error {
 		}
 		sha = next
 	}
-	return nil
+	return fail("chaîne de tags trop profonde pour %s, refus.", start)
 }
 
 // allTags checks every annotated tag of the repository.

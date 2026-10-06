@@ -3,6 +3,7 @@ package guard
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -369,6 +370,42 @@ func TestAnnotatedTags(t *testing.T) {
 		git(t, dir, "tag", "-a", "-m", "propre", "outer", "inner")
 		sha := git(t, dir, "rev-parse", "outer")
 		wantFailure(t, newGuard(t, dir, &scans{}).Push(strings.NewReader("refs/tags/outer "+sha+" refs/tags/outer "+zeros+"\n"), ""), "tag annoté")
+	})
+	// chain makes n nested tags t1..tn (t1 on the commit, message msg1) and keeps only tn as a ref,
+	// so the inner messages are reachable through the outer tag object alone.
+	chain := func(t *testing.T, n int, msg1 string) (dir, sha string) {
+		dir = repo(t)
+		git(t, dir, "tag", "-a", "-m", msg1, "t1")
+		for i := 2; i <= n; i++ {
+			git(t, dir, "tag", "-a", "-m", "propre", fmt.Sprintf("t%d", i), fmt.Sprintf("t%d", i-1))
+			git(t, dir, "tag", "-d", fmt.Sprintf("t%d", i-1))
+		}
+		return dir, git(t, dir, "rev-parse", fmt.Sprintf("t%d", n))
+	}
+	t.Run("chaîne de 20 tags, terme dans le plus interne", func(t *testing.T) {
+		dir, sha := chain(t, 20, "client zed")
+		g := newGuard(t, dir, &scans{})
+		wantFailure(t, g.Push(strings.NewReader("refs/tags/t20 "+sha+" refs/tags/t20 "+zeros+"\n"), ""), "tag annoté")
+		wantFailure(t, g.All(), "tag annoté")
+	})
+	t.Run("chaîne de 20 tags propres", func(t *testing.T) {
+		dir, sha := chain(t, 20, "propre")
+		g := newGuard(t, dir, &scans{})
+		if err := g.Push(strings.NewReader("refs/tags/t20 "+sha+" refs/tags/t20 "+zeros+"\n"), ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.All(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("chaîne au-delà du plafond", func(t *testing.T) {
+		old := maxTagChain
+		maxTagChain = 5
+		t.Cleanup(func() { maxTagChain = old })
+		dir, sha := chain(t, 8, "propre")
+		g := newGuard(t, dir, &scans{})
+		wantFailure(t, g.Push(strings.NewReader("refs/tags/t8 "+sha+" refs/tags/t8 "+zeros+"\n"), ""), "chaîne de tags trop profonde")
+		wantFailure(t, g.All(), "chaîne de tags trop profonde")
 	})
 	t.Run("git en échec", func(t *testing.T) {
 		wantFailure(t, newGuard(t, repo(t), &scans{}).tags(strings.Repeat("a", 40)), "commande en échec")
