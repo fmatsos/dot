@@ -133,7 +133,7 @@ if command -v script >/dev/null; then
   printf -v unlock_cmd '%q secrets unlock' "$DOT_BIN"
   # The master password is typed into the terminal, as a user would.
   unlock_terminal() { { sleep 1; printf 'fake-master-789\n'; sleep 1; } |
-    SHELL=/bin/bash script -q -e -c "$unlock_cmd" "$S/tty" >"$S/out" 2>"$S/err"; }
+    in_pty "$S/tty" "$unlock_cmd" >"$S/out" 2>"$S/err"; }
   chmod 644 "$DOTFILES_DEPLOY/bw-session.local"
   check 'unlock from terminal succeeds' unlock_terminal
   cat "$S/err" >>"$S/stderr"
@@ -317,13 +317,13 @@ check 'only one stdin newline stripped' cmp -s "$S/multiline" "$FAKE_STORE/bw-Mu
 if command -v script >/dev/null; then
   printf -v add_cmd '%q secrets add TERMINAL_TOKEN %q' "$DOT_BIN" 'bw:Terminal BW'
   add_terminal() { { sleep 1; printf '%s\n' "$fixture"; sleep 1; printf '%s\n' "$fixture"; } |
-    SHELL=/bin/bash script -q -e -c "$add_cmd" "$S/tty-add" >"$S/out" 2>"$S/err"; }
+    in_pty "$S/tty-add" "$add_cmd" >"$S/out" 2>"$S/err"; }
   check 'add terminal hidden double prompt succeeds' add_terminal
   check 'terminal never echoes value' no_fixture "$S/tty-add"
   cp "$DOTFILES_DEPLOY/secrets.local" "$S/before-add"
   printf -v add_cmd '%q secrets add MISMATCH_TOKEN %q' "$DOT_BIN" 'bw:Terminal mismatch'
   if { sleep 1; printf '%s\n' "$fixture"; sleep 1; printf 'different\n'; } |
-    SHELL=/bin/bash script -q -e -c "$add_cmd" "$S/tty-mismatch" >"$S/out" 2>"$S/err"; then rc=0; else rc=$?; fi
+    in_pty "$S/tty-mismatch" "$add_cmd" >"$S/out" 2>"$S/err"; then rc=0; else rc=$?; fi
   check 'terminal mismatching confirmation refused' test "$rc" -eq 1
   check 'terminal mismatch never registers a mapping' cmp -s "$S/before-add" "$DOTFILES_DEPLOY/secrets.local"
   check 'terminal mismatch never echoes value' no_fixture "$S/tty-mismatch"

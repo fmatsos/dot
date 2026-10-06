@@ -16,3 +16,13 @@ dot() { "$DOT_BIN" "$@"; }
 
 # inode:mtime of a file, with GNU stat or BSD stat (macOS).
 stat_inode_mtime() { stat -c '%i:%Y' "$1" 2>/dev/null || stat -f '%i:%m' "$1"; }
+
+# in_pty <log> <command line>: runs the command line under a pseudo-terminal with script(1),
+# returning its exit status. util-linux takes -c, BSD script (macOS) takes the command as arguments.
+in_pty() {
+  if script -qec true /dev/null >/dev/null 2>&1; then
+    SHELL=/bin/bash script -q -e -c "$2" "$1"
+  else
+    script -q -e "$1" /bin/bash -c "$2"
+  fi
+}

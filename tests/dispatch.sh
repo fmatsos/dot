@@ -96,8 +96,8 @@ if command -v script >/dev/null; then
   printf '[user]\n  email = expected@example.com\n[dotfiles]\n  profile = perso\n' >"$HOME/.config/git/profiles/perso.gitconfig"
   git clone -q "$S/remotes/perso.git" "$DOT_SRC/git.example.com/team/bad" 2>/dev/null
   git -C "$DOT_SRC/git.example.com/team/bad" config dotfiles.profile perso
-  grep -q $'\e\\[31m✗ email' <<<"$(script -qc "$DOT_BIN repos" /dev/null)" || ko "pas de rouge dans un terminal"
-  ! grep -q $'\e\\[' <<<"$(NO_COLOR=1 script -qc "$DOT_BIN repos" /dev/null)" || ko "NO_COLOR ignoré"
+  grep -q $'\e\\[31m✗ email' <<<"$(in_pty /dev/null "$DOT_BIN repos")" || ko "pas de rouge dans un terminal"
+  ! grep -q $'\e\\[' <<<"$(NO_COLOR=1 in_pty /dev/null "$DOT_BIN repos")" || ko "NO_COLOR ignoré"
   ! grep -q $'\e\\[' <<<"$(dot repos)" || ko "rouge hors terminal"
 fi
 ok "repos : rouge sur un terminal seulement, NO_COLOR respecté"
