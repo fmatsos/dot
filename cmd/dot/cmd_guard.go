@@ -26,14 +26,11 @@ func termsPath(env *Env) (string, error) {
 	if d := env.Getenv("DOTFILES_DEPLOY"); d != "" {
 		return filepath.Join(env.Expand(d), "forbidden.local"), nil
 	}
-	var out bytes.Buffer
-	c := exec.Command("git", "config", "--get", "dotfiles.profile")
-	c.Stdout = &out
-	var x *exec.ExitError
-	if err := c.Run(); err != nil && !(errors.As(err, &x) && x.ExitCode() == 1) { // 1 = key unset
+	key, err := gitConfigGet("dotfiles.profile")
+	if err != nil {
 		return "", errors.New("dotfiles.profile illisible")
 	}
-	if key := strings.TrimSpace(out.String()); key != "" {
+	if key != "" {
 		if !profileKeyRe.MatchString(key) {
 			return "", errors.New("dotfiles.profile invalide")
 		}
@@ -46,10 +43,45 @@ func termsPath(env *Env) (string, error) {
 	return filepath.Join(dir, "forbidden.local"), nil
 }
 
-// newGuard builds the guard of the current repository; DOTFILES_GUARD=secrets skips the terms.
+// gitConfigGet reads one key of the current repository's config; empty when the key is unset
+// (git exits 1), an error for any other failure.
+func gitConfigGet(key string) (string, error) {
+	var out bytes.Buffer
+	c := exec.Command("git", "config", "--get", key)
+	c.Stdout = &out
+	var x *exec.ExitError
+	if err := c.Run(); err != nil && !(errors.As(err, &x) && x.ExitCode() == 1) {
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+// guardMode returns "" (terms and secrets) or "secrets" (betterleaks only). $DOTFILES_GUARD wins,
+// else `git config dotfiles.guard` of the current repository. Anything else fails closed, the
+// value never shown.
+func guardMode(env *Env) (string, error) {
+	mode, src := env.Getenv("DOTFILES_GUARD"), "$DOTFILES_GUARD"
+	if mode == "" {
+		var err error
+		if mode, err = gitConfigGet("dotfiles.guard"); err != nil {
+			return "", errors.New("dotfiles.guard illisible, refus.")
+		}
+		src = "dotfiles.guard"
+	}
+	if mode != "" && mode != "secrets" {
+		return "", fmt.Errorf("%s : valeur inconnue, refus.", src)
+	}
+	return mode, nil
+}
+
+// newGuard builds the guard of the current repository; the "secrets" mode skips the terms.
 func newGuard(env *Env) (*guard.Guard, error) {
 	g := &guard.Guard{Stderr: env.Stderr, Scan: scanner(env)}
-	if env.Getenv("DOTFILES_GUARD") == "secrets" {
+	mode, err := guardMode(env)
+	if err != nil {
+		return nil, err
+	}
+	if mode == "secrets" {
 		return g, nil
 	}
 	path, err := termsPath(env)
@@ -120,8 +152,9 @@ func newGuardCmd(env *Env) *cobra.Command {
 			"     a. $DOTFILES_DEPLOY, s'il est défini ;\n" +
 			"     b. ~/.dot/<p>, où <p> est « git config dotfiles.profile » du dépôt courant ;\n" +
 			"     c. sinon le profil ciblé : -p, $DOT_PROFILE, puis le profil par défaut du registre.\n\n" +
-			"$DOTFILES_GUARD=secrets ignore les termes (betterleaks seul) : pour un dépôt qui cite un employeur\n" +
-			"volontairement.\n\n" +
+			"$DOTFILES_GUARD=secrets, ou « git config dotfiles.guard secrets » du dépôt courant, ignore les termes\n" +
+			"(betterleaks seul) : pour un dépôt qui cite un employeur volontairement. L'environnement prime ;\n" +
+			"toute autre valeur est refusée.\n\n" +
 			"Scanner : $DOT_BETTERLEAKS (exécutable, pour les tests), sinon la copie figée\n" +
 			"~/.cache/dot/betterleaks-<version>/betterleaks, téléchargée et vérifiée par sha256 (somme compilée).\n\n" +
 			"Les hooks d'un dépôt tiennent en une ligne : exec dot guard staged.",

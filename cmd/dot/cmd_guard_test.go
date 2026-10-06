@@ -123,3 +123,68 @@ func TestGuardUsageAndHelpDocumentsResolutionOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestGuardModeFromEnvAndGitConfig(t *testing.T) {
+	env, repo := guardEnv(t)
+	t.Setenv("DOTFILES_FORBIDDEN", filepath.Join(t.TempDir(), "absent")) // the terms list must not be needed in secrets mode
+	setMode := func(v string) {
+		t.Helper()
+		if out, err := exec.Command("git", "-C", repo, "config", "dotfiles.guard", v).CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+	}
+	// Unset: normal mode, so the missing list refuses.
+	if _, err := newGuard(env); err == nil || !strings.Contains(err.Error(), "absente ou vide") {
+		t.Fatalf("mode normal : %v", err)
+	}
+	setMode("secrets")
+	g, err := newGuard(env)
+	if err != nil || g.Terms != nil {
+		t.Fatalf("dotfiles.guard secrets : %v, termes %v", err, g)
+	}
+	// The environment wins over git config, in both directions.
+	t.Setenv("DOTFILES_GUARD", "secrets")
+	setMode("not-a-mode")
+	if _, err := newGuard(env); err != nil {
+		t.Fatalf("l'environnement doit primer : %v", err)
+	}
+	t.Setenv("DOTFILES_GUARD", "")
+	setMode("")
+	if _, err := newGuard(env); err == nil || !strings.Contains(err.Error(), "absente ou vide") {
+		t.Fatalf("valeur vide = mode normal : %v", err)
+	}
+}
+
+func TestGuardModeUnknownValueFailsClosedWithoutEcho(t *testing.T) {
+	env, repo := guardEnv(t)
+	if out, err := exec.Command("git", "-C", repo, "config", "dotfiles.guard", "zzz-secret-ish").CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	_, err := newGuard(env)
+	if err == nil || err.Error() != "dotfiles.guard : valeur inconnue, refus." {
+		t.Fatalf("git config : %v", err)
+	}
+	t.Setenv("DOTFILES_GUARD", "zzz-env-ish") // formerly accepted as the normal mode
+	_, err = newGuard(env)
+	if err == nil || err.Error() != "$DOTFILES_GUARD : valeur inconnue, refus." {
+		t.Fatalf("environnement : %v", err)
+	}
+	errb := new(strings.Builder)
+	env.Stderr = errb
+	if code := execute(env, []string{"guard", "msg", "/dev/null"}); code != 1 ||
+		errb.String() != "guard: $DOTFILES_GUARD : valeur inconnue, refus.\n" {
+		t.Fatalf("code %d, stderr %q", code, errb)
+	}
+}
+
+func TestGuardModeGitConfigFailureFailsClosed(t *testing.T) {
+	env, _ := guardEnv(t)
+	t.Setenv("DOTFILES_FORBIDDEN", filepath.Join(t.TempDir(), "absent"))
+	// A syntax error in the config makes `git config --get` exit 128, not 1: not "key unset".
+	if err := os.WriteFile(os.Getenv("GIT_CONFIG_GLOBAL"), []byte("[broken\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newGuard(env); err == nil || err.Error() != "dotfiles.guard illisible, refus." {
+		t.Fatalf("config illisible : %v", err)
+	}
+}

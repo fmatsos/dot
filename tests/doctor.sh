@@ -37,6 +37,9 @@ git -C "$DOTFILES_DEPLOY" config core.hooksPath .githooks
 git -C "$DOTFILES_DEPLOY" config user.name Tester
 git -C "$DOTFILES_DEPLOY" config user.email tester@example.com
 printf 'linked\n' >"$DOTFILES_DEPLOY/home/example"
+mkdir -p "$DOTFILES_DEPLOY/home/.config/mise" "$HOME/.config/mise"
+printf '[tools]\n' >"$DOTFILES_DEPLOY/home/.config/mise/config.toml"
+ln -s "$DOTFILES_DEPLOY/home/.config/mise/config.toml" "$HOME/.config/mise/config.toml"
 printf '*.local\n' >"$DOTFILES_DEPLOY/.gitignore"
 printf 'acmecorp\n' >"$DOTFILES_DEPLOY/forbidden.local"
 ln -s "$DOTFILES_DEPLOY/home/example" "$HOME/example"
@@ -66,11 +69,32 @@ invoke
 [ "$code" -eq 1 ]; grep -q '^✗ garde-fou désactivé' "$S/out"
 printf 'acmecorp\n' >"$DOTFILES_DEPLOY/forbidden.local"
 echo 'OK   F4: comments-only forbidden list fails'
+printf '%s\n' acmecorp 'globexpat(' >"$DOTFILES_DEPLOY/forbidden.local"
+invoke
+[ "$code" -eq 1 ]; grep -q '^✗ garde-fou désactivé : liste de termes invalide, corriger forbidden.local' "$S/out"
+! grep -q '^✓ garde-fou activé' "$S/out" || exit 1
+! grep -q globexpat "$S/out" "$S/err" || exit 1
+printf 'acmecorp\n' >"$DOTFILES_DEPLOY/forbidden.local"
+echo 'OK   invalid forbidden list fails like the guard would, without printing the pattern'
 export FAKE_MISSING=1
 invoke
 [ "$code" -eq 1 ]; grep -q '^✗ outils mise manquants : node.*mise install' "$S/out"
 unset FAKE_MISSING
 echo 'OK   missing mise tool fails with name and install hint'
+# mise is only expected when a profile ships its config.toml, or when a mise is already there.
+mkdir "$S/nomise"; ln -s "$S/bin/codex" "$S/bin/claude" "$S/nomise/"
+PATH=$S/nomise:/usr/bin:/bin invoke
+[ "$code" -eq 1 ]; grep -q '^✗ mise absent : relancer install.sh' "$S/out"
+rm "$DOTFILES_DEPLOY/home/.config/mise/config.toml" "$HOME/.config/mise/config.toml"
+PATH=$S/nomise:/usr/bin:/bin invoke
+[ "$code" -eq 0 ]; ! grep -qi 'mise' "$S/out" || exit 1
+cp "$S/bin/mise" "$HOME/.local/bin/mise"
+PATH=$S/nomise:/usr/bin:/bin invoke
+[ "$code" -eq 0 ]; grep -q '^✓ mise présent' "$S/out"
+rm "$HOME/.local/bin/mise"
+git -C "$DOTFILES_DEPLOY" checkout -q -- home/.config/mise/config.toml
+ln -s "$DOTFILES_DEPLOY/home/.config/mise/config.toml" "$HOME/.config/mise/config.toml"
+echo 'OK   mise checks: config without mise fails; no config and no mise prints nothing (code 0); an existing mise is checked'
 ln -s "$S/absent" "$HOME/.local/bin/dead"
 invoke
 [ "$code" -eq 1 ]; grep -q '^✗ 1 liens morts' "$S/out"
@@ -175,6 +199,10 @@ mkprofile() {
   git -C "$d" config user.name Tester
   git -C "$d" config user.email tester@example.com
   printf 'linked %s\n' "$1" >"$d/home/example-$1"
+  if [ "$1" = alpha ]; then # only one profile ships the mise config: enough to expect mise
+    mkdir -p "$d/home/.config/mise"; printf '[tools]\n' >"$d/home/.config/mise/config.toml"
+    rm -f "$HOME/.config/mise/config.toml"; ln -s "$d/home/.config/mise/config.toml" "$HOME/.config/mise/config.toml"
+  fi
   printf '*.local\n' >"$d/.gitignore"
   printf 'acmecorp\n' >"$d/forbidden.local"
   git -C "$d" add .; git -C "$d" commit -qm fixture

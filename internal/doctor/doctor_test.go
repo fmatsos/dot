@@ -56,12 +56,20 @@ func sandbox(t *testing.T) (home string) {
 	return home
 }
 
-// profile creates a healthy clone with one linked home file.
-func profile(t *testing.T, home, key string) Profile {
+// profile creates a healthy clone with one linked home file; it declares no mise config.
+func profile(t *testing.T, home, key string) Profile { return newProfile(t, home, key, false) }
+
+// miseProfile is profile plus a linked home/.config/mise/config.toml, which makes mise expected.
+func miseProfile(t *testing.T, home, key string) Profile { return newProfile(t, home, key, true) }
+
+func newProfile(t *testing.T, home, key string, mise bool) Profile {
 	t.Helper()
 	dir := filepath.Join(home, ".dot", key)
 	write(t, filepath.Join(dir, "dot.json"), manifestJSON, 0o644)
 	write(t, filepath.Join(dir, "home", "file-"+key), "linked\n", 0o644)
+	if mise {
+		write(t, filepath.Join(dir, "home", ".config", "mise", "config.toml"), "[tools]\n", 0o644)
+	}
 	write(t, filepath.Join(dir, "forbidden.local"), "acmecorp\n", 0o600)
 	run(t, dir, "init", "-q", "-b", "main")
 	run(t, dir, "config", "core.hooksPath", ".githooks")
@@ -71,6 +79,15 @@ func profile(t *testing.T, home, key string) Profile {
 	run(t, dir, "commit", "-qm", "fixture")
 	if err := os.Symlink(filepath.Join(dir, "home", "file-"+key), filepath.Join(home, "file-"+key)); err != nil {
 		t.Fatal(err)
+	}
+	if mise {
+		link := filepath.Join(home, ".config", "mise", "config.toml")
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(dir, "home", ".config", "mise", "config.toml"), link); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return Profile{Key: key, Dir: dir}
 }
@@ -96,7 +113,7 @@ func text(lines []Line) string {
 
 func TestHealthySingleProfileKeepsHistoricalOrder(t *testing.T) {
 	home := sandbox(t)
-	lines := check(home, profile(t, home, "alpha"))
+	lines := check(home, miseProfile(t, home, "alpha"))
 	if HasFail(lines) {
 		t.Fatalf("échec inattendu :\n%s", text(lines))
 	}
@@ -132,6 +149,12 @@ func TestFailuresAndWarnings(t *testing.T) {
 		{"liste vide", func(t *testing.T, _ string, p Profile) {
 			write(t, filepath.Join(p.Dir, "forbidden.local"), "  # note\n\n \t\n", 0o600)
 		}, Fail, "garde-fou désactivé : restaurer forbidden.local"},
+		{"liste invalide", func(t *testing.T, _ string, p Profile) {
+			write(t, filepath.Join(p.Dir, "forbidden.local"), "acmecorp\n[\n", 0o600)
+		}, Fail, "garde-fou désactivé : liste de termes invalide, corriger forbidden.local"},
+		{"liste à opérateur GNU", func(t *testing.T, _ string, p Profile) {
+			write(t, filepath.Join(p.Dir, "forbidden.local"), "acmecorp\\|globex\n", 0o600)
+		}, Fail, "garde-fou désactivé : liste de termes invalide, corriger forbidden.local"},
 		{"email du clone", func(t *testing.T, _ string, p Profile) {
 			run(t, p.Dir, "config", "user.email", "other@example.com")
 		}, Fail, "email du clone : rétablir le profil demo (install.sh)"},
@@ -170,6 +193,30 @@ func TestFailuresAndWarnings(t *testing.T) {
 				t.Errorf("valeur sensible affichée :\n%s", out)
 			}
 		})
+	}
+}
+
+func TestGuardUsesTheGuardValidationAndNeverShowsPatterns(t *testing.T) {
+	home := sandbox(t)
+	p := profile(t, home, "alpha")
+	write(t, filepath.Join(p.Dir, "forbidden.local"), "globex-secret(\n", 0o600)
+	lines := check(home, p)
+	if !has(lines, Fail, "garde-fou désactivé : liste de termes invalide, corriger forbidden.local") || has(lines, OK, "garde-fou activé") {
+		t.Fatalf("liste invalide acceptée :\n%s", text(lines))
+	}
+	if strings.Contains(text(lines), "globex") {
+		t.Errorf("motif affiché :\n%s", text(lines))
+	}
+	// $DOTFILES_FORBIDDEN is validated the same way.
+	list := filepath.Join(home, "list")
+	write(t, list, "acmecorp\n", 0o600)
+	t.Setenv("DOTFILES_FORBIDDEN", list)
+	if lines := check(home, p); !has(lines, OK, "garde-fou activé") {
+		t.Errorf("liste valide via DOTFILES_FORBIDDEN :\n%s", text(lines))
+	}
+	write(t, list, "[\n", 0o600)
+	if lines := check(home, p); !hasPrefix(lines, Fail, "garde-fou désactivé : liste de termes invalide") {
+		t.Errorf("liste invalide via DOTFILES_FORBIDDEN :\n%s", text(lines))
 	}
 }
 
@@ -216,9 +263,78 @@ func TestMissingCloneAndMiseTools(t *testing.T) {
 		t.Errorf("mise en échec :\n%s", text(lines))
 	}
 	t.Setenv("PATH", "/usr/bin:/bin")
-	if lines := check(home); !has(lines, Fail, "mise absent : relancer install.sh") {
+	os.Remove(filepath.Join(filepath.Dir(os.Getenv("MISE_DATA_DIR")), "bin", "mise"))
+	if lines := check(home); hasMise(lines) {
+		t.Errorf("mise sans profil ni binaire, rien attendu :\n%s", text(lines))
+	}
+	if lines := check(home, miseProfile(t, home, "alpha")); !has(lines, Fail, "mise absent : relancer install.sh") {
 		t.Errorf("mise absent :\n%s", text(lines))
 	}
+}
+
+func hasMise(lines []Line) bool {
+	return slices.ContainsFunc(lines, func(l Line) bool { return strings.Contains(l.Message, "mise") })
+}
+
+// noMise removes the sandbox mise from the PATH, as on a machine whose profiles do not ask for it.
+func noMise(t *testing.T) {
+	t.Helper()
+	t.Setenv("PATH", "/usr/bin:/bin")
+}
+
+func TestMiseChecksFollowTheProfileConfig(t *testing.T) {
+	t.Run("sans config ni mise : silence, code 0", func(t *testing.T) {
+		home := sandbox(t)
+		noMise(t)
+		lines := check(home, profile(t, home, "alpha"))
+		if hasMise(lines) {
+			t.Errorf("ligne mise inattendue :\n%s", text(lines))
+		}
+		if HasFail(lines) {
+			t.Errorf("échec inattendu :\n%s", text(lines))
+		}
+	})
+	t.Run("config sans mise : échec", func(t *testing.T) {
+		home := sandbox(t)
+		noMise(t)
+		lines := check(home, miseProfile(t, home, "alpha"))
+		if !has(lines, Fail, "mise absent : relancer install.sh") {
+			t.Errorf("mise absent attendu :\n%s", text(lines))
+		}
+		if !hasPrefix(lines, Warn, "shims mise hors PATH") { // the config asks for mise: shims are checked too
+			t.Errorf("shims non vérifiés :\n%s", text(lines))
+		}
+	})
+	t.Run("sans config, mise dans ~/.local/bin : vérifié", func(t *testing.T) {
+		home := sandbox(t)
+		noMise(t)
+		write(t, filepath.Join(home, ".local", "bin", "mise"), "#!/bin/sh\nexit 0\n", 0o755)
+		lines := check(home, profile(t, home, "alpha"))
+		if !has(lines, OK, "mise présent") || !has(lines, OK, "outils mise installés") {
+			t.Errorf("mise présent attendu :\n%s", text(lines))
+		}
+	})
+	t.Run("sans config, mise dans PATH : vérifié", func(t *testing.T) {
+		home := sandbox(t)
+		if lines := check(home, profile(t, home, "alpha")); !has(lines, OK, "mise présent") {
+			t.Errorf("mise présent attendu :\n%s", text(lines))
+		}
+	})
+	t.Run("un seul profil sur deux déclare la config", func(t *testing.T) {
+		home := sandbox(t)
+		noMise(t)
+		lines := check(home, profile(t, home, "alpha"), miseProfile(t, home, "beta"))
+		if !has(lines, Fail, "mise absent : relancer install.sh") {
+			t.Errorf("mise absent attendu :\n%s", text(lines))
+		}
+	})
+	t.Run("ni profil ni mise : silence", func(t *testing.T) {
+		home := sandbox(t)
+		noMise(t)
+		if lines := check(home); hasMise(lines) {
+			t.Errorf("ligne mise inattendue :\n%s", text(lines))
+		}
+	})
 }
 
 func TestMultiProfileHeadersAndMachineChecksOnce(t *testing.T) {

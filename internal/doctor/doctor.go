@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fmatsos/dot/internal/guard"
 	"github.com/fmatsos/dot/internal/link"
 	"github.com/fmatsos/dot/internal/manifest"
 	"github.com/fmatsos/dot/internal/repos"
@@ -275,17 +276,17 @@ func (c *checker) deadLinks() {
 	}
 }
 
-// guard looks for one active line in the forbidden list, never showing it.
+// guard loads the forbidden list with the guard's own validation, never showing a line of it.
 func (c *checker) guard(s *state) {
-	terms := cmp.Or(os.Getenv("DOTFILES_FORBIDDEN"), filepath.Join(s.p.Dir, "forbidden.local"))
-	data, err := os.ReadFile(terms)
-	for _, line := range strings.Split(string(data), "\n") {
-		if t := strings.TrimLeft(line, " \t\r\v\f"); err == nil && t != "" && t[0] != '#' {
-			c.add(OK, "garde-fou activé")
-			return
-		}
+	_, err := guard.LoadTerms(cmp.Or(os.Getenv("DOTFILES_FORBIDDEN"), filepath.Join(s.p.Dir, "forbidden.local")))
+	switch {
+	case err == nil:
+		c.add(OK, "garde-fou activé")
+	case errors.Is(err, guard.ErrInvalid):
+		c.add(Fail, "garde-fou désactivé : liste de termes invalide, corriger forbidden.local")
+	default:
+		c.add(Fail, "garde-fou désactivé : restaurer forbidden.local")
 	}
-	c.add(Fail, "garde-fou désactivé : restaurer forbidden.local")
 }
 
 func (c *checker) gitInclude() {
@@ -299,13 +300,34 @@ func (c *checker) gitInclude() {
 	c.add(Fail, "profils non inclus : relancer install.sh")
 }
 
-func (c *checker) mise() {
-	mise, _ := exec.LookPath("mise")
-	if mise == "" {
-		if p := filepath.Join(c.o.Home, ".local", "bin", "mise"); isExec(p) {
-			mise = p
+// findMise returns the mise binary the machine has: the PATH one, else ~/.local/bin/mise.
+func (c *checker) findMise() string {
+	if mise, _ := exec.LookPath("mise"); mise != "" {
+		return mise
+	}
+	if p := filepath.Join(c.o.Home, ".local", "bin", "mise"); isExec(p) {
+		return p
+	}
+	return ""
+}
+
+// wantMise tells whether the machine is expected to have mise: the installer only installs it when
+// a targeted profile ships ~/.config/mise/config.toml, so without one (and without a mise already
+// there) its absence is not a finding and the mise checks stay silent.
+func (c *checker) wantMise() bool {
+	for _, p := range c.o.Profiles {
+		if fi, err := os.Stat(filepath.Join(p.Dir, "home", ".config", "mise", "config.toml")); err == nil && fi.Mode().IsRegular() {
+			return true
 		}
 	}
+	return c.findMise() != ""
+}
+
+func (c *checker) mise() {
+	if !c.wantMise() {
+		return
+	}
+	mise := c.findMise()
 	if mise == "" {
 		c.add(Fail, "mise absent : relancer install.sh")
 		return
@@ -336,6 +358,9 @@ func (c *checker) mise() {
 }
 
 func (c *checker) shims() {
+	if !c.wantMise() {
+		return
+	}
 	data := cmp.Or(os.Getenv("MISE_DATA_DIR"),
 		filepath.Join(cmp.Or(os.Getenv("XDG_DATA_HOME"), filepath.Join(c.o.Home, ".local", "share")), "mise"))
 	if slices.Contains(filepath.SplitList(os.Getenv("PATH")), filepath.Join(data, "shims")) {

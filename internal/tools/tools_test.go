@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/fmatsos/dot/internal/manifest"
 )
@@ -23,6 +24,9 @@ type env struct {
 	out, err bytes.Buffer
 	calls    []string // "name arg arg"
 	listOut  string
+	miseOut  string // `mise --version` output of an existing binary
+	miseErr  error
+	miseWait chan struct{} // when set, `mise --version` blocks until it is closed
 	hits     atomic.Int32
 	srv      *httptest.Server
 	body     []byte
@@ -32,7 +36,7 @@ type env struct {
 // newEnv builds options with every seam faked: no network, no real tool.
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	e := &env{t: t, home: t.TempDir(), body: []byte("#!/bin/sh\necho fake mise\n"), listOut: "acme /tmp/fictional-market\n"}
+	e := &env{t: t, home: t.TempDir(), miseOut: miseVersion + " linux-x64 (2026-10-01)\n", body: []byte("#!/bin/sh\necho fake mise\n"), listOut: "acme /tmp/fictional-market\n"}
 	sum := sha256.Sum256(e.body)
 	old := miseSums
 	miseSums = map[string]string{"linux-x64": hex.EncodeToString(sum[:])}
@@ -56,6 +60,12 @@ func newEnv(t *testing.T) *env {
 		},
 		Output: func(n string, a ...string) ([]byte, error) {
 			e.calls = append(e.calls, strings.Join(append([]string{n}, a...), " "))
+			if filepath.Base(n) == "mise" && len(a) == 1 && a[0] == "--version" {
+				if e.miseWait != nil {
+					<-e.miseWait
+				}
+				return []byte(e.miseOut), e.miseErr
+			}
 			return []byte(e.listOut), nil
 		},
 		Platform: func() (string, string) { return "linux", "amd64" },
@@ -237,6 +247,107 @@ func TestMiseInstallArgvAndIdempotence(t *testing.T) {
 	}
 }
 
+// existingMise installs an executable stand-in for mise and returns its path.
+func (e *env) existingMise() string {
+	e.t.Helper()
+	e.write(".local/bin/mise", "#!/bin/sh\necho foreign\n")
+	bin := e.path(".local/bin/mise")
+	if err := os.Chmod(bin, 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	return bin
+}
+
+func TestMiseExistingPinnedVersionIsKept(t *testing.T) {
+	e := newEnv(t)
+	bin := e.existingMise()
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	if e.hits.Load() != 0 || e.out.Len() != 0 {
+		t.Fatalf("pinned binary replaced: %d hits, out %q", e.hits.Load(), e.out.String())
+	}
+	if got, _ := os.ReadFile(bin); string(got) != "#!/bin/sh\necho foreign\n" {
+		t.Fatal("binary rewritten")
+	}
+	eq(t, e.calls, []string{bin + " --version"})
+}
+
+func TestMiseExistingOtherVersionIsReplaced(t *testing.T) {
+	for _, tc := range []struct{ name, out, msg string }{
+		{"older", "2026.9.0 linux-x64 (2026-09-01)\n", "  mise : version 2026.9.0 trouvée, " + miseVersion + " attendue : mise à jour\n"},
+		{"look-alike", miseVersion + "1 linux-x64\n", "  mise : version " + miseVersion + "1 trouvée, " + miseVersion + " attendue : mise à jour\n"},
+		{"empty", "", "  mise : version illisible, " + miseVersion + " attendue : mise à jour\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.existingMise()
+			e.miseOut = tc.out
+			if err := e.run(); err != nil {
+				t.Fatal(err)
+			}
+			if e.hits.Load() != 1 {
+				t.Fatalf("%d downloads", e.hits.Load())
+			}
+			if got := e.read(".local/bin/mise"); got != string(e.body) {
+				t.Fatalf("binary not replaced: %q", got)
+			}
+			if !strings.HasPrefix(e.out.String(), tc.msg+"  mise "+miseVersion+" (linux-x64)") {
+				t.Fatalf("out %q", e.out.String())
+			}
+		})
+	}
+}
+
+func TestMiseVersionFailureOrHangReplacesBinary(t *testing.T) {
+	e := newEnv(t)
+	e.existingMise()
+	e.miseErr = errors.New("boom")
+	e.miseOut = miseVersion // even a plausible output counts for nothing when the command failed
+	if err := e.run(); err != nil || e.hits.Load() != 1 || e.read(".local/bin/mise") != string(e.body) {
+		t.Fatalf("failure: %v, %d downloads", err, e.hits.Load())
+	}
+	e = newEnv(t)
+	e.existingMise()
+	e.miseWait = make(chan struct{})
+	t.Cleanup(func() { close(e.miseWait) })
+	old := miseVersionTimeout
+	miseVersionTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { miseVersionTimeout = old })
+	if err := e.run(); err != nil || e.hits.Load() != 1 || e.read(".local/bin/mise") != string(e.body) {
+		t.Fatalf("hang: %v, %d downloads", err, e.hits.Load())
+	}
+}
+
+func TestMiseOtherVersionDryAndBadChecksum(t *testing.T) {
+	e := newEnv(t)
+	e.opts.Dry = true
+	e.existingMise()
+	e.miseOut = "2026.9.0\n"
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	if e.hits.Load() != 0 || e.read(".local/bin/mise") != "#!/bin/sh\necho foreign\n" {
+		t.Fatal("dry run acted")
+	}
+	for _, w := range []string{"  mise : version 2026.9.0 trouvée, " + miseVersion + " attendue : mise à jour\n", "  [dry] installer mise " + miseVersion + " (linux-x64) dans ~/.local/bin/mise\n"} {
+		if !strings.Contains(e.out.String(), w) {
+			t.Fatalf("missing %q in %q", w, e.out.String())
+		}
+	}
+	// The replacement is verified like a first install: a bad sum leaves the old binary alone.
+	e = newEnv(t)
+	e.existingMise()
+	e.miseOut = "2026.9.0\n"
+	e.body = []byte("tampered")
+	if err := e.run(); err == nil || err.Error() != "mise : checksum invalide, abandon" {
+		t.Fatalf("err %v", err)
+	}
+	if e.read(".local/bin/mise") != "#!/bin/sh\necho foreign\n" {
+		t.Fatal("old binary replaced by an unverified one")
+	}
+}
+
 func TestSkipStillFetchesButDoesNotInstall(t *testing.T) {
 	e := newEnv(t)
 	e.opts.Skip = true
@@ -320,14 +431,14 @@ func TestNVMIdempotentAndPartial(t *testing.T) {
 	if err := os.Chmod(e.path(base, "bin/node"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	e.write(base+"/lib/node_modules/demo-cli/package.json", "{}")
+	e.write(base+"/lib/node_modules/demo-cli/package.json", `{"name":"demo-cli","version":"2.3.4"}`)
 	if err := e.run(); err != nil {
 		t.Fatal(err)
 	}
 	// Only the missing package is installed; no clone.
 	eq(t, e.calls, []string{"bash -c " + nvmScript + " _ 9.8.7 @acme/other-cli@5.6.7"})
 	e.reset()
-	e.write(base+"/lib/node_modules/@acme/other-cli/package.json", "{}")
+	e.write(base+"/lib/node_modules/@acme/other-cli/package.json", `{"version":"5.6.7"}`)
 	if err := e.run(); err != nil {
 		t.Fatal(err)
 	}
@@ -337,6 +448,54 @@ func TestNVMIdempotentAndPartial(t *testing.T) {
 	}
 	if e.out.Len() != 0 {
 		t.Fatalf("out %q", e.out.String())
+	}
+}
+
+func TestNVMPinChangeReinstalls(t *testing.T) {
+	base := ".nvm/versions/node/v9.8.7"
+	for _, tc := range []struct {
+		name, pkg string // pkg is the pinned spec; the package.json content below is on disk
+		json      string
+		want      bool // reinstalled
+	}{
+		{"same version", "demo-cli@2.0.0", `{"version":"2.0.0"}`, false},
+		{"other version", "demo-cli@2.0.0", `{"version":"1.0.0"}`, true},
+		{"unreadable", "demo-cli@2.0.0", `{not json`, true},
+		{"no version field", "demo-cli@2.0.0", `{"name":"demo-cli"}`, true},
+		{"scoped same", "@acme/other-cli@3.1.0", `{"version":"3.1.0"}`, false},
+		{"scoped other", "@acme/other-cli@3.1.0", `{"version":"3.0.0"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.opts.MiseConfig = false
+			e.opts.NVM = []manifest.NVM{{Node: "9.8.7", Packages: []string{tc.pkg}}}
+			e.write(".nvm/nvm.sh", "# stub\n")
+			e.write(base+"/bin/node", "")
+			if err := os.Chmod(e.path(base, "bin/node"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			name := tc.pkg[:strings.LastIndex(tc.pkg, "@")]
+			e.write(base+"/lib/node_modules/"+name+"/package.json", tc.json)
+			if err := e.run(); err != nil {
+				t.Fatal(err)
+			}
+			if tc.want {
+				eq(t, e.calls, []string{"bash -c " + nvmScript + " _ 9.8.7 " + tc.pkg})
+			} else {
+				eq(t, e.calls, nil)
+			}
+		})
+	}
+	// No module directory at all, or a directory without package.json: installed again.
+	e := newEnv(t)
+	e.opts.MiseConfig = false
+	e.opts.NVM = []manifest.NVM{{Node: "9.8.7", Packages: []string{"demo-cli@2.0.0"}}}
+	e.write(".nvm/nvm.sh", "# stub\n")
+	e.write(base+"/bin/node", "")
+	os.Chmod(e.path(base, "bin/node"), 0o755)
+	e.write(base+"/lib/node_modules/demo-cli/README", "x")
+	if err := e.run(); err != nil || len(e.calls) != 1 {
+		t.Fatalf("err %v calls %v", err, e.calls)
 	}
 }
 

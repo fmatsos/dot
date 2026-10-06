@@ -4,8 +4,10 @@ package tools
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +19,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/fmatsos/dot/internal/manifest"
 )
@@ -36,6 +40,9 @@ const (
 
 	maxDownload = 256 << 20
 )
+
+// miseVersionTimeout bounds `mise --version` on an existing binary (a var for the tests).
+var miseVersionTimeout = 10 * time.Second
 
 // miseSums maps a release asset to the sha256 of the pinned mise binary (SHASUMS256.txt).
 var miseSums = map[string]string{
@@ -112,7 +119,9 @@ func Run(o Options) error {
 	}
 	if o.Output == nil {
 		o.Output = func(name string, args ...string) ([]byte, error) {
-			c := exec.Command(name, args...)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			c := exec.CommandContext(ctx, name, args...)
 			c.Env = append(os.Environ(), "HOME="+o.Home)
 			return c.Output()
 		}
@@ -172,7 +181,7 @@ func executable(p string) bool {
 
 func (t *tools) mise() error {
 	bin := filepath.Join(t.Home, ".local", "bin", "mise")
-	if !executable(bin) {
+	if !executable(bin) || !t.miseCurrent(bin) {
 		if err := t.fetchMise(bin); err != nil {
 			return err
 		}
@@ -184,6 +193,45 @@ func (t *tools) mise() error {
 		}
 	}
 	return t.activate()
+}
+
+// miseCurrent reports whether the existing binary is the pinned release, by its --version output.
+// Otherwise (other version, failure, timeout) it says why and the caller downloads and verifies again.
+// ponytail: trusts the binary's own word on its version; the sha256 check only covers what we download.
+func (t *tools) miseCurrent(bin string) bool {
+	type result struct {
+		out []byte
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		out, err := t.Output(bin, "--version")
+		ch <- result{out, err}
+	}()
+	found := ""
+	select {
+	case r := <-ch:
+		if f := strings.Fields(string(r.out)); r.err == nil && len(f) > 0 {
+			if slices.ContainsFunc(f, func(x string) bool { return strings.TrimPrefix(x, "v") == miseVersion }) {
+				return true
+			}
+			// The word comes from a foreign executable: no control characters, bounded length.
+			found = strings.Map(func(r rune) rune {
+				if unicode.IsControl(r) {
+					return -1
+				}
+				return r
+			}, f[0])
+			found = string([]rune(found)[:min(utf8.RuneCountInString(found), 32)])
+		}
+	case <-time.After(miseVersionTimeout):
+	}
+	if found == "" {
+		t.say("  mise : version illisible, %s attendue : mise à jour", miseVersion)
+	} else {
+		t.say("  mise : version %s trouvée, %s attendue : mise à jour", found, miseVersion)
+	}
+	return false
 }
 
 func (t *tools) fetchMise(bin string) error {
@@ -324,15 +372,28 @@ func (t *tools) nvm() error {
 	return nil
 }
 
+// pkgInstalled reports whether spec ("name@version", name possibly scoped) is installed at exactly
+// that version: the version comes from the module's package.json, so a changed pin reinstalls.
+func pkgInstalled(modules, spec string) bool {
+	name, want := spec, ""
+	if i := strings.LastIndex(spec, "@"); i > 0 {
+		name, want = spec[:i], spec[i+1:]
+	}
+	data, err := os.ReadFile(filepath.Join(modules, name, "package.json"))
+	if err != nil {
+		return false
+	}
+	var pj struct {
+		Version string `json:"version"`
+	}
+	return json.Unmarshal(data, &pj) == nil && pj.Version != "" && pj.Version == want
+}
+
 func (t *tools) node(dir string, s nodeSpec) error {
 	base := filepath.Join(dir, "versions", "node", "v"+s.node)
 	var missing []string
 	for _, p := range s.pkgs {
-		name := p
-		if i := strings.LastIndex(p, "@"); i > 0 {
-			name = p[:i]
-		}
-		if fi, err := os.Stat(filepath.Join(base, "lib", "node_modules", name)); err != nil || !fi.IsDir() {
+		if !pkgInstalled(filepath.Join(base, "lib", "node_modules"), p) {
 			missing = append(missing, p)
 		}
 	}

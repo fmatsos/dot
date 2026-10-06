@@ -148,6 +148,22 @@ expect pass  "mode secrets : termes ignorés, liste inutile" "" env DOTFILES_GUA
 c reset -q --hard HEAD~1
 printf 'GITHUB_TOKEN=ghp_aB3dE5fG7hI9jK1mN3pQ5rS7tU9vW1xY3zA5\n' >"$R/s.txt"; c add s.txt # betterleaks:allow (fixture)
 expect block "mode secrets : secret toujours bloqué" "betterleaks" env DOTFILES_GUARD=secrets git -C "$R" commit -qm s; reset
+# The same mode, set per repository with `git config dotfiles.guard secrets`.
+c config dotfiles.guard secrets
+echo "AcmeCorp" >"$R/s.txt"; c add s.txt
+expect pass  "dotfiles.guard secrets : terme interdit toléré" "" git -C "$R" commit -qm s
+c reset -q --hard HEAD~1
+printf 'GITHUB_TOKEN=ghp_aB3dE5fG7hI9jK1mN3pQ5rS7tU9vW1xY3zA5\n' >"$R/s.txt"; c add s.txt # betterleaks:allow (fixture)
+expect block "dotfiles.guard secrets : secret toujours bloqué" "betterleaks" git -C "$R" commit -qm s; reset
+c config dotfiles.guard nope-mode
+echo ok >"$R/s.txt"; c add s.txt
+expect block "dotfiles.guard inconnu bloque" "dotfiles.guard : valeur inconnue, refus" git -C "$R" commit -qm s
+! grep -Fq nope-mode "$S/out" || ko=$((ko+1))
+expect block "DOTFILES_GUARD inconnu bloque" "DOTFILES_GUARD : valeur inconnue, refus" env DOTFILES_GUARD=nope-env git -C "$R" commit -qm s
+! grep -Fq nope-env "$S/out" || ko=$((ko+1))
+expect pass  "DOTFILES_GUARD=secrets prime sur dotfiles.guard" "" env DOTFILES_GUARD=secrets git -C "$R" commit -qm s
+c reset -q --hard HEAD~1; reset
+c config --unset dotfiles.guard
 echo "client zed" >"$R/h.txt"; c add h.txt; c commit -q --no-verify -m h
 : >"$S/scanner.log"
 expect block "push après --no-verify" "contenu" c push -q origin main
