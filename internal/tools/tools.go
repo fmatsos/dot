@@ -56,7 +56,7 @@ var miseSums = map[string]string{
 type Options struct {
 	Home string
 	Dry  bool
-	Skip bool // DOTFILES_TOOLS=0: no `mise install`, no nvm (the mise binary is still fetched)
+	Skip bool // DOTFILES_TOOLS=0: no `mise install`, no nvm, no Codex plugins (the mise binary is still fetched)
 
 	MiseConfig   bool // a profile links ~/.config/mise/config.toml: otherwise mise is not installed
 	NVM          []manifest.NVM
@@ -132,10 +132,11 @@ func Run(o Options) error {
 			return err
 		}
 	}
-	if !t.Skip {
-		if err := t.nvm(); err != nil {
-			return err
-		}
+	if t.Skip {
+		return nil
+	}
+	if err := t.nvm(); err != nil {
+		return err
 	}
 	return t.plugins()
 }
@@ -363,11 +364,34 @@ func (t *tools) nvm() error {
 		if err := t.run("git", "clone", "-q", "--depth", "1", "--branch", nvmVersion, t.NVMRepoURL, dir); err != nil {
 			return fmt.Errorf("nvm : clone impossible : %w", err)
 		}
+	} else if err := t.nvmPin(dir); err != nil {
+		return err
 	}
 	for _, s := range specs {
 		if err := t.node(dir, s); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// nvmPin moves an existing ~/.nvm checkout to the pinned tag. Only the checkout changes: the node
+// versions and global packages under ~/.nvm/versions stay. A directory that is no git repo is left alone.
+func (t *tools) nvmPin(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		t.warn("  nvm : ~/.nvm n'est pas un dépôt git, version non vérifiée")
+		return nil
+	}
+	cur, err := t.Output("git", "-C", dir, "describe", "--tags", "--exact-match", "HEAD")
+	if err == nil && strings.TrimSpace(string(cur)) == nvmVersion {
+		return nil
+	}
+	t.say("  nvm : mise à jour vers %s", nvmVersion)
+	if err := t.run("git", "-C", dir, "fetch", "--depth", "1", "origin", "tag", nvmVersion); err != nil {
+		return fmt.Errorf("nvm : mise à jour impossible : %w", err)
+	}
+	if err := t.run("git", "-C", dir, "checkout", "-q", nvmVersion); err != nil {
+		return fmt.Errorf("nvm : mise à jour impossible : %w", err)
 	}
 	return nil
 }

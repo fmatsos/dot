@@ -29,7 +29,7 @@ type ToolProfile struct {
 }
 
 // ToolsRequest is what the Tools hook receives: the profiles of this run, once their links are
-// made. Skip is $DOTFILES_TOOLS=0 (the pinned downloads may still be checked, never run).
+// made. Skip is $DOTFILES_TOOLS=0 (mise install, nvm and Codex plugins are skipped; the pinned mise binary is still fetched).
 type ToolsRequest struct {
 	Home     string
 	Dry      bool
@@ -269,8 +269,11 @@ func (in *Installer) modules(done []loaded, all []Profile) error {
 		case "mcp":
 			o := mcp.Options{Home: in.Home, FallbackOnApply: multi, DryRun: in.Dry, Out: in.Out}
 			for _, p := range all {
-				o.Fallback = append(o.Fallback, filepath.Join(p.Dir, "home", ".config", "mcp", "servers.json"))
-				o.SecretsFiles = append(o.SecretsFiles, filepath.Join(p.Dir, "secrets.local"))
+				o.Profiles = append(o.Profiles, mcp.Profile{
+					Key:     mcp.ProfileKey(in.Home, p.Dir),
+					Servers: filepath.Join(p.Dir, "home", ".config", "mcp", "servers.json"),
+					Secrets: filepath.Join(p.Dir, "secrets.local"),
+				})
 			}
 			err = mcp.Run(o)
 		}

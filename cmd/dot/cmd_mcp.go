@@ -30,8 +30,11 @@ func newMcpCmd(env *Env) *cobra.Command {
 			keys, _ := env.ProfileKeys()
 			o := mcp.Options{Home: env.Home, DryRun: dry, FallbackOnApply: multi || len(keys) > 1, Out: env.Stdout}
 			for _, d := range dirs {
-				o.Fallback = append(o.Fallback, filepath.Join(d, "home", ".config", "mcp", "servers.json"))
-				o.SecretsFiles = append(o.SecretsFiles, filepath.Join(d, "secrets.local"))
+				o.Profiles = append(o.Profiles, mcp.Profile{
+					Key:     mcp.ProfileKey(env.Home, d),
+					Servers: filepath.Join(d, "home", ".config", "mcp", "servers.json"),
+					Secrets: filepath.Join(d, "secrets.local"),
+				})
 			}
 			if err := mcp.Run(o); err != nil {
 				return reportErr(env, "mcp", err)

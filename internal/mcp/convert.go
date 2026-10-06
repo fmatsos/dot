@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"regexp"
@@ -115,7 +116,8 @@ func strList(v any) ([]string, bool) {
 }
 
 // parseEntry validates one server entry and converts it; a nil Server is an explicit removal.
-func parseEntry(v any, local bool, known map[string]bool, dot string) (*Server, bool) {
+// owner maps the secret names of a server to the key of the profile that declares them all.
+func parseEntry(v any, local bool, owner func(names []string) (key string, ok bool), dot string) (*Server, bool) {
 	if v == nil {
 		return nil, local
 	}
@@ -166,14 +168,18 @@ func parseEntry(v any, local bool, known map[string]bool, dot string) (*Server, 
 		if !ok {
 			return nil, false
 		}
-		for _, n := range names {
-			if !known[n] {
+		if len(names) > 0 {
+			key, ok := owner(names)
+			if !ok {
 				return nil, false
 			}
-		}
-		if len(names) > 0 {
-			// The secret values are only read by `dot secrets run`, when the server starts.
-			args := append([]string{"secrets", "run"}, names...)
+			// The secret values are only read by `dot secrets run`, when the server starts, in the
+			// profile that declares them: -p goes before the command, where the dispatcher strips it.
+			var args []string
+			if key != "" {
+				args = []string{"-p", key}
+			}
+			args = append(append(args, "secrets", "run"), names...)
 			args = append(args, "--", s.Command)
 			s.Args = append(args, s.Args...)
 			s.Command = dot
@@ -182,18 +188,55 @@ func parseEntry(v any, local bool, known map[string]bool, dot string) (*Server, 
 	return s, true
 }
 
+// Owner is a profile as Convert sees it: the key `dot -p` takes ("" when it needs no -p) and the
+// secret names (never values) its secrets.local declares.
+type Owner struct {
+	Key   string
+	Known map[string]bool
+}
+
+// Source is a shared servers file. Owner is the profile it comes from; nil when no profile owns it
+// (the linked ~/.config/mcp/servers.json): its secrets are then looked up like those of the local file.
+type Source struct {
+	Servers map[string]any
+	Owner   *Owner
+}
+
 // Convert validates every source file (including entries a later source overrides) and returns
 // the desired servers by name. shared files merge in order (the last wins), then local replaces
 // whole entries by name; a nil Server (explicit null in local) removes the name.
-// dot is the absolute path of the dot binary that wraps servers using secrets; known holds the
-// secret names (never values) declared in secrets.local.
-func Convert(shared []map[string]any, local map[string]any, known map[string]bool, dot string) (map[string]*Server, error) {
+// dot is the absolute path of the dot binary that wraps servers using secrets. The secret names of
+// a server must all be declared by its own profile; a server with no owner (local file, linked
+// file) takes the first of owners that declares them all, and is refused when there is none.
+func Convert(shared []Source, local map[string]any, owners []Owner, dot string) (map[string]*Server, error) {
 	out := map[string]*Server{}
-	for i, src := range append(slices.Clone(shared), local) {
+	srcs := append(slices.Clone(shared), Source{Servers: local})
+	for i, src := range srcs {
 		isLocal := i == len(shared)
-		for name, raw := range src {
-			s, ok := parseEntry(raw, isLocal, known, dot)
+		cands := owners
+		if src.Owner != nil {
+			cands = []Owner{*src.Owner}
+		}
+		spread := false
+		owner := func(names []string) (string, bool) {
+			declares := func(o Owner) bool {
+				return !slices.ContainsFunc(names, func(n string) bool { return !o.Known[n] })
+			}
+			if k := slices.IndexFunc(cands, declares); k >= 0 {
+				return cands[k].Key, true
+			}
+			// Every name is known, but no single profile declares them all.
+			spread = src.Owner == nil && !slices.ContainsFunc(names, func(n string) bool {
+				return !slices.ContainsFunc(cands, func(o Owner) bool { return o.Known[n] })
+			})
+			return "", false
+		}
+		for name, raw := range src.Servers {
+			s, ok := parseEntry(raw, isLocal, owner, dot)
 			if !ok || !nameRe.MatchString(name) {
+				if spread {
+					return nil, fmt.Errorf("%w : serveur %s, ses secrets ne sont pas tous déclarés par un même profil", ErrSource, name)
+				}
 				return nil, ErrSource
 			}
 			out[name] = s

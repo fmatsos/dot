@@ -61,8 +61,8 @@ func newInstallCmd(env *Env) *cobra.Command {
 			"Installation : identité git du clone, liens de home/ dans ~ et de bin/ dans ~/.local/bin (les fichiers\n" +
 			"existants vont dans ~/.local/state/dotfiles/backup/<date>/), purge des sauvegardes, outils, modules du\n" +
 			"manifeste. Deux profils qui lient le même fichier : refus avant toute écriture. Idempotent.\n\n" +
-			"$DOTFILES_TOOLS=0 saute les outils ; $DOTFILES_BACKUP_DAYS règle la rétention des sauvegardes (défaut 30,\n" +
-			"0 garde tout). -n n'écrit rien : il affiche ce qui changerait.",
+			"$DOTFILES_TOOLS=0 saute les outils (mise, nvm, plugins Codex) ; $DOTFILES_BACKUP_DAYS règle la rétention\n" +
+			"des sauvegardes (défaut 30, 0 garde tout). -n n'écrit rien : il affiche ce qui changerait.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return usagef("usage : dot install [<url>] [-p <clé>] [-n]")

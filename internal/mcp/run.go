@@ -16,16 +16,32 @@ import (
 // Options drives Run.
 type Options struct {
 	Home string
-	// Fallback lists profile servers.json files, in merge order (the last wins), used as the shared
-	// source when ~/.config/mcp/servers.json does not exist: always when FallbackOnApply, else only
-	// in a dry run (a first install -n has not linked home/ yet).
-	Fallback        []string
+	// Profiles lists the profiles in registry order. Their servers.json files, in merge order (the
+	// last wins), are the shared source when ~/.config/mcp/servers.json does not exist: always when
+	// FallbackOnApply, else only in a dry run (a first install -n has not linked home/ yet). Their
+	// secrets.local files give the secret names a server may use.
+	Profiles        []Profile
 	FallbackOnApply bool
-	SecretsFiles    []string // secrets.local files: only the NAME= prefixes are read, never a value
 	DryRun          bool
 	Out             io.Writer
 	LookPath        func(string) (string, error)                      // defaults to exec.LookPath
 	Exec            func(name string, args ...string) ([]byte, error) // stdout only; defaults to exec.Command
+}
+
+// Profile is one profile clone feeding the servers.
+type Profile struct {
+	Key     string // registry key, encoded as `dot -p <Key>` in wrapped servers; "" for no -p
+	Servers string // its servers.json
+	Secrets string // its secrets.local: only the NAME= prefixes are read, never a value
+}
+
+// ProfileKey is the registry key of the clone dir when it is <home>/.dot/<key>, else "": a clone
+// elsewhere (DOTFILES_DEPLOY) cannot be selected with -p.
+func ProfileKey(home, dir string) string {
+	if filepath.Dir(dir) == filepath.Join(home, ".dot") {
+		return filepath.Base(dir)
+	}
+	return ""
 }
 
 var secretNameRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)=`)
@@ -70,7 +86,11 @@ func Run(o Options) error {
 		o.Exec = func(name string, args ...string) ([]byte, error) { return exec.Command(name, args...).Output() }
 	}
 	dir := filepath.Join(o.Home, ".config", "mcp")
-	shared, err := sharedSources(o, filepath.Join(dir, "servers.json"))
+	owners := make([]Owner, len(o.Profiles))
+	for i, p := range o.Profiles {
+		owners[i] = Owner{p.Key, KnownSecrets([]string{p.Secrets})}
+	}
+	shared, err := sharedSources(o, owners, filepath.Join(dir, "servers.json"))
 	if err != nil {
 		return err
 	}
@@ -80,7 +100,7 @@ func Run(o Options) error {
 			return errors.New("servers.local.json invalide")
 		}
 	}
-	desired, err := Convert(shared, local, KnownSecrets(o.SecretsFiles), filepath.Join(o.Home, ".local", "bin", "dot"))
+	desired, err := Convert(shared, local, owners, filepath.Join(o.Home, ".local", "bin", "dot"))
 	if err != nil {
 		return err
 	}
@@ -176,18 +196,18 @@ func Run(o Options) error {
 }
 
 // sharedSources loads the shared servers.json, or the profile files when it is not linked yet.
-func sharedSources(o Options, linked string) ([]map[string]any, error) {
-	if _, err := os.Stat(linked); err != nil && len(o.Fallback) > 0 && (o.DryRun || o.FallbackOnApply) {
-		var out []map[string]any
-		for _, p := range o.Fallback {
-			if _, err := os.Stat(p); err != nil {
+func sharedSources(o Options, owners []Owner, linked string) ([]Source, error) {
+	if _, err := os.Stat(linked); err != nil && len(o.Profiles) > 0 && (o.DryRun || o.FallbackOnApply) {
+		var out []Source
+		for i, p := range o.Profiles {
+			if _, err := os.Stat(p.Servers); err != nil {
 				continue
 			}
-			m, err := readSource(p)
+			m, err := readSource(p.Servers)
 			if err != nil {
 				return nil, errors.New("servers.json invalide ou absent")
 			}
-			out = append(out, m)
+			out = append(out, Source{m, &owners[i]})
 		}
 		if len(out) == 0 {
 			return nil, errors.New("servers.json invalide ou absent")
@@ -198,7 +218,7 @@ func sharedSources(o Options, linked string) ([]map[string]any, error) {
 	if err != nil {
 		return nil, errors.New("servers.json invalide ou absent")
 	}
-	return []map[string]any{m}, nil
+	return []Source{{Servers: m}}, nil
 }
 
 // apply runs one Claude or Codex step: a change is a remove then an add, like the CLIs expect.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -19,12 +20,21 @@ func src(t *testing.T, s string) map[string]any {
 	return m
 }
 
-var known = map[string]bool{"ACME_TOKEN": true}
+var owners = []Owner{{Known: map[string]bool{"ACME_TOKEN": true}}}
+
+// plain wraps shared files that no profile owns.
+func plain(ms ...map[string]any) []Source {
+	var out []Source
+	for _, m := range ms {
+		out = append(out, Source{Servers: m})
+	}
+	return out
+}
 
 func TestConvert(t *testing.T) {
 	shared := src(t, `{"a":{"command":"a-mcp","args":["serve"]},"b":{"url":"https://example.com/mcp"},"c":{"command":"c-mcp","env":{"K":"v"}},"gone":{"command":"x"}}`)
 	local := src(t, `{"a":{"command":"a2","secrets":["ACME_TOKEN"],"args":["x"]},"gone":null}`)
-	got, err := Convert([]map[string]any{shared}, local, known, "/h/.local/bin/dot")
+	got, err := Convert(plain(shared), local, owners, "/h/.local/bin/dot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,18 +67,18 @@ func TestConvertInvalid(t *testing.T) {
 		`{"x":null}`, // null is only valid in the local file
 	}
 	for _, s := range bad {
-		if _, err := Convert([]map[string]any{src(t, s)}, map[string]any{}, known, "/dot"); !errors.Is(err, ErrSource) {
+		if _, err := Convert(plain(src(t, s)), map[string]any{}, owners, "/dot"); !errors.Is(err, ErrSource) {
 			t.Errorf("shared %s accepted", s)
 		}
 	}
-	if _, err := Convert([]map[string]any{{}}, src(t, `{"x":{"command":"x","secrets":["UNKNOWN"]}}`), known, "/dot"); err == nil {
+	if _, err := Convert(plain(map[string]any{}), src(t, `{"x":{"command":"x","secrets":["UNKNOWN"]}}`), owners, "/dot"); err == nil {
 		t.Error("unknown secret in local accepted")
 	}
-	if _, err := Convert([]map[string]any{{}}, src(t, `{"x":null}`), known, "/dot"); err != nil {
+	if _, err := Convert(plain(map[string]any{}), src(t, `{"x":null}`), owners, "/dot"); err != nil {
 		t.Error("null in local refused")
 	}
 	// An invalid shared entry is refused even when a later source overrides it.
-	if _, err := Convert([]map[string]any{src(t, `{"x":{"command":"x","url":"u"}}`)}, src(t, `{"x":null}`), known, "/dot"); err == nil {
+	if _, err := Convert(plain(src(t, `{"x":{"command":"x","url":"u"}}`)), src(t, `{"x":null}`), owners, "/dot"); err == nil {
 		t.Error("overridden invalid entry accepted")
 	}
 	for _, s := range []string{`broken`, `[]`, `{} {}`, ``} {
@@ -81,7 +91,7 @@ func TestConvertInvalid(t *testing.T) {
 func TestConvertSharedOrderLastWins(t *testing.T) {
 	a := src(t, `{"s":{"command":"old"},"a":{"command":"a"}}`)
 	b := src(t, `{"s":{"command":"new"}}`)
-	got, err := Convert([]map[string]any{a, b}, map[string]any{}, known, "/dot")
+	got, err := Convert(plain(a, b), map[string]any{}, owners, "/dot")
 	if err != nil || got["s"].Command != "new" || got["a"].Command != "a" {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -296,7 +306,7 @@ func TestRunFallbackToProfiles(t *testing.T) {
 	os.WriteFile(p2, []byte(`{"a":{"command":"two"}}`), 0o600)
 	f := &fake{list: `[]`}
 	o, out := opts(h, f, "codex")
-	o.Fallback = []string{p1, none, p2}
+	o.Profiles = []Profile{{Servers: p1}, {Servers: none}, {Servers: p2}}
 	if err := Run(o); err == nil {
 		t.Fatal("applying without a linked servers.json must fail when FallbackOnApply is off")
 	}
@@ -312,8 +322,89 @@ func TestRunFallbackToProfiles(t *testing.T) {
 	if !reflect.DeepEqual(f.calls[1], []string{"codex", "mcp", "add", "a", "--", "two"}) {
 		t.Fatalf("last profile must win: %q", f.calls)
 	}
-	o.Fallback = []string{none}
+	o.Profiles = []Profile{{Servers: none}}
 	if err := Run(o); err == nil || err.Error() != "servers.json invalide ou absent" {
 		t.Fatalf("%v", err)
+	}
+}
+
+// twoProfileHome builds <home>/.dot/{a,b}: each profile has a server using the secret it declares.
+func twoProfileHome(t *testing.T, serversA, serversB, secretsA, secretsB string) (string, []Profile) {
+	t.Helper()
+	h := home(t, "", "")
+	var ps []Profile
+	for _, p := range []struct{ key, servers, secrets string }{{"a", serversA, secretsA}, {"b", serversB, secretsB}} {
+		d := filepath.Join(h, ".dot", p.key)
+		os.MkdirAll(filepath.Join(d, "home", ".config", "mcp"), 0o700)
+		os.WriteFile(filepath.Join(d, "home", ".config", "mcp", "servers.json"), []byte(p.servers), 0o600)
+		os.WriteFile(filepath.Join(d, "secrets.local"), []byte(p.secrets), 0o600)
+		ps = append(ps, Profile{Key: ProfileKey(h, d), Servers: filepath.Join(d, "home", ".config", "mcp", "servers.json"), Secrets: filepath.Join(d, "secrets.local")})
+	}
+	return h, ps
+}
+
+func TestRunSecretServersSelectTheirProfile(t *testing.T) {
+	h, ps := twoProfileHome(t,
+		`{"sa":{"command":"sa-mcp","args":["x"],"secrets":["ACME_A"]},"plain":{"command":"p"}}`,
+		`{"sb":{"command":"sb-mcp","secrets":["ACME_B"]}}`,
+		"ACME_A=bw:A\n", "ACME_B=bw:B\n")
+	f := &fake{list: `[]`}
+	o, _ := opts(h, f, "codex")
+	o.Profiles, o.FallbackOnApply = ps, true
+	if err := Run(o); err != nil {
+		t.Fatal(err)
+	}
+	dot := filepath.Join(h, ".local", "bin", "dot")
+	for _, want := range [][]string{
+		{"codex", "mcp", "add", "sa", "--", dot, "-p", "a", "secrets", "run", "ACME_A", "--", "sa-mcp", "x"},
+		{"codex", "mcp", "add", "sb", "--", dot, "-p", "b", "secrets", "run", "ACME_B", "--", "sb-mcp"},
+		{"codex", "mcp", "add", "plain", "--", "p"},
+	} {
+		if !slices.ContainsFunc(f.calls, func(c []string) bool { return reflect.DeepEqual(c, want) }) {
+			t.Errorf("missing %q in %q", want, f.calls)
+		}
+	}
+}
+
+func TestRunRefusesSecretDeclaredByTheOtherProfile(t *testing.T) {
+	// Profile a uses a name only profile b declares: it would fail at start (or read b's value).
+	h, ps := twoProfileHome(t, `{"sa":{"command":"sa-mcp","secrets":["ACME_B"]}}`, `{}`, "", "ACME_B=bw:B\n")
+	f := &fake{list: `[]`}
+	o, _ := opts(h, f, "codex")
+	o.Profiles, o.FallbackOnApply = ps, true
+	if err := Run(o); !errors.Is(err, ErrSource) || len(f.calls) != 0 {
+		t.Fatalf("%v, calls %q", err, f.calls)
+	}
+}
+
+func TestConvertLocalServerTakesFirstProfileDeclaringAllNames(t *testing.T) {
+	two := []Owner{{"a", map[string]bool{"X": true}}, {"b", map[string]bool{"X": true, "Y": true}}, {"c", map[string]bool{"X": true, "Y": true}}}
+	got, err := Convert(plain(map[string]any{}), src(t, `{"s":{"command":"c","secrets":["X","Y"]},"t":{"command":"c","secrets":["X"]}}`), two, "/dot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"-p", "b", "secrets", "run", "X", "Y", "--", "c"}; !reflect.DeepEqual(got["s"].Args, want) {
+		t.Errorf("s = %q", got["s"].Args)
+	}
+	if got["t"].Args[1] != "a" {
+		t.Errorf("t = %q", got["t"].Args)
+	}
+	// Each name is known, but never by one profile: clear error.
+	split := []Owner{{"a", map[string]bool{"X": true}}, {"b", map[string]bool{"Y": true}}}
+	_, err = Convert(plain(map[string]any{}), src(t, `{"s":{"command":"c","secrets":["X","Y"]}}`), split, "/dot")
+	if !errors.Is(err, ErrSource) || !strings.Contains(err.Error(), "serveur s") || !strings.Contains(err.Error(), "même profil") {
+		t.Errorf("%v", err)
+	}
+	// An unknown name keeps the plain message.
+	if _, err = Convert(plain(map[string]any{}), src(t, `{"s":{"command":"c","secrets":["Z"]}}`), split, "/dot"); err != ErrSource {
+		t.Errorf("%v", err)
+	}
+}
+
+func TestProfileKey(t *testing.T) {
+	for dir, want := range map[string]string{"/h/.dot/acme": "acme", "/h/.dot/acme/sub": "", "/srv/deploy": "", "/h/.dot": ""} {
+		if got := ProfileKey("/h", dir); got != want {
+			t.Errorf("%s = %q", dir, got)
+		}
 	}
 }

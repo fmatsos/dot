@@ -27,6 +27,9 @@ type env struct {
 	miseOut  string // `mise --version` output of an existing binary
 	miseErr  error
 	miseWait chan struct{} // when set, `mise --version` blocks until it is closed
+	nvmTag   string        // `git describe` output of ~/.nvm
+	nvmErr   error
+	runErr   func(call string) error // fails the matching Run calls
 	hits     atomic.Int32
 	srv      *httptest.Server
 	body     []byte
@@ -55,11 +58,18 @@ func newEnv(t *testing.T) *env {
 		HTTP: e.srv.Client(), MiseBaseURL: e.srv.URL, NVMRepoURL: "file:///unused",
 		LookPath: func(n string) (string, error) { return "/fake/" + n, nil },
 		Run: func(n string, a ...string) error {
-			e.calls = append(e.calls, strings.Join(append([]string{n}, a...), " "))
+			call := strings.Join(append([]string{n}, a...), " ")
+			e.calls = append(e.calls, call)
+			if e.runErr != nil {
+				return e.runErr(call)
+			}
 			return nil
 		},
 		Output: func(n string, a ...string) ([]byte, error) {
 			e.calls = append(e.calls, strings.Join(append([]string{n}, a...), " "))
+			if n == "git" && len(a) > 2 && a[2] == "describe" {
+				return []byte(e.nvmTag + "\n"), e.nvmErr
+			}
 			if filepath.Base(n) == "mise" && len(a) == 1 && a[0] == "--version" {
 				if e.miseWait != nil {
 					<-e.miseWait
@@ -551,6 +561,8 @@ func TestNVMNoSettingsFileIsSilent(t *testing.T) {
 	e.opts.MiseConfig = false
 	e.opts.NVM = []manifest.NVM{{Node: "9.8.7"}}
 	e.write(".nvm/nvm.sh", "#\n")
+	e.write(".nvm/.git/HEAD", "ref: refs/heads/main\n")
+	e.nvmTag = nvmVersion
 	if err := e.run(); err != nil {
 		t.Fatal(err)
 	}
@@ -658,5 +670,163 @@ func TestCommandFailuresAreReported(t *testing.T) {
 	e.opts.Run = func(string, ...string) error { return errors.New("boom") }
 	if err := e.run(); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err %v", err)
+	}
+}
+
+// nvmRepo fakes an existing ~/.nvm checkout, with the tag git reports for it.
+func (e *env) nvmRepo(tag string) {
+	e.t.Helper()
+	e.opts.MiseConfig = false
+	e.opts.NVM = []manifest.NVM{{Node: "9.8.7"}}
+	e.write(".nvm/nvm.sh", "# stub\n")
+	e.write(".nvm/.git/HEAD", "ref: refs/heads/main\n")
+	e.write(".nvm/versions/node/v9.8.7/bin/node", "")
+	os.Chmod(e.path(".nvm/versions/node/v9.8.7/bin/node"), 0o755)
+	e.nvmTag = tag
+}
+
+func TestNVMPinnedTagIsLeftAlone(t *testing.T) {
+	e := newEnv(t)
+	e.nvmRepo(nvmVersion)
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, e.calls, []string{"git -C " + e.path(".nvm") + " describe --tags --exact-match HEAD"})
+	if e.out.Len() != 0 || e.err.Len() != 0 {
+		t.Fatalf("out %q err %q", e.out.String(), e.err.String())
+	}
+}
+
+func TestNVMOtherTagIsUpdated(t *testing.T) {
+	d := func(e *env) string { return e.path(".nvm") }
+	for name, setup := range map[string]func(*env){
+		"other tag":  func(e *env) { e.nvmRepo("v0.39.0") },
+		"no tag":     func(e *env) { e.nvmRepo(""); e.nvmErr = errors.New("fatal: no tag exactly matches") },
+		"empty tags": func(e *env) { e.nvmRepo("") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			setup(e)
+			if err := e.run(); err != nil {
+				t.Fatal(err)
+			}
+			eq(t, e.calls, []string{
+				"git -C " + d(e) + " describe --tags --exact-match HEAD",
+				"git -C " + d(e) + " fetch --depth 1 origin tag " + nvmVersion,
+				"git -C " + d(e) + " checkout -q " + nvmVersion,
+			})
+			if !strings.Contains(e.out.String(), "nvm : mise à jour vers "+nvmVersion) {
+				t.Fatalf("out %q", e.out.String())
+			}
+			if _, err := os.Stat(e.path(".nvm/versions/node/v9.8.7/bin/node")); err != nil {
+				t.Fatal("installed node touched")
+			}
+		})
+	}
+}
+
+func TestNVMNotAGitRepoIsReportedAndUntouched(t *testing.T) {
+	e := newEnv(t)
+	e.nvmRepo("v0.39.0")
+	if err := os.RemoveAll(e.path(".nvm/.git")); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, e.calls, nil)
+	if e.err.String() != "  nvm : ~/.nvm n'est pas un dépôt git, version non vérifiée\n" {
+		t.Fatalf("err %q", e.err.String())
+	}
+}
+
+func TestNVMUpdateDryRunAnnouncesOnly(t *testing.T) {
+	e := newEnv(t)
+	e.nvmRepo("v0.39.0")
+	e.opts.Dry = true
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, e.calls, []string{"git -C " + e.path(".nvm") + " describe --tags --exact-match HEAD"})
+	for _, w := range []string{
+		"  [dry] git -C " + e.path(".nvm") + " fetch --depth 1 origin tag " + nvmVersion + "\n",
+		"  [dry] git -C " + e.path(".nvm") + " checkout -q " + nvmVersion + "\n",
+	} {
+		if !strings.Contains(e.out.String(), w) {
+			t.Fatalf("missing %q in %q", w, e.out.String())
+		}
+	}
+}
+
+func TestNVMUpdateFailure(t *testing.T) {
+	e := newEnv(t)
+	e.nvmRepo("v0.39.0")
+	e.runErr = func(call string) error {
+		if strings.Contains(call, " fetch ") {
+			return errors.New("network down")
+		}
+		return nil
+	}
+	err := e.run()
+	if err == nil || err.Error() != "nvm : mise à jour impossible : network down" {
+		t.Fatalf("err %v", err)
+	}
+	for _, c := range e.calls {
+		if strings.Contains(c, "checkout") || strings.HasPrefix(c, "bash") {
+			t.Fatalf("went on after the failed fetch: %q", e.calls)
+		}
+	}
+}
+
+func TestSkipRunsNoCodexNorNVMCheck(t *testing.T) {
+	e := newEnv(t)
+	e.nvmRepo("v0.39.0")
+	e.opts.Skip = true
+	e.opts.Marketplaces = []manifest.Marketplace{{Name: "acme", Plugins: []string{"one"}}}
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, e.calls, nil)
+	if e.out.Len() != 0 || e.err.Len() != 0 {
+		t.Fatalf("out %q err %q", e.out.String(), e.err.String())
+	}
+}
+
+func TestNVMUpdatesRealCheckoutToPinnedTag(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git missing")
+	}
+	e := newEnv(t)
+	e.opts.MiseConfig = false
+	src := t.TempDir()
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		c := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "tag.gpgsign=false", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git(src, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(src, "nvm.sh"), []byte("nvm() { :; }\n"), 0o644)
+	git(src, "add", ".")
+	git(src, "commit", "-q", "-m", "old")
+	git(src, "tag", "v0.0.1")
+	os.WriteFile(filepath.Join(src, "nvm.sh"), []byte("nvm() { :; }\n# new\n"), 0o644)
+	git(src, "commit", "-q", "-am", "pinned")
+	git(src, "tag", nvmVersion)
+	git(e.home, "clone", "-q", "--depth", "1", "--branch", "v0.0.1", "file://"+src, e.path(".nvm"))
+	e.write(".nvm/versions/node/v1.0.0/bin/node", "kept")
+	e.opts.NVM = []manifest.NVM{{Node: "9.8.7"}}
+	e.opts.Run, e.opts.Output = nil, nil // real exec, scoped to the temp HOME
+	if err := e.run(); err != nil {
+		t.Fatalf("%v\n%s", err, e.err.String())
+	}
+	if got := git(e.path(".nvm"), "describe", "--tags", "--exact-match", "HEAD"); got != nvmVersion {
+		t.Fatalf("checkout at %q", got)
+	}
+	if e.read(".nvm/versions/node/v1.0.0/bin/node") != "kept" {
+		t.Fatal("installed node removed")
 	}
 }

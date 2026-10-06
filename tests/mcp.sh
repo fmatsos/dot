@@ -188,7 +188,8 @@ unset DOTFILES_DEPLOY
 export HOME=$S/home2 CODEX_HOME=$S/home2/.codex XDG_CONFIG_HOME=$S/home2/.config
 mkdir -p "$HOME/.dot/perso/home/.config/mcp" "$HOME/.dot/acme/home/.config/mcp" "$HOME/.config" "$CODEX_HOME"
 printf '%s\n' '{"default":"perso","profiles":{"perso":{"repo":"https://example.com/p.git"},"acme":{"repo":"https://example.com/a.git"}}}' >"$HOME/.dot/profiles.json"
-printf '%s\n' '{"alpha":{"command":"alpha-mcp"},"shared":{"command":"old"}}' >"$HOME/.dot/perso/home/.config/mcp/servers.json"
+printf '%s\n' '{"alpha":{"command":"alpha-mcp","secrets":["PERSO_TOKEN"]},"shared":{"command":"old"}}' >"$HOME/.dot/perso/home/.config/mcp/servers.json"
+printf '%s\n' 'PERSO_TOKEN=bw:PERSO' >"$HOME/.dot/perso/secrets.local"
 printf '%s\n' '{"shared":{"command":"new"},"beta":{"command":"beta-mcp","secrets":["ACME_TOKEN"]}}' >"$HOME/.dot/acme/home/.config/mcp/servers.json"
 printf '%s\n' 'ACME_TOKEN=bw:ACME' >"$HOME/.dot/acme/secrets.local"
 printf '%s\n' '{}' >"$HOME/.claude.json"; printf '%s\n' '[]' >"$CODEX_HOME/state.json"
@@ -197,9 +198,17 @@ reset_calls; mcp -n
 for name in alpha beta shared; do grep -Fxq "claude : ajout $name" "$S/out"; done
 reset_calls; mcp
 [ "$(wc -l <"$FAKE_WRITES")" -eq 6 ]
-jq -e --arg dot "$HOME/.local/bin/dot" '.mcpServers.shared.command == "new" and .mcpServers.alpha.command == "alpha-mcp" and .mcpServers.beta.command == $dot and .mcpServers.beta.args == ["secrets","run","ACME_TOKEN","--","beta-mcp"]' "$HOME/.claude.json" >/dev/null
+jq -e --arg dot "$HOME/.local/bin/dot" '.mcpServers.shared.command == "new" and .mcpServers.alpha.args == ["-p","perso","secrets","run","PERSO_TOKEN","--","alpha-mcp"] and .mcpServers.beta.command == $dot and .mcpServers.beta.args == ["-p","acme","secrets","run","ACME_TOKEN","--","beta-mcp"]' "$HOME/.claude.json" >/dev/null
 reset_calls; mcp; [ ! -s "$FAKE_WRITES" ]
-echo 'OK   multi-profile: shared servers merge in registry order (last wins), secret names read from every profile'
+echo 'OK   multi-profile: shared servers merge in registry order (last wins); a server using secrets runs `dot -p <its profile> secrets run`'
+# A name declared only by the other profile is refused (it would not resolve at server start).
+cp "$HOME/.dot/perso/home/.config/mcp/servers.json" "$S/perso-servers"
+printf '%s\n' '{"alpha":{"command":"alpha-mcp","secrets":["ACME_TOKEN"]}}' >"$HOME/.dot/perso/home/.config/mcp/servers.json"
+reset_calls
+if mcp; then exit 1; else [ "$?" -eq 1 ]; fi
+[ ! -s "$FAKE_WRITES" ]
+cp "$S/perso-servers" "$HOME/.dot/perso/home/.config/mcp/servers.json"
+echo 'OK   multi-profile: a secret name declared only by the other profile is refused before any write'
 mkdir -p "$HOME/.config/mcp"
 printf '%s\n' '{"only":{"command":"linked-mcp"}}' >"$HOME/.config/mcp/servers.json"
 reset_calls; mcp -n
