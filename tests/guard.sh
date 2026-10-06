@@ -2,6 +2,8 @@
 # Self-check of `dot guard` against fictional terms: every case must pass, or block for the
 # expected reason. betterleaks is replaced by a fake scanner. Runs locally and in CI: bash tests/guard.sh
 set -u
+# A secret-shaped value built at run time: no token-looking literal ever lands in the repository.
+faketoken() { printf 'ghp_%s' "$(head -c 300 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 36)"; }
 root=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=tests/lib.sh
 . "$root/tests/lib.sh"
@@ -127,7 +129,7 @@ echo ok >"$R/d.txt"; c add d.txt
 expect block "message de commit" "message de commit" c commit -qm "fix for Globex-Inc"; reset
 printf '# Globex-Inc dans un commentaire git\n' >"$S/msg"
 expect pass  "message : les lignes # sont ignorées" "" dot guard msg "$S/msg"
-printf 'GITHUB_TOKEN=ghp_aB3dE5fG7hI9jK1mN3pQ5rS7tU9vW1xY3zA5\n' >"$R/e.txt"; c add e.txt # betterleaks:allow (fixture)
+printf 'GITHUB_TOKEN=%s\n' "$(faketoken)" >"$R/e.txt"; c add e.txt
 expect block "secret" "betterleaks" c commit -qm e
 ! grep -Fq ghp_ "$S/out" || ko=$((ko+1))
 reset
@@ -146,14 +148,14 @@ reset
 echo "AcmeCorp" >"$R/s.txt"; c add s.txt
 expect pass  "mode secrets : termes ignorés, liste inutile" "" env DOTFILES_GUARD=secrets DOTFILES_FORBIDDEN=/nonexistent git -C "$R" commit -qm s
 c reset -q --hard HEAD~1
-printf 'GITHUB_TOKEN=ghp_aB3dE5fG7hI9jK1mN3pQ5rS7tU9vW1xY3zA5\n' >"$R/s.txt"; c add s.txt # betterleaks:allow (fixture)
+printf 'GITHUB_TOKEN=%s\n' "$(faketoken)" >"$R/s.txt"; c add s.txt
 expect block "mode secrets : secret toujours bloqué" "betterleaks" env DOTFILES_GUARD=secrets git -C "$R" commit -qm s; reset
 # The same mode, set per repository with `git config dotfiles.guard secrets`.
 c config dotfiles.guard secrets
 echo "AcmeCorp" >"$R/s.txt"; c add s.txt
 expect pass  "dotfiles.guard secrets : terme interdit toléré" "" git -C "$R" commit -qm s
 c reset -q --hard HEAD~1
-printf 'GITHUB_TOKEN=ghp_aB3dE5fG7hI9jK1mN3pQ5rS7tU9vW1xY3zA5\n' >"$R/s.txt"; c add s.txt # betterleaks:allow (fixture)
+printf 'GITHUB_TOKEN=%s\n' "$(faketoken)" >"$R/s.txt"; c add s.txt
 expect block "dotfiles.guard secrets : secret toujours bloqué" "betterleaks" git -C "$R" commit -qm s; reset
 c config dotfiles.guard nope-mode
 echo ok >"$R/s.txt"; c add s.txt
@@ -233,7 +235,7 @@ check "scanner appelé comme betterleaks (all)" grep -Fxq -- '--no-banner --reda
 git -C "$G" branch globex-inc
 expect block "all : nom de branche interdit" "branche" git -C "$G" -c alias.check='!dot guard all' check
 git -C "$G" branch -q -D globex-inc
-printf 'GITHUB_TOKEN=ghp_aB3dE5fG7hI9jK1mN3pQ5rS7tU9vW1xY3zA5\n' >"$G/t.txt"; git -C "$G" add t.txt; git -C "$G" commit -qm tok # betterleaks:allow (fixture)
+printf 'GITHUB_TOKEN=%s\n' "$(faketoken)" >"$G/t.txt"; git -C "$G" add t.txt; git -C "$G" commit -qm tok
 expect block "all : secret dans l'historique" "betterleaks" git -C "$G" -c alias.check='!dot guard all' check
 expect block "usage invalide" "usage" dot guard msg
 
