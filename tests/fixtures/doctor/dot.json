@@ -1,0 +1,1 @@
+{"repo":"https://git.example.com/acme/dots.git","deploy":{"sparse":["home","bin",".githooks"]},"profiles":{"demo":"home/.config/git/profiles/demo.gitconfig"},"deployProfile":"demo","marketplace":{"name":"acme","plugins":["acme"]},"modules":["settings","mcp"]}
