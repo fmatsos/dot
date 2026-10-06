@@ -47,7 +47,7 @@ git -C "$DOTFILES_DEPLOY" add .; git -C "$DOTFILES_DEPLOY" commit -qm fixture
 invoke() {
   code=0
   "$DOT_BIN" doctor "$@" >"$S/out" 2>"$S/err" || code=$?
-  ! grep -q acmecorp "$S/out" "$S/err"
+  not grep -q acmecorp "$S/out" "$S/err"
 }
 invoke
 [ "$code" -eq 0 ]; ! grep -q '^✗' "$S/out" || exit 1
@@ -107,7 +107,7 @@ git -C "$DOTFILES_DEPLOY" config user.email tester@example.com
 echo 'OK   wrong deploy identity fails'
 printf 'x\n' >"$DOTFILES_DEPLOY/pending"
 invoke
-grep -q '^! clone modifié : dot push$' "$S/out"; ! grep -q 'dot send' "$S/out"
+grep -q '^! clone modifié : dot push$' "$S/out"; not grep -q 'dot send' "$S/out"
 rm "$DOTFILES_DEPLOY/pending"
 echo 'OK   modified clone points to dot push'
 invoke
@@ -150,7 +150,7 @@ echo 'OK   plugin source and discovered cache compare silently; stale copy warns
 jq 'del(.marketplace)' "$DOTFILES_DEPLOY/dot.json" >"$S/manifest"
 mv "$S/manifest" "$DOTFILES_DEPLOY/dot.json"
 invoke
-[ "$code" -eq 0 ]; ! grep -qE 'marketplace|copie Codex' "$S/out"
+[ "$code" -eq 0 ]; not grep -qE 'marketplace|copie Codex' "$S/out"
 echo 'OK   absent marketplace skips plugin checks'
 
 # An invalid manifest is a diagnostic result, not an early exit.
@@ -162,7 +162,7 @@ grep -Fxq '! profils et marketplaces ignorés : dot.json invalide' "$S/out"
 grep -q '^✓ clone déployé présent' "$S/out"
 grep -q '^✓ mise présent' "$S/out"
 grep -q '^✓ identités des dépôts cohérentes' "$S/out"
-! grep -qE '^✓ profil |marketplace Claude|marketplace Codex|copie Codex|email du clone' "$S/out"
+not grep -qE '^✓ profil |marketplace Claude|marketplace Codex|copie Codex|email du clone' "$S/out"
 jq '.deploy.path=42' "$S/valid-manifest" >"$DOTFILES_DEPLOY/dot.json"
 invoke
 [ "$code" -eq 1 ]; grep -Fxq '✗ dot.json invalide : clé deploy.path' "$S/out"

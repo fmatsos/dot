@@ -17,7 +17,8 @@ func newSelfUpdateCmd(env *Env) *cobra.Command {
 			"SHA256SUMS avec la clé compilée dans le binaire, puis le sha256 du binaire, et remplace\n" +
 			"l'exécutable en cours de façon atomique. Toute vérification qui échoue abandonne sans rien\n" +
 			"modifier. Sans clé de signature dans le binaire, la mise à jour est refusée.\n" +
-			"-n : affiche ce qui serait fait, sans rien télécharger ni écrire.\n\n" +
+			"-n : affiche ce qui serait fait, sans télécharger de binaire ni rien écrire ; sans --version,\n" +
+			"la dernière release est tout de même demandée à l'API GitHub, pour savoir laquelle installer.\n\n" +
 			"$DOT_RELEASE_BASE et $DOT_RELEASE_API remplacent les URL des releases, pour les tests uniquement.",
 		Args: exactArgs(0, "dot self-update [--version vX.Y.Z] [-n]"),
 		RunE: func(*cobra.Command, []string) error {

@@ -53,11 +53,16 @@ refused() { # refused <label> <file> [grep]: the file stays a regular file, the 
 }
 printf 'tenant AcmeCorp\n' >"$HOME/.term"
 refused "$HOME/.term" 'référence interdite'; [ ! -e "$A/home/.term" ]
-! grep -qi acmecorp "$S/err"
+grep -qi acmecorp "$S/err" && exit 1
+# A forbidden name refused earlier (existing destination) is not echoed in the reason either.
+printf 'x\n' >"$HOME/.acmecorp-rc"; printf 'y\n' >"$A/home/.acmecorp-rc"
+refused "$HOME/.acmecorp-rc" 'détail masqué'
+grep -qi acmecorp "$S/err" && exit 1
+rm -f "$A/home/.acmecorp-rc" "$HOME/.acmecorp-rc"
 echo 'OK   a forbidden term refuses the file, which is untouched, and is never echoed'
 tok=$(faketoken); printf 'key=%s\n' "$tok" >"$HOME/.secret"
 refused "$HOME/.secret" 'secret'; [ ! -e "$A/home/.secret" ]
-! grep -qF "$tok" "$S/err"
+not grep -qF "$tok" "$S/err"
 echo 'OK   a secret refuses the file'
 fails 1 dot adopt "$HOME/.plain"; grep -q 'lien symbolique' "$S/err"
 fails 1 dot adopt "$HOME/.config/foo/rc"; grep -q 'lien symbolique' "$S/err"

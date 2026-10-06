@@ -134,6 +134,9 @@ func newAdoptCmd(env *Env) *cobra.Command {
 					return s
 				}
 				refuse := func(shownPath, why string) {
+					if g.Terms.Match(why) { // a reason may quote the path relative to ~
+						why = "détail masqué (référence interdite)"
+					}
 					fmt.Fprintf(env.Stderr, "adopt : %s refusé : %s\n", shown(shownPath), why)
 					failed = true
 				}

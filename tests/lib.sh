@@ -29,3 +29,6 @@ in_pty() {
 
 # A check that aborts the script under set -e names its line instead of exiting silently.
 trap 'echo "FAIL ${BASH_SOURCE[0]##*/}:$LINENO : $BASH_COMMAND" >&2' ERR
+
+# not <command>: a negated check that fails the script under set -e, which `! command` never does.
+not() { if "$@"; then return 1; fi; }
