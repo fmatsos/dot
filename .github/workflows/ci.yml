@@ -76,3 +76,16 @@ jobs:
         env:
           CGO_ENABLED: '0'
         run: go build ./...
+      - name: Black-box tests
+        if: steps.mod.outputs.present == 'true'
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          go build -trimpath -o "$RUNNER_TEMP/dot" ./cmd/dot
+          export DOT_BIN="$RUNNER_TEMP/dot"
+          for t in tests/*.sh; do
+            [ "$(basename "$t")" = lib.sh ] && continue
+            echo "== $t"
+            bash "$t"
+          done

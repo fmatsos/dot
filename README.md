@@ -10,14 +10,19 @@ OpenCode.
 
 ## État
 
-**En conception : rien n'est utilisable pour l'instant.** Ce dépôt ne contient que le plan et
-la CI ; aucun code n'est écrit. L'implémentation actuelle est un CLI bash qui vit dans un dépôt
-de dotfiles ; cette réécriture en Go la remplacera, sans régression. Le détail des décisions, de
-l'architecture et des phases est dans [PLAN.md](PLAN.md).
+**Squelette en place, commandes à porter : `dot` n'est pas encore utilisable.** La phase 1 du
+plan est livrée : le binaire Go (cobra), l'option globale `-p/--profile`, `--version`, la
+complétion zsh générée, le registre `~/.dot/profiles.json` (`internal/registry`), la lecture
+validée du manifeste `dot.json` (`internal/manifest`) et la commande `dot config`
+(`list|get|set|unset`). Les autres commandes (`install`, `pull`, `doctor`, `guard`, `secrets`,
+`mcp`, `settings`…) ne sont pas portées : elles arrivent phase par phase, dans l'ordre du plan.
+L'implémentation actuelle reste un CLI bash qui vit dans un dépôt de dotfiles ; cette réécriture
+la remplacera, sans régression. Le détail des décisions, de l'architecture et des phases est
+dans [PLAN.md](PLAN.md).
 
 ## Usage prévu
 
-Rien de ce qui suit n'existe encore.
+Seul `dot config` existe pour l'instant ; le reste est à venir.
 
 ```text
 dot install <url> [-p <clé>]      clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
@@ -41,12 +46,17 @@ sha256 contre la somme qu'il contient, l'installera dans `~/.local/bin/dot`, pui
 
 ## Développement
 
-Go, avec [cobra](https://github.com/spf13/cobra) pour la ligne de commande. Aucun code n'est
-écrit tant que la phase 0 du plan n'est pas close.
+Go, avec [cobra](https://github.com/spf13/cobra) pour la ligne de commande. `make test` lance
+`go vet` et `go test -race` ; `make build` produit le binaire statique `./dot`.
+
+Une commande vit dans son propre fichier `cmd/dot/cmd_<nom>.go` et s'enregistre avec
+`func init() { register(newXxxCmd) }` : aucun fichier partagé n'est modifié. Les tests boîte
+noire sont des scripts bash `tests/<nom>.sh` qui font `source tests/lib.sh` et appellent
+`dot` (le binaire de `$DOT_BIN`, construit au besoin).
 
 - `ci.yml` (push, pull request) : garde-fou (termes interdits dans les fichiers et les
-  métadonnées de commit, scan de secrets), puis `go vet`, `go test -race` et le build statique
-  dès qu'un `go.mod` existe.
+  métadonnées de commit, scan de secrets), puis `go vet`, `go test -race`, le build statique et
+  les tests boîte noire de `tests/*.sh`, dès qu'un `go.mod` existe.
 - `release.yml` (tag `vX.Y.Z`) : construit les quatre binaires statiques, calcule `SHA256SUMS`
   et publie la release.
 - `dependabot.yml` : mises à jour hebdomadaires des actions et des modules Go.
