@@ -1,0 +1,4 @@
+/dist/
+/dot
+*.test
+coverage.out

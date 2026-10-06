@@ -1,0 +1,37 @@
+# Static binaries and SHA256SUMS published on a vX.Y.Z tag.
+name: release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require go.mod
+        run: |
+          [ -f go.mod ] || { echo "::error::go.mod absent : rien à publier."; exit 1; }
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build the four binaries
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          mkdir dist
+          for t in linux/amd64/linux-x64 linux/arm64/linux-arm64 darwin/amd64/macos-x64 darwin/arm64/macos-arm64; do
+            IFS=/ read -r os arch name <<< "$t"
+            GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o "dist/dot-$name" ./cmd/dot
+          done
+          (cd dist && sha256sum dot-* > SHA256SUMS && cat SHA256SUMS)
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes dist/dot-* dist/SHA256SUMS

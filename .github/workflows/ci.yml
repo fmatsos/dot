@@ -1,0 +1,78 @@
+# guard: server-side net for what local hooks can miss (--no-verify, web edits).
+# FORBIDDEN_TERMS is a repository secret: extended regexes, one per line.
+# go: stays skipped until the repository has a go.mod.
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks-action lists PR commits
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check forbidden terms (files and commit metadata)
+        env:
+          FORBIDDEN_TERMS: ${{ secrets.FORBIDDEN_TERMS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          terms="$RUNNER_TEMP/forbidden.txt"
+          # Blank lines would match everything: drop them. Fail closed on an empty list.
+          printf '%s\n' "$FORBIDDEN_TERMS" | grep -v '^[[:space:]]*$' > "$terms" || true
+          if [ ! -s "$terms" ]; then
+            echo "::error::Secret FORBIDDEN_TERMS absent ou vide : le garde-fou échoue fermé."
+            exit 1
+          fi
+          bad=0
+          # git grep (tracked files only): 0 = match, 1 = none, >=2 = error (e.g. invalid regex).
+          rc=0
+          git grep -EilI -f "$terms" > "$RUNNER_TEMP/hits.txt" 2>/dev/null || rc=$?
+          case "$rc" in
+            0) echo "::error::Terme interdit dans ces fichiers :"; cat "$RUNNER_TEMP/hits.txt"; bad=1 ;;
+            1) ;;
+            *) echo "::error::Échec du scan des fichiers (liste de termes invalide ?)."; exit 1 ;;
+          esac
+          rc=0
+          git log --all --format='%an%n%ae%n%cn%n%ce%n%B' | grep -Ei -f "$terms" >/dev/null || rc=$?
+          case "$rc" in
+            0) echo "::error::Terme interdit dans les métadonnées de commit."; bad=1 ;;
+            1) ;;
+            *) echo "::error::Échec du scan des métadonnées de commit."; exit 1 ;;
+          esac
+          exit "$bad"
+      # gitleaks-action: simplest robust option, free for a personal account, scans the full history.
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+  go:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Detect Go code
+        id: mod
+        run: |
+          if [ -f go.mod ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "Pas de go.mod : job Go ignoré."; fi
+      - uses: actions/setup-go@v7
+        if: steps.mod.outputs.present == 'true'
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        if: steps.mod.outputs.present == 'true'
+        run: go vet ./...
+      - name: Test
+        if: steps.mod.outputs.present == 'true'
+        run: go test -race ./...
+      - name: Build (static)
+        if: steps.mod.outputs.present == 'true'
+        env:
+          CGO_ENABLED: '0'
+        run: go build ./...
