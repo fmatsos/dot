@@ -137,7 +137,7 @@ if command -v script >/dev/null; then
   cat "$S/err" >>"$S/stderr"
   printf '%s' fake-session-123 >"$S/expected"
   check 'unlock caches only the session' cmp -s "$S/expected" "$DOTFILES_DEPLOY/bw-session.local"
-  check 'unlock replaces old cache with private permissions' test "$(stat -c '%a' "$DOTFILES_DEPLOY/bw-session.local")" = 600
+  check 'unlock replaces old cache with private permissions' test "$(stat -c '%a' "$DOTFILES_DEPLOY/bw-session.local" 2>/dev/null || stat -f %Lp "$DOTFILES_DEPLOY/bw-session.local")" = 600
   check 'unlock never prints the session' no_values "$S/tty"
   check 'unlock prompts for the master password' grep -q 'Mot de passe maître Bitwarden' "$S/tty"
   check 'unlock never echoes the master password' no_master "$S/tty"
@@ -221,7 +221,7 @@ printf '%s\n' "$fixture" >"$S/value"
 no_fixture() { ! grep -Fq -f "$S/value" "$@"; }
 invoke add ACME_TOKEN 'bw:Created BW' <"$S/value"
 check 'add bw from non-tty stdin succeeds without an existing mapping file' test "$rc" -eq 0
-check 'add bw creates a private mapping' test "$(stat -c '%a' "$DOTFILES_DEPLOY/secrets.local")" = 600
+check 'add bw creates a private mapping' test "$(stat -c '%a' "$DOTFILES_DEPLOY/secrets.local" 2>/dev/null || stat -f %Lp "$DOTFILES_DEPLOY/secrets.local")" = 600
 check 'add bw registers the reference' grep -Fxq 'ACME_TOKEN=bw:Created BW' "$DOTFILES_DEPLOY/secrets.local"
 check 'bw password goes in JSON before encoding, not argv' cmp -s "$S/value" "$FAKE_STORE/bw-Created BW"
 check 'bw create receives the encoded JSON on stdin' test -s "$FAKE_STDIN/bw.create"

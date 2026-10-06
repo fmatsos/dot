@@ -92,11 +92,11 @@ foreign() {
 }
 foreign before
 cp "$HOME/.config/opencode/config.json" "$S/open-dry-before"
-dry_inode=$(stat -c '%i:%Y' "$HOME/.config/opencode/config.json")
+dry_inode=$(stat_inode_mtime "$HOME/.config/opencode/config.json")
 mcp -n
 [ ! -s "$FAKE_WRITES" ]; grep -Fxq 'claude : ajout codegraph' "$S/out"
 cmp -s "$S/open-dry-before" "$HOME/.config/opencode/config.json"
-[ "$dry_inode" = "$(stat -c '%i:%Y' "$HOME/.config/opencode/config.json")" ]
+[ "$dry_inode" = "$(stat_inode_mtime "$HOME/.config/opencode/config.json")" ]
 foreign dry
 for tool in claude codex open; do cmp -s "$S/$tool-foreign.before" "$S/$tool-foreign.dry"; done
 echo 'OK   dry run plans changes without CLI writes or config changes'
@@ -109,14 +109,14 @@ echo 'OK   first run adds the shared servers to all installed tools'
 cp "$HOME/.claude.json" "$S/claude-before"
 cp "$CODEX_HOME/state.json" "$S/codex-before"
 cp "$HOME/.config/opencode/config.json" "$S/open-before"
-inode=$(stat -c '%i:%Y' "$HOME/.config/opencode/config.json")
+inode=$(stat_inode_mtime "$HOME/.config/opencode/config.json")
 reset_calls
 mcp
 [ ! -s "$FAKE_WRITES" ]
 cmp -s "$S/claude-before" "$HOME/.claude.json"
 cmp -s "$S/codex-before" "$CODEX_HOME/state.json"
 cmp -s "$S/open-before" "$HOME/.config/opencode/config.json"
-[ "$inode" = "$(stat -c '%i:%Y' "$HOME/.config/opencode/config.json")" ]
+[ "$inode" = "$(stat_inode_mtime "$HOME/.config/opencode/config.json")" ]
 for tool in claude codex opencode; do grep -Fxq "$tool : à jour" "$S/out"; done
 echo 'OK   second run is a true no-op, including OpenCode inode and content'
 jq 'map(if .name == "codegraph" then .enabled=false else . end)' "$CODEX_HOME/state.json" >"$S/disabled"

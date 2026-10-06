@@ -13,3 +13,6 @@ if [ -z "${DOT_BIN:-}" ]; then
 fi
 export DOT_BIN
 dot() { "$DOT_BIN" "$@"; }
+
+# inode:mtime of a file, with GNU stat or BSD stat (macOS).
+stat_inode_mtime() { stat -c '%i:%Y' "$1" 2>/dev/null || stat -f '%i:%m' "$1"; }

@@ -74,11 +74,11 @@ echo 'OK   second install has no links to create or files to back up'
 # A deploy.sparse changed by a pull is applied to the existing clone: folders appear, then leave.
 sparse_commit() { git -C "$A" -c user.name=Fixture -c user.email=fixture@example.com commit -q -am "$1"; }
 mkdir -p "$A/extra"; echo x >"$A/extra/file"; git -C "$A" add extra
-sed -i 's/"sparse": \["home", "bin", ".githooks"\]/"sparse": ["home", "bin", ".githooks", "extra"]/' "$A/dot.json"
+sed -i.bak 's/"sparse": \["home", "bin", ".githooks"\]/"sparse": ["home", "bin", ".githooks", "extra"]/' "$A/dot.json"; rm "$A/dot.json.bak"
 sparse_commit 'add extra'
 dot pull -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ "$(git -C "$clone" sparse-checkout list)" = $'.githooks\nbin\nextra\nhome' ]; [ -f "$clone/extra/file" ]
-sed -i 's/, "extra"\]/]/' "$A/dot.json"; sparse_commit 'drop extra'
+sed -i.bak 's/, "extra"\]/]/' "$A/dot.json"; rm "$A/dot.json.bak"; sparse_commit 'drop extra'
 dot pull -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ "$(git -C "$clone" sparse-checkout list)" = $'.githooks\nbin\nhome' ]; [ ! -e "$clone/extra" ]
 echo 'OK   a changed deploy.sparse is reapplied to the existing clone on pull'

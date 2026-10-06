@@ -54,13 +54,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
   go:
-    runs-on: ubuntu-26.04
+    strategy:
+      matrix:
+        os: [ubuntu-26.04, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Detect Go code
         id: mod
         run: |
           if [ -f go.mod ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "Pas de go.mod : job Go ignoré."; fi
+      # The black-box tests need bash 4+; macOS ships 3.2. Put Homebrew's first in PATH (arm64 and x64 prefixes differ).
+      - name: Install bash 4+ on macOS
+        if: runner.os == 'macOS' && steps.mod.outputs.present == 'true'
+        run: |
+          brew install bash
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-go@v7
         if: steps.mod.outputs.present == 'true'
         with:
