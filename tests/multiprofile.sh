@@ -186,6 +186,9 @@ echo 'OK   dot send is no dot command any more (git fallback)'
   grep -q 'p1-key' "$S/out"; grep -q 'p2-key' "$S/out"; [ ! -e "$HOME/.claude/settings.json" ]
   dot mcp -n >"$S/out" 2>&1
   grep -Fxq 'claude : ajout p1-srv' "$S/out"; grep -Fxq 'claude : ajout p2-srv' "$S/out"
+  # -p narrows the targets, not the fact that servers.json is no longer linked: apply must still find its source.
+  dot mcp -p p1 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+  ! grep -q 'invalide ou absent' "$S/out"
   dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
   [ ! -e "$HOME/.claude/settings.base.json" ]; ! grep -q 'lien retiré' "$S/out"
   dot status >"$S/out" 2>"$S/err"; ! grep -q 'settings.base.json' "$S/err"

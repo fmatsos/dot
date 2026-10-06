@@ -26,7 +26,9 @@ func newMcpCmd(env *Env) *cobra.Command {
 			if err != nil {
 				return reportErr(env, "mcp", err)
 			}
-			o := mcp.Options{Home: env.Home, DryRun: dry, FallbackOnApply: multi, Out: env.Stdout}
+			// With several registered profiles servers.json is no longer linked, even when -p targets one.
+			keys, _ := env.ProfileKeys()
+			o := mcp.Options{Home: env.Home, DryRun: dry, FallbackOnApply: multi || len(keys) > 1, Out: env.Stdout}
 			for _, d := range dirs {
 				o.Fallback = append(o.Fallback, filepath.Join(d, "home", ".config", "mcp", "servers.json"))
 				o.SecretsFiles = append(o.SecretsFiles, filepath.Join(d, "secrets.local"))
