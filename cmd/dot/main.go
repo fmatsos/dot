@@ -66,14 +66,21 @@ func newRoot(env *Env) *cobra.Command {
 	for _, f := range constructors {
 		root.AddCommand(f(env))
 	}
+	frenchHelp(env, root)
 	return root
 }
 
 // execute runs one invocation and returns the exit code.
 func execute(env *Env, args []string) int {
 	root := newRoot(env)
-	root.SetArgs(append([]string{}, args...))
-	err := root.Execute()
+	args, external := route(env, root, append([]string{}, args...))
+	var err error
+	if external {
+		err = runExternal(env, args)
+	} else {
+		root.SetArgs(args)
+		err = root.Execute()
+	}
 	if err == nil {
 		return 0
 	}
