@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Fake betterleaks for the black-box tests: same arguments as the real one, exit 1 when the
+# scanned content holds a token-looking fixture. Logs its arguments to $FAKE_BETTERLEAKS_LOG.
+set -euo pipefail
+[ -z "${FAKE_BETTERLEAKS_LOG:-}" ] || printf '%s\n' "$*" >>"$FAKE_BETTERLEAKS_LOG"
+[ "$1 $2 $3" = "--no-banner --redact git" ] || { echo "fake-betterleaks: arguments inattendus" >&2; exit 2; }
+shift 3
+case $1 in
+--staged) content=$(git diff --cached) ;;
+--log-opts=*) read -ra revs <<<"${1#--log-opts=}"; content=$(git log -p "${revs[@]}") ;;
+.) content=$(git log --all -p) ;;
+*) echo "fake-betterleaks: arguments inattendus" >&2; exit 2 ;;
+esac
+if grep -qE 'ghp_[A-Za-z0-9]{20,}' <<<"$content"; then
+  echo "fake-betterleaks: 1 leak found (redacted)" >&2
+  exit 1
+fi
