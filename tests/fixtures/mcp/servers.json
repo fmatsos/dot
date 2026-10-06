@@ -1,0 +1,9 @@
+{
+  "codegraph": {
+    "command": "codegraph",
+    "args": ["serve", "--mcp"]
+  },
+  "notebooklm-mcp": {
+    "command": "notebooklm-mcp"
+  }
+}
