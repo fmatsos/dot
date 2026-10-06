@@ -94,7 +94,7 @@ type RestoreRequest struct {
 }
 
 // Restore moves backed-up files back into ~. A target is only taken when it is absent or a link into
-// dir/home/ or dir/bin/ of a registered clone (a dot link, removed first); any other file, or a
+// a home layer (home/, home@*/) or dir/bin/ of a registered clone (a dot link, removed first); any other file, or a
 // target below a linked directory, is refused and reported on Err, and the run goes on. It returns
 // the counts of restored and refused files. The run directory goes away once it is empty.
 func Restore(r RestoreRequest) (restored, refused int, err error) {
@@ -234,7 +234,7 @@ func restoreBlocker(home, dst string, clones []string) string {
 	t = filepath.Clean(t)
 	for _, c := range clones {
 		c, _ = filepath.Abs(c)
-		if strings.HasPrefix(t, c+"/home/") || strings.HasPrefix(t, c+"/bin/") {
+		if inProfile(t, c) {
 			return ""
 		}
 	}

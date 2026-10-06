@@ -196,3 +196,19 @@ func TestLoadStringsAreData(t *testing.T) {
 		t.Fatalf("m = %+v, err = %v", m, err)
 	}
 }
+
+func TestSparseAcceptsHomeVariants(t *testing.T) {
+	m, err := Load(writeFile(t, `{"repo":"r","deploy":{"sparse":["home","home@darwin","home@my-host"]},"profiles":{"a":"home/a.gitconfig"},"deployProfile":"a","modules":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(m.Sparse, []string{"home", "home@darwin", "home@my-host"}) {
+		t.Fatalf("sparse = %v", m.Sparse)
+	}
+	for _, bad := range []string{"bin@darwin", "home@", "home@-x", "home@a@b", "home@a..b", "@darwin"} {
+		_, err := Load(writeFile(t, `{"repo":"r","deploy":{"sparse":["`+bad+`"]},"profiles":{"a":"home/a.gitconfig"},"deployProfile":"a","modules":[]}`))
+		if err == nil {
+			t.Errorf("sparse %q accepted", bad)
+		}
+	}
+}

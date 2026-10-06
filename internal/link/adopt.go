@@ -48,11 +48,12 @@ func AdoptSource(home, cwd, arg string) (abs, rel string, err error) {
 	return abs, rel, nil
 }
 
-// ClaimedBy lists the keys of the profiles that already hold home/<rel> in their clone.
+// ClaimedBy lists the keys of the profiles that already provide ~/<rel> on this machine, from
+// home/ or from a variant active here.
 func ClaimedBy(rel string, others []Profile) []string {
 	var keys []string
 	for _, p := range others {
-		if _, err := os.Lstat(filepath.Join(p.Dir, "home", rel)); err == nil {
+		if ProvidedBy(p.Dir, rel) {
 			keys = append(keys, p.Key)
 		}
 	}
