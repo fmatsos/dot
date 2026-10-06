@@ -138,7 +138,9 @@ echo ok >"$R/f.txt"; c add f.txt
 expect block "identité" "identité" c -c user.email=me@acmecorp.example commit -qm f; reset
 echo ok >"$R/g.txt"; c add g.txt
 expect block "liste absente" "absente ou vide" env DOTFILES_FORBIDDEN=/nonexistent git -C "$R" commit -qm g
-expect block "scanner sans empreinte figée" "empreinte non figée" env -u DOT_BETTERLEAKS git -C "$R" commit -qm g
+# No cached scanner and no way to download it: blocked, never silently skipped (offline by a dead proxy).
+mkdir -p "$S/nocache"
+expect block "scanner indisponible (cache vide, hors ligne)" "téléchargement impossible" env -u DOT_BETTERLEAKS -u NO_PROXY -u no_proxy HOME="$S/nocache" HTTPS_PROXY=http://127.0.0.1:9 https_proxy=http://127.0.0.1:9 git -C "$R" commit -qm g
 expect block "scanner introuvable" "lancement impossible" env DOT_BETTERLEAKS="$S/missing" git -C "$R" commit -qm g
 reset
 echo "AcmeCorp" >"$R/s.txt"; c add s.txt
