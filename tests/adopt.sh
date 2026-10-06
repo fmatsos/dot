@@ -45,6 +45,14 @@ fails 0 dot adopt -n -p b "$HOME/.plain"; grep -qF 'adopt ~/.plain -> b:home/.pl
 echo 'OK   -n prints the plan and writes nothing'
 dot adopt -p b "$HOME/.plain" >/dev/null; [ -f "$HOME/.dot/b/home/.plain" ]; [ "$(readlink "$HOME/.plain")" = "$HOME/.dot/b/home/.plain" ]
 
+# A module source another profile already holds is merged, not linked: adopted without a link.
+[ -f "$A/home/.claude/settings.base.json" ]; not test -e "$HOME/.claude/settings.base.json"
+mkdir -p "$HOME/.claude"; printf '{"b": 1}\n' >"$HOME/.claude/settings.base.json"
+fails 0 dot adopt -p b "$HOME/.claude/settings.base.json"; grep -q "n'est pas relié" "$S/out"
+[ -f "$HOME/.dot/b/home/.claude/settings.base.json" ]; not test -e "$HOME/.claude/settings.base.json"
+dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }; not test -e "$HOME/.claude/settings.base.json"
+echo 'OK   a module source held by another profile is adopted unlinked, for the merge'
+
 # Refusals leave the file untouched and exit 1.
 refused() { # refused <label> <file> [grep]: the file stays a regular file, the clone gets nothing
   local f=$1 why=${2:-}; local before; before=$(cksum <"$f")

@@ -400,7 +400,9 @@ func (l *Linker) orphanLinks(dir string, plan []Link) error {
 	for _, k := range plan {
 		planned[k.Dst] = true
 	}
-	for _, p := range symlinkCandidates(plan, l.Home) {
+	// Scan the roots of every layer too: a root only an inactive layer gave is no longer planned.
+	every, _ := layerLinks(dir, l.Home, allLayers(dir), false)
+	for _, p := range symlinkCandidates(append(plan[:len(plan):len(plan)], every...), l.Home) {
 		t, ok := target(p)
 		if !ok || planned[p] || !inProfile(t, dir) || strings.HasPrefix(t, dir+"/bin/") {
 			continue

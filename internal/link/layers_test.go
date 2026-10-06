@@ -241,3 +241,23 @@ func TestShadowedBy(t *testing.T) {
 		t.Error("a path no layer gives is not shadowed")
 	}
 }
+
+func TestOrphanUnderRootOnlyAnInactiveLayerGave(t *testing.T) {
+	root := t.TempDir()
+	home, dir := filepath.Join(root, "home"), filepath.Join(root, "p")
+	must(t, os.MkdirAll(home, 0o755))
+	write(t, dir+"/home/.base", "b", 0o644)
+	write(t, dir+"/home@work/.config/app/config", "w", 0o644)
+	machine(t, "linux", "work")
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	dst := filepath.Join(home, ".config/app/config")
+	if _, err := os.Readlink(dst); err != nil {
+		t.Fatalf("host link missing: %v", err)
+	}
+	// Another host: nothing planned under ~/.config any more, the old link must still go.
+	machine(t, "linux", "desk")
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	if _, err := os.Lstat(dst); err == nil {
+		t.Error("link into an inactive host layer kept")
+	}
+}

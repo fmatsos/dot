@@ -155,7 +155,10 @@ func newAdoptCmd(env *Env) *cobra.Command {
 					refuse(tilde, fmt.Sprintf("masqué par %s:%s/%s, qui l'emporte sur %s", key, above, filepath.ToSlash(rel), layer))
 					continue
 				}
-				if owners := link.ClaimedBy(rel, others); len(owners) > 0 {
+				// With several profiles, a module source is merged by dot settings/mcp, never linked:
+				// other profiles may hold their own copy, and a link in ~ would shadow the merge.
+				merged := len(others) > 0 && link.IsModuleSource(rel)
+				if owners := link.ClaimedBy(rel, others); len(owners) > 0 && !merged {
 					refuse(tilde, fmt.Sprintf("fichier lié par plusieurs profils : %s (home/%s) et %s", strings.Join(owners, ", "), filepath.ToSlash(rel), key))
 					continue
 				}
@@ -172,9 +175,12 @@ func newAdoptCmd(env *Env) *cobra.Command {
 				if dry {
 					continue
 				}
-				if err := link.AdoptMove(src, dst); err != nil {
+				if err := link.AdoptMove(src, dst, !merged); err != nil {
 					refuse(tilde, err.Error())
 					continue
+				}
+				if merged {
+					fmt.Fprintf(env.Stdout, "  %s n'est pas relié : dot settings et dot mcp fusionnent les profils\n", tilde)
 				}
 				done++
 			}

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -60,9 +61,10 @@ func ClaimedBy(rel string, others []Profile) []string {
 	return keys
 }
 
-// AdoptMove moves src into the clone at dst and puts an absolute symlink dst at src's place, the
-// form Apply produces. A failed symlink moves the file back and removes the directories it made.
-func AdoptMove(src, dst string) error {
+// AdoptMove moves src into the clone at dst and, with linkBack, puts an absolute symlink dst at
+// src's place, the form Apply produces. A failed symlink moves the file back and removes the
+// directories it made.
+func AdoptMove(src, dst string, linkBack bool) error {
 	var made []string
 	for d := filepath.Dir(dst); ; d = filepath.Dir(d) {
 		if _, err := os.Lstat(d); err == nil {
@@ -81,6 +83,9 @@ func AdoptMove(src, dst string) error {
 	if err := moveFile(src, dst); err != nil {
 		undo()
 		return err
+	}
+	if !linkBack {
+		return nil
 	}
 	if err := os.Symlink(dst, src); err != nil {
 		if mv := moveFile(dst, src); mv != nil {
@@ -130,3 +135,7 @@ func moveFile(src, dst string) error {
 	}
 	return os.Remove(src)
 }
+
+// IsModuleSource tells whether ~/rel is merged across profiles by dot settings or dot mcp
+// rather than linked once several profiles are registered.
+func IsModuleSource(rel string) bool { return slices.Contains(ModuleSources, filepath.ToSlash(rel)) }

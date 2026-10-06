@@ -44,7 +44,7 @@ func TestAdoptMoveAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	dst := filepath.Join(d, "clone", "home", "a", "b", "f")
-	if err := AdoptMove(src, dst); err != nil {
+	if err := AdoptMove(src, dst, true); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.Readlink(src); got != dst {
@@ -66,7 +66,7 @@ func TestAdoptMoveAndRollback(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
-	if err := AdoptMove(src2, dst2); err == nil {
+	if err := AdoptMove(src2, dst2, true); err == nil {
 		t.Fatal("succès inattendu")
 	}
 	if b, err := os.ReadFile(src2); err != nil || string(b) != "y" {
