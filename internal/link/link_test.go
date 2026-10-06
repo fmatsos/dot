@@ -337,3 +337,43 @@ func TestUnlinkEmptiesHomeSubtree(t *testing.T) {
 		t.Fatalf("home not empty: %v", es)
 	}
 }
+
+// ~/.config is a symlink to a directory elsewhere: Unlink must leave that link alone.
+func TestUnlinkKeepsDirectorySymlinkParents(t *testing.T) {
+	root := t.TempDir()
+	home, dir, ext := filepath.Join(root, "home"), filepath.Join(root, "prof"), filepath.Join(root, "ext")
+	write(t, dir+"/home/.config/git/ignore", "x\n", 0o644)
+	write(t, ext+"/keep.txt", "user data\n", 0o644)
+	must(t, os.MkdirAll(home, 0o755))
+	must(t, os.Symlink(ext, home+"/.config"))
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	must(t, Unlink(dir, home, nil))
+	if fi, err := os.Lstat(home + "/.config"); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("~/.config symlink removed: %v", err)
+	}
+	if _, err := os.Stat(ext + "/keep.txt"); err != nil {
+		t.Fatal("data behind the symlink lost")
+	}
+}
+
+// ~/.config/foo is a symlink into the profile: the file is already "linked" through it and must
+// neither be moved to the backup nor reported.
+func TestApplyThroughDirectoryLinkKeepsProfileSource(t *testing.T) {
+	root := t.TempDir()
+	home, dir := filepath.Join(root, "home"), filepath.Join(root, "prof")
+	src := dir + "/home/.config/foo/bar"
+	write(t, src, "source of truth\n", 0o644)
+	must(t, os.MkdirAll(home+"/.config", 0o755))
+	must(t, os.Symlink(dir+"/home/.config/foo", home+"/.config/foo"))
+	var out, errOut bytes.Buffer
+	must(t, New(home, false, &out, &errOut, clock).Apply(dir))
+	if b, err := os.ReadFile(src); err != nil || string(b) != "source of truth\n" {
+		t.Fatalf("profile source lost: %q, %v", b, err)
+	}
+	if _, err := os.Stat(home + "/.local/state/dotfiles/backup"); err == nil {
+		t.Error("backup made for a file already linked")
+	}
+	if strings.Contains(out.String(), ".config/foo/bar") || strings.Contains(errOut.String(), ".config/foo/bar") {
+		t.Errorf("message for a file already linked: %q %q", out.String(), errOut.String())
+	}
+}

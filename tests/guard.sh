@@ -47,6 +47,11 @@ expect block "F1 : regex invalide bloque staged" "$S/invalid" env DOTFILES_FORBI
 ! grep -Fq 'broken(' "$S/out" || ko=$((ko+1))
 printf '%s\n' acmecorp '(a)b)(c' >"$S/invalid2"
 expect block "F1 : parenthèses déséquilibrées refusées" "invalide ou illisible" env DOTFILES_FORBIDDEN="$S/invalid2" git -C "$R" -c alias.check='!dot guard staged' check
+printf '%s\n' 'acmecorp\|globex' >"$S/invalid3"
+expect block "F1 : opérateur GNU échappé refusé" "invalide ou illisible" env DOTFILES_FORBIDDEN="$S/invalid3" git -C "$R" -c alias.check='!dot guard staged' check
+! grep -Fq 'globex' "$S/out" || ko=$((ko+1))
+printf '%s\n' '(?-i)acmecorp' >"$S/invalid4"
+expect block "F1 : drapeau coupant la casse refusé" "invalide ou illisible" env DOTFILES_FORBIDDEN="$S/invalid4" git -C "$R" -c alias.check='!dot guard staged' check
 printf '%s\n' '# rien que des commentaires' '' '   ' >"$S/empty"
 expect block "F1 : liste sans terme bloque" "absente ou vide" env DOTFILES_FORBIDDEN="$S/empty" git -C "$R" -c alias.check='!dot guard staged' check
 reset
@@ -54,7 +59,8 @@ echo propre >"$R/café.txt"; c add café.txt
 expect pass "F2 : nom accentué propre" "" c commit -qm accent
 printf '%s\n' acmé >"$S/accent"
 echo propre >"$R/acmé.txt"; c add acmé.txt
-expect block "F2 : terme accentué dans le nom" 'acmé.txt' env DOTFILES_FORBIDDEN="$S/accent" git -C "$R" commit -qm accent
+expect block "F2 : terme accentué dans le nom (masqué)" 'nom masqué' env DOTFILES_FORBIDDEN="$S/accent" git -C "$R" commit -qm accent
+! grep -q 'acmé' "$S/out" || ko=$((ko+1))
 reset
 mkdir -p "$S/deploy"
 printf '%s\n' acmecorp >"$S/deploy/forbidden.local"
@@ -110,7 +116,11 @@ reset
 echo "tenant = AcmeCorp" >"$R/b.txt"; c add b.txt
 expect block "contenu (casse ignorée)" "b.txt" c commit -qm b; reset
 echo x >"$R/notes-acmecorp.txt"; c add -A
-expect block "nom de fichier" "notes-" c commit -qm c; reset
+expect block "nom de fichier (masqué)" "nom masqué" c commit -qm c
+! grep -qi 'acmecorp' "$S/out" || ko=$((ko+1))
+reset
+echo "client zed" >"$R/0:a.txt"; c add -- 0:a.txt
+expect block "fichier nommé comme une étape d'index" "  0:a.txt" c_alias staged; reset
 echo "repo: zed_tickets" >"$R/c.txt"; c add c.txt
 expect block "mot entier dans un identifiant" "c.txt" c commit -qm d; reset
 echo ok >"$R/d.txt"; c add d.txt
@@ -156,9 +166,44 @@ expect block "push forcé depuis un clone périmé" "contenu" c push -q --force 
 printf 'refs/heads/gone %040d refs/heads/gone %s\n' 0 "$(c rev-parse HEAD)" | dot guard push >"$S/out" 2>&1
 check "suppression d'une ref distante ignorée" test $? -eq 0
 printf 'refs/heads/globex-inc %s refs/heads/globex-inc %040d\n' "$(c rev-parse HEAD)" 0 >"$S/refs"
-expect block "nom de ref interdit (stdin)" "nom de branche ou de tag interdit" git -C "$R" -c alias.check='!dot guard push <'"$S/refs" check
+expect block "nom de ref interdit (stdin)" "nom de branche ou de tag interdit : <nom masqué>" git -C "$R" -c alias.check='!dot guard push <'"$S/refs" check
+! grep -qi 'globex' "$S/out" || ko=$((ko+1))
 printf 'n importe quoi\n' >"$S/refs"
 expect block "entrée push invalide" "invalide" git -C "$R" -c alias.check='!dot guard push <'"$S/refs" check
+
+# Content git hides by default: binary files, -diff attributes, merge resolutions, annotated tags.
+H=$S/h; git init -q "$H"; h() { git -C "$H" "$@"; }
+echo clean >"$H/x.txt"; h add x.txt; h commit -qm clean
+base=$(h rev-parse HEAD)
+hpush() { printf '%s\n' "$1" >"$S/refs"; h -c alias.check='!dot guard push <'"$S/refs" check; } # hpush '<lref> <lsha> <rref> <rsha>'
+hrange() { hpush "refs/heads/main $2 refs/heads/main $1"; }
+hall() { h -c alias.check='!dot guard all' check; }
+printf '\0client zed\0\n' >"$H/f.bin"; h add f.bin; h commit -qm bin
+expect block "binaire (NUL) : push" "contenu" hrange "$base" "$(h rev-parse HEAD)"
+expect block "binaire (NUL) : all" "historique" hall
+h reset -q --hard "$base"
+echo '* -diff' >"$H/.gitattributes"; h add .gitattributes; h commit -qm attrs
+b2=$(h rev-parse HEAD); echo "client zed" >"$H/p.txt"; h add p.txt; h commit -qm nodiff
+expect block "attribut -diff : push" "contenu" hrange "$b2" "$(h rev-parse HEAD)"
+expect block "attribut -diff : all" "historique" hall
+h reset -q --hard "$base"
+h checkout -q -b side; echo s >"$H/side.txt"; h add side.txt; h commit -qm side; h checkout -q main
+echo m >"$H/main.txt"; h add main.txt; h commit -qm main; mbase=$(h rev-parse HEAD)
+h merge -q --no-ff --no-commit side >/dev/null; echo "client zed" >"$H/m.txt"; h add m.txt; h commit -qm merge
+expect block "fusion dont la résolution ajoute le terme : push" "contenu" hrange "$mbase" "$(h rev-parse HEAD)"
+expect block "fusion dont la résolution ajoute le terme : all" "historique" hall
+h reset -q --hard "$base"; h branch -q -D side
+h tag -a -m 'release for Globex-Inc' v1; tsha=$(h rev-parse v1)
+expect block "tag annoté (message interdit) : push" "tag annoté" hpush "refs/tags/v1 $tsha refs/tags/v1 $(printf '%040d' 0)"
+! grep -qi 'globex' "$S/out" || ko=$((ko+1))
+expect block "tag annoté (message interdit) : all" "tag annoté" hall
+h tag -d v1 >/dev/null
+h -c user.name='Acmecorp Bot' tag -a -m propre v2
+expect block "tag annoté (tagger interdit) : all" "tag annoté" hall
+h tag -d v2 >/dev/null
+h tag -a -m propre v3
+expect pass  "tag annoté propre : push" "" hpush "refs/tags/v3 $(h rev-parse v3) refs/tags/v3 $(printf '%040d' 0)"
+expect pass  "tag annoté propre : all" "" hall
 
 # dot guard all: refs, whole history and secrets.
 c reset -q --hard origin/main

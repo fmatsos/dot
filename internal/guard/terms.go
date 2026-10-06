@@ -30,6 +30,9 @@ func ParseTerms(data []byte) (*Terms, error) {
 		if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
+		if gnuOnly(line) {
+			return nil, ErrInvalid
+		}
 		// Each line is compiled alone: wrapping first could make "a)(b" look valid.
 		if _, err := regexp.Compile("(?i)" + line); err != nil {
 			return nil, ErrInvalid
@@ -44,6 +47,28 @@ func ParseTerms(data []byte) (*Terms, error) {
 		return nil, ErrInvalid
 	}
 	return &Terms{re: re}, nil
+}
+
+var caseOff = regexp.MustCompile(`\(\?[imsU]*-[imsU]*i`)
+
+// gnuOnly reports a pattern RE2 would read differently from the GNU grep it was written for: an
+// escaped operator (\| \+ \? \{ \( \)) or a flag group that turns case-insensitivity off. Such a
+// pattern would be accepted and silently block nothing, so it is refused.
+// ponytail: scans escapes without tracking bracket expressions, so [\(] is refused too.
+func gnuOnly(p string) bool {
+	if caseOff.MatchString(p) {
+		return true
+	}
+	for i := 0; i < len(p); i++ {
+		if p[i] != '\\' {
+			continue
+		}
+		if i+1 < len(p) && strings.IndexByte("|+?{()", p[i+1]) >= 0 {
+			return true
+		}
+		i++ // skip the escaped byte, so \\| is a literal backslash then an alternation
+	}
+	return false
 }
 
 // LoadTerms reads the list at path; an unreadable file counts as absent.

@@ -113,7 +113,8 @@ func newGuardCmd(env *Env) *cobra.Command {
 			"commande git en échec ou scanner indisponible bloquent. Ne rapporte que des noms de fichiers,\n" +
 			"de branches, de tags ou des commits, jamais le texte trouvé.\n\n" +
 			"Liste des termes : des expressions étendues insensibles à la casse (syntaxe RE2), une par ligne ;\n" +
-			"les lignes vides et celles qui commencent par # sont ignorées. Ordre de résolution :\n" +
+			"les lignes vides et celles qui commencent par # sont ignorées. Les opérateurs GNU échappés\n" +
+			"(\\| \\+ \\? \\{ \\( \\)) et les drapeaux coupant la casse ((?-i)) sont refusés. Ordre de résolution :\n" +
 			"  1. $DOTFILES_FORBIDDEN, le fichier de la liste ;\n" +
 			"  2. <profil>/forbidden.local, où le dossier du profil est, dans cet ordre :\n" +
 			"     a. $DOTFILES_DEPLOY, s'il est défini ;\n" +
@@ -148,8 +149,14 @@ func newGuardCmd(env *Env) *cobra.Command {
 		&cobra.Command{
 			Use:   "push [distant url]",
 			Short: "Contrôle un push (lit sur stdin les lignes du hook pre-push)",
-			Args:  cobra.ArbitraryArgs, // git hands the hook the remote name and URL: ignored
-			RunE:  run(func(g *guard.Guard, _ []string) error { return g.Push(env.Stdin) }),
+			Args:  cobra.ArbitraryArgs, // git hands the hook the remote name and URL: only the name is used
+			RunE: run(func(g *guard.Guard, a []string) error {
+				remote := ""
+				if len(a) > 0 {
+					remote = a[0]
+				}
+				return g.Push(env.Stdin, remote)
+			}),
 		},
 		&cobra.Command{
 			Use:   "all",

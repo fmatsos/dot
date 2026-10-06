@@ -200,6 +200,12 @@ func (l *Linker) one(k Link) error {
 		return nil
 	}
 	if err == nil {
+		// Reached through a directory link into the profile: Dst is Src, moving it would lose the source.
+		if a, e1 := os.Stat(k.Src); e1 == nil {
+			if b, e2 := os.Stat(k.Dst); e2 == nil && os.SameFile(a, b) {
+				return nil
+			}
+		}
 		if !(fi.Mode().IsRegular() && sameContent(k.Src, k.Dst)) {
 			fmt.Fprintf(l.Out, "  sauvegarde : %s → %s/\n", Tilde(l.Home, k.Dst), Tilde(l.Home, l.Backup))
 		}
@@ -264,6 +270,13 @@ func DeadLinks(home string) int {
 	return n
 }
 
+// removeEmptyDir removes d only if it is a real, empty directory: a symlink to a directory
+// (~/.config pointing elsewhere) is the user's, and os.Remove would unlink it.
+func removeEmptyDir(d string) bool {
+	fi, err := os.Lstat(d)
+	return err == nil && fi.IsDir() && os.Remove(d) == nil
+}
+
 // Unlink removes the links of home that point into dir/home/ or dir/bin/ (nothing else, backups
 // stay) and the parent directories they leave empty, home excluded.
 // ponytail: links to files since deleted from the profile are only found under ~/.local/bin.
@@ -297,7 +310,7 @@ func Unlink(dir, home string, out io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(out, "  lien retiré : %s\n", Tilde(home, p))
-		for d := filepath.Dir(p); strings.HasPrefix(d, home+"/") && os.Remove(d) == nil; d = filepath.Dir(d) {
+		for d := filepath.Dir(p); strings.HasPrefix(d, home+"/") && removeEmptyDir(d); d = filepath.Dir(d) {
 		}
 	}
 	return nil

@@ -61,6 +61,15 @@ func TestParseTermsFailsClosed(t *testing.T) {
 		{"répétition sans argument", "*oops\n", ErrInvalid},
 		{"référence arrière ERE", "(a)\\1\n", ErrInvalid},
 		{"UTF-8 invalide", "\xff\xfe\n", ErrInvalid},
+		{"alternance GNU", "acmecorp\\|globex\n", ErrInvalid},
+		{"plus GNU", "acme\\+corp\n", ErrInvalid},
+		{"option GNU", "acme\\?corp\n", ErrInvalid},
+		{"accolade GNU", "a\\{2\\}\n", ErrInvalid},
+		{"groupe GNU ouvrant", "\\(acme\\)corp\n", ErrInvalid},
+		{"groupe GNU fermant", "ok\n(acme\\)\n", ErrInvalid},
+		{"sensibilité à la casse rétablie", "(?-i)acmecorp\n", ErrInvalid},
+		{"drapeaux dont -i", "(?s-i:acmecorp)\n", ErrInvalid},
+		{"-i dans un groupe", "ok\n(?-i:acmecorp)\n", ErrInvalid},
 	} {
 		terms, err := ParseTerms([]byte(tc.in))
 		if !errors.Is(err, tc.want) || terms != nil {
@@ -92,5 +101,23 @@ func TestNilTermsMatchNothing(t *testing.T) {
 func TestLoadTermsMissingFileIsAbsent(t *testing.T) {
 	if _, err := LoadTerms("/nonexistent/forbidden.local"); !errors.Is(err, ErrAbsent) {
 		t.Fatal(err)
+	}
+}
+
+func TestParseTermsKeepsLiteralEscapesAndCaseFlags(t *testing.T) {
+	// An escaped backslash then a real alternation, and flags that keep (?i), are not GNU leftovers.
+	terms, err := ParseTerms([]byte("acme\\\\|globex\n(?i)initech\n(?s)umbrella\n\\.corp\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hit := range []string{`acme\`, "GLOBEX", "Initech", "UMBRELLA", "x.corp"} {
+		if !terms.Match(hit) {
+			t.Errorf("%q devrait correspondre", hit)
+		}
+	}
+	// The refusal never echoes the pattern.
+	_, err = ParseTerms([]byte("secretterm\\|x\n"))
+	if err == nil || strings.Contains(err.Error(), "secretterm") {
+		t.Fatalf("erreur = %v", err)
 	}
 }

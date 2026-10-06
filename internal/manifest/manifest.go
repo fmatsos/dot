@@ -14,7 +14,7 @@ import (
 
 var (
 	nameRe    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	sparseRe  = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	sparseRe  = regexp.MustCompile(`^[A-Za-z0-9_.][A-Za-z0-9_.-]*$`)
 	nodeRe    = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 	packageRe = regexp.MustCompile(`^(@[A-Za-z0-9._-]+/)?[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._+-]*$`)
 )

@@ -39,8 +39,21 @@ func (g *Guard) git(args ...string) *exec.Cmd {
 	return c
 }
 
-func cmdFail(args []string) error {
-	return fail("commande en échec, contrôle impossible : git %s", strings.Join(args, " "))
+// cmdFail names the failed command; an argument holding a term (a remote name) is masked.
+func (g *Guard) cmdFail(args []string) error {
+	return fail("commande en échec, contrôle impossible : git %s", g.shown(args...))
+}
+
+// shown joins arguments for a message, masking those that match a term.
+func (g *Guard) shown(args ...string) string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		out[i] = a
+		if g.Terms.Match(a) {
+			out[i] = "<masqué>"
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 // output runs git and returns its stdout.
@@ -49,7 +62,7 @@ func (g *Guard) output(args ...string) ([]byte, error) {
 	var out bytes.Buffer
 	c.Stdout = &out
 	if err := c.Run(); err != nil {
-		return nil, cmdFail(args)
+		return nil, g.cmdFail(args)
 	}
 	return out.Bytes(), nil
 }
@@ -63,7 +76,7 @@ func (g *Guard) hits(prefix byte, args ...string) (bool, error) {
 	c := g.git(args...)
 	pipe, err := c.StdoutPipe()
 	if err != nil || c.Start() != nil {
-		return false, cmdFail(args)
+		return false, g.cmdFail(args)
 	}
 	r := bufio.NewReader(pipe)
 	for {
@@ -78,13 +91,13 @@ func (g *Guard) hits(prefix byte, args ...string) (bool, error) {
 			if rerr != io.EOF {
 				_ = c.Process.Kill()
 				_ = c.Wait()
-				return false, cmdFail(args)
+				return false, g.cmdFail(args)
 			}
 			break
 		}
 	}
 	if c.Wait() != nil {
-		return false, cmdFail(args)
+		return false, g.cmdFail(args)
 	}
 	return false, nil
 }
@@ -107,20 +120,22 @@ func (g *Guard) leaks(args ...string) error {
 
 // history checks identity, messages, file names and added contents of a revision range, then secrets.
 func (g *Guard) history(revs ...string) error {
-	r := strings.Join(revs, " ")
-	meta := append([]string{"-c", "core.quotePath=false", "log", "--format=%an%n%ae%n%cn%n%ce%n%B", "--name-only"}, revs...)
+	raw := strings.Join(revs, " ")
+	r := g.shown(revs...)
+	meta := append([]string{"-c", "core.quotePath=false", "log", "--format=%an%n%ae%n%cn%n%ce%n%B", "--name-only", "--diff-merges=first-parent"}, revs...)
 	if hit, err := g.hits(0, meta...); err != nil {
 		return err
 	} else if hit {
 		return fail("référence interdite dans les métadonnées ou noms de fichiers de : %s", r)
 	}
-	added := append([]string{"log", "-p", "-U0", "--no-color", "--format="}, revs...)
+	// --text: binary and -diff files are scanned too; first-parent: a merge shows what it adds.
+	added := append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format="}, revs...)
 	if hit, err := g.hits('+', added...); err != nil {
 		return err
 	} else if hit {
 		return fail("référence interdite dans le contenu ajouté par : %s", r)
 	}
-	return g.leaks("git", "--log-opts="+r, ".")
+	return g.leaks("git", "--log-opts="+raw, ".")
 }
 
 // Staged checks what is about to be committed: identity, names and contents of the indexed
@@ -149,15 +164,19 @@ func (g *Guard) Staged() error {
 		return fail("liste des fichiers indexés illisible.")
 	}
 	var bad strings.Builder
+	n := 0
 	for _, f := range strings.Split(string(names), "\x00") {
 		if f == "" {
 			continue
 		}
-		hit := g.Terms.Match(f)
-		if !hit {
-			if hit, err = g.hits(0, "show", ":"+f); err != nil {
-				return err
-			}
+		n++
+		if g.Terms.Match(f) { // the name itself is forbidden text: never printed
+			fmt.Fprintf(&bad, "  <nom masqué> (fichier %d)\n", n)
+			continue
+		}
+		hit, err := g.hits(0, "show", ":0:"+f)
+		if err != nil {
+			return err
 		}
 		if hit {
 			bad.WriteString("  " + printable(f) + "\n")
@@ -233,8 +252,15 @@ func (g *Guard) known(sha string) bool {
 }
 
 // Push checks what a push sends, from the pre-push stdin: "<lref> <lsha> <rref> <rsha>" per line.
-func (g *Guard) Push(in io.Reader) error {
+// remote is the name git hands the hook ("" when unknown): a new ref is checked against what
+// that remote already holds, not against every remote.
+func (g *Guard) Push(in io.Reader, remote string) error {
+	notOn := "--remotes"
+	if remote != "" && !strings.ContainsAny(remote, "*?[\\ \t\n") { // a glob or a space would widen or split the option
+		notOn = "--remotes=" + remote
+	}
 	sc := bufio.NewScanner(in)
+	n := 0
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
 		if len(f) == 0 {
@@ -243,12 +269,16 @@ func (g *Guard) Push(in io.Reader) error {
 		if len(f) != 4 {
 			return fail("entrée du hook pre-push invalide, refus.")
 		}
+		n++
 		lref, lsha, rref, rsha := f[0], f[1], f[2], f[3]
 		if strings.Trim(lsha, "0") == "" {
 			continue // deleting a remote ref
 		}
 		if g.Terms.Match(lref + "\n" + rref + "\n") {
-			return fail("nom de branche ou de tag interdit : %s", lref)
+			if g.Terms.Match(lref) { // never print a forbidden name
+				lref = fmt.Sprintf("<nom masqué> (ligne %d)", n)
+			}
+			return fail("nom de branche ou de tag interdit : %s", printable(lref))
 		}
 		if !shaRe.MatchString(lsha) || !shaRe.MatchString(rsha) {
 			return fail("entrée du hook pre-push invalide, refus.")
@@ -257,11 +287,14 @@ func (g *Guard) Push(in io.Reader) error {
 		// New ref, or remote tip unknown locally (force push from a stale clone): check everything
 		// not already on a remote instead of trusting an unresolvable range.
 		if strings.Trim(rsha, "0") == "" || !g.known(rsha) {
-			err = g.history(lsha, "--not", "--remotes")
+			err = g.history(lsha, "--not", notOn)
 		} else {
 			err = g.history(rsha + ".." + lsha)
 		}
 		if err != nil {
+			return err
+		}
+		if err = g.tags(lsha); err != nil {
 			return err
 		}
 	}
@@ -278,15 +311,62 @@ func (g *Guard) All() error {
 	} else if hit {
 		return fail("nom de branche ou de tag interdit.")
 	}
-	if hit, err := g.hits(0, "-c", "core.quotePath=false", "log", "--all", "--format=%an%n%ae%n%cn%n%ce%n%B", "--name-only"); err != nil {
+	if err := g.allTags(); err != nil {
+		return err
+	}
+	if hit, err := g.hits(0, "-c", "core.quotePath=false", "log", "--all", "--format=%an%n%ae%n%cn%n%ce%n%B", "--name-only", "--diff-merges=first-parent"); err != nil {
 		return err
 	} else if hit {
 		return fail("référence interdite dans les métadonnées ou noms de fichiers de l'historique.")
 	}
-	if hit, err := g.hits('+', "log", "-p", "-U0", "--no-color", "--format=", "--all"); err != nil {
+	if hit, err := g.hits('+', "log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format=", "--all"); err != nil {
 		return err
 	} else if hit {
 		return fail("référence interdite dans le contenu de l'historique.")
 	}
 	return g.leaks("git", ".")
+}
+
+// tags checks the annotated tag objects (tagger identity, name, message) on the chain from sha:
+// a tag of a tag is followed. Anything else, a commit included, is not a tag and passes.
+func (g *Guard) tags(sha string) error {
+	for range 16 { // ponytail: a chain deeper than 16 tags is not followed
+		kind, err := g.output("cat-file", "-t", sha)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(string(kind)) != "tag" {
+			return nil
+		}
+		body, err := g.output("cat-file", "tag", sha)
+		if err != nil {
+			return err
+		}
+		if g.Terms.Match(string(body)) {
+			return fail("référence interdite dans le tag annoté : %s", sha)
+		}
+		first, _, _ := strings.Cut(string(body), "\n")
+		next, ok := strings.CutPrefix(first, "object ")
+		if !ok || !shaRe.MatchString(next) {
+			return fail("tag annoté illisible : %s", sha)
+		}
+		sha = next
+	}
+	return nil
+}
+
+// allTags checks every annotated tag of the repository.
+func (g *Guard) allTags() error {
+	out, err := g.output("for-each-ref", "--format=%(objecttype) %(objectname)", "refs/tags")
+	if err != nil {
+		return err
+	}
+	for _, l := range strings.Split(string(out), "\n") {
+		if kind, sha, ok := strings.Cut(l, " "); ok && kind == "tag" {
+			if err := g.tags(sha); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
