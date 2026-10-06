@@ -147,6 +147,10 @@ func newAdoptCmd(env *Env) *cobra.Command {
 				}
 				tilde := link.Tilde(env.Home, src)
 				dst := filepath.Join(dir, layer, rel)
+				if err := link.SafeDest(dir, dst); err != nil {
+					refuse(tilde, err.Error())
+					continue
+				}
 				if _, err := os.Lstat(dst); err == nil {
 					refuse(tilde, fmt.Sprintf("destination existante (%s:%s/%s)", key, layer, filepath.ToSlash(rel)))
 					continue
@@ -158,6 +162,10 @@ func newAdoptCmd(env *Env) *cobra.Command {
 				// With several profiles, a module source is merged by dot settings/mcp, never linked:
 				// other profiles may hold their own copy, and a link in ~ would shadow the merge.
 				merged := len(others) > 0 && link.IsModuleSource(rel)
+				if merged && layer != "home" {
+					refuse(tilde, "source de module : dot settings et dot mcp ne lisent que home/, pas les variantes")
+					continue
+				}
 				if owners := link.ClaimedBy(rel, others); len(owners) > 0 && !merged {
 					refuse(tilde, fmt.Sprintf("fichier lié par plusieurs profils : %s (home/%s) et %s", strings.Join(owners, ", "), filepath.ToSlash(rel), key))
 					continue

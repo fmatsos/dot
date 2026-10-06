@@ -83,3 +83,20 @@ func TestClaimedBy(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 }
+
+func TestSafeDestRefusesSymlinkedParent(t *testing.T) {
+	root := t.TempDir()
+	clone, outside := filepath.Join(root, "clone"), filepath.Join(root, "outside")
+	must(t, os.MkdirAll(filepath.Join(clone, "home"), 0o755))
+	must(t, os.MkdirAll(outside, 0o755))
+	must(t, os.Symlink(outside, filepath.Join(clone, "home", ".config")))
+	if err := SafeDest(clone, filepath.Join(clone, "home", ".config", "app", "rc")); err == nil {
+		t.Error("a destination below a symlink of the clone must be refused")
+	}
+	if err := SafeDest(clone, filepath.Join(clone, "home", ".new", "rc")); err != nil {
+		t.Errorf("missing parents are fine: %v", err)
+	}
+	if err := SafeDest(clone, filepath.Join(root, "elsewhere", "rc")); err == nil {
+		t.Error("a destination outside the clone must be refused")
+	}
+}

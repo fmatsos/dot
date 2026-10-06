@@ -51,7 +51,13 @@ mkdir -p "$HOME/.claude"; printf '{"b": 1}\n' >"$HOME/.claude/settings.base.json
 fails 0 dot adopt -p b "$HOME/.claude/settings.base.json"; grep -q "n'est pas relié" "$S/out"
 [ -f "$HOME/.dot/b/home/.claude/settings.base.json" ]; not test -e "$HOME/.claude/settings.base.json"
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }; not test -e "$HOME/.claude/settings.base.json"
-echo 'OK   a module source held by another profile is adopted unlinked, for the merge'
+mkdir -p "$HOME/.claude"; printf '{"c": 1}\n' >"$HOME/.claude/settings.base.json"
+osl=home@$(uname | tr '[:upper:]' '[:lower:]')
+sed -i.bak "s/\"home\", /\"home\", \"$osl\", /" "$HOME/.dot/b/dot.json"; rm "$HOME/.dot/b/dot.json.bak"
+fails 1 dot adopt -p b --os "$HOME/.claude/settings.base.json"; grep -q 'ne lisent que home/' "$S/err"
+[ -f "$HOME/.claude/settings.base.json" ]; [ ! -e "$HOME/.dot/b/$osl" ]; git -C "$HOME/.dot/b" checkout -q dot.json
+rm "$HOME/.claude/settings.base.json"
+echo 'OK   a module source held by another profile is adopted unlinked, for the merge, never into a variant'
 
 # Refusals leave the file untouched and exit 1.
 refused() { # refused <label> <file> [grep]: the file stays a regular file, the clone gets nothing
@@ -59,6 +65,12 @@ refused() { # refused <label> <file> [grep]: the file stays a regular file, the 
   fails 1 dot adopt "$f"; [ -f "$f" ] && [ ! -L "$f" ]; [ "$(cksum <"$f")" = "$before" ]
   [ -z "$why" ] || grep -q "$why" "$S/err"
 }
+# A symlinked folder inside the clone would carry the file out of it: refused, -n included.
+mkdir -p "$S/outside" "$HOME/.ld"; ln -s "$S/outside" "$A/home/.ld"; printf 'z\n' >"$HOME/.ld/f"
+refused "$HOME/.ld/f" 'lien symbolique dans le clone'; [ -z "$(ls -A "$S/outside")" ]
+fails 1 dot adopt -n "$HOME/.ld/f"; rm "$A/home/.ld"; rm -r "$HOME/.ld"
+echo 'OK   a symlinked folder in the clone refuses the destination'
+
 printf 'tenant AcmeCorp\n' >"$HOME/.term"
 refused "$HOME/.term" 'référence interdite'; [ ! -e "$A/home/.term" ]
 grep -qi acmecorp "$S/err" && exit 1

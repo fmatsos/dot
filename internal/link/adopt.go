@@ -139,3 +139,27 @@ func moveFile(src, dst string) error {
 // IsModuleSource tells whether ~/rel is merged across profiles by dot settings or dot mcp
 // rather than linked once several profiles are registered.
 func IsModuleSource(rel string) bool { return slices.Contains(ModuleSources, filepath.ToSlash(rel)) }
+
+// SafeDest refuses a destination in the clone root whose existing parents below root include a
+// symlink: the file would be moved out of the clone, where dot push never sees it.
+func SafeDest(root, dst string) error {
+	rel, err := filepath.Rel(root, filepath.Dir(dst))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		return fmt.Errorf("destination hors du clone")
+	}
+	d := root
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if part == "." {
+			continue
+		}
+		d = filepath.Join(d, part)
+		fi, err := os.Lstat(d)
+		if err != nil {
+			return nil // the rest is created by AdoptMove
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s est un lien symbolique dans le clone : le fichier en sortirait", d)
+		}
+	}
+	return nil
+}

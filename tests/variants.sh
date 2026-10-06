@@ -87,6 +87,18 @@ echo 'OK   conflicts are computed on the resolved layers'
 rm "$HOME/.dot/w/home@$os/.shared" "$HOME/.dot/w/home@$other/.shared"
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 
+# A pull that adds a variant to deploy.sparse: its files are checked out before the conflict check.
+mkdir -p "$S/remotes/w/home@laptop"; echo w >"$S/remotes/w/home@laptop/.laptop-only"; commit "$S/remotes/w" 'laptop file'
+dot pull -p w >"$S/out" 2>&1 || { cat "$S/out"; exit 1; } # not in the sparse set yet: nothing to link
+sed -i.bak 's/"home@darwin", ".githooks"/"home@darwin", "home@laptop", ".githooks"/' "$S/remotes/w/dot.json"
+rm "$S/remotes/w/dot.json.bak"; commit "$S/remotes/w" 'sparse laptop'
+fails 1 dot pull -p w
+grep -qF "~/.laptop-only : v ($V/home@laptop/.laptop-only) w ($HOME/.dot/w/home@laptop/.laptop-only)" "$S/err"
+[ "$(readlink "$HOME/.laptop-only")" = "$V/home@laptop/.laptop-only" ]
+git -C "$S/remotes/w" rm -rq home@laptop; commit "$S/remotes/w" 'drop laptop file'
+dot pull -p w >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+echo 'OK   a variant added to deploy.sparse by a pull is checked for conflicts before linking'
+
 # adopt: --os and --host target the variant directories, and are exclusive.
 printf 'mine\n' >"$HOME/.adopted-os"; printf 'mine\n' >"$HOME/.adopted-host"
 printf '%s\n' acmecorp >"$V/forbidden.local"
