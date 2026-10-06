@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Global pre-push hook (fictional, minimal): guard the push with `dot guard push`, then chain
+# the repository's own pre-push hook. Stdin is replayed from one temporary file for both.
+set -euo pipefail
+refs=$(mktemp); trap 'rm -f "$refs"' EXIT
+cat >"$refs"
+blocked() {
+  echo 'Push bloqué par le garde-fou anti-fuite ; git push --no-verify le contourne une fois.' >&2
+  exit 1
+}
+command -v dot >/dev/null || { echo "Garde-fou introuvable : dot n'est pas dans le PATH" >&2; blocked; }
+# `git config dotfiles.guard secrets` in a repo that names a client on purpose (a CV site):
+# betterleaks only, no forbidden terms.
+mode=$(git config --get dotfiles.guard || true)
+case $mode in '' | secrets) ;; *) echo "dotfiles.guard inconnu : $mode (seul « secrets » existe)" >&2; blocked ;; esac
+DOTFILES_GUARD=$mode dot guard push "$@" <"$refs" || blocked
+# --git-path hooks follows core.hooksPath and would point back to this script.
+hook=$(git rev-parse --path-format=absolute --git-common-dir)/hooks/pre-push
+if [ -x "$hook" ] && [ ! "$hook" -ef "$0" ]; then
+  "$hook" "$@" <"$refs"
+fi

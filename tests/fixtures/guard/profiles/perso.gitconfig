@@ -1,0 +1,8 @@
+[user]
+	name = Test User
+	email = test@example.com
+# Repo-local hooksPath still wins.
+[core]
+	hooksPath = ~/.config/git/hooks
+[dotfiles]
+	profile = perso

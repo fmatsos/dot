@@ -1,0 +1,7 @@
+# Fictional git profiles, included last by ~/.gitconfig.
+[includeIf "hasconfig:remote.*.url:https://github.com/acmecorp/**"]
+	path = ~/.config/git/profiles/perso.gitconfig
+[includeIf "hasconfig:remote.*.url:git@github.com:acmecorp/**"]
+	path = ~/.config/git/profiles/perso.gitconfig
+[includeIf "gitdir:~/src/github.com/acmecorp/"]
+	path = ~/.config/git/profiles/perso.gitconfig
