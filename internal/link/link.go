@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/fmatsos/dot/internal/registry"
 )
 
 // Link is one symlink to create: Dst (absolute, under home) points to Src (absolute, in a profile).
@@ -25,6 +27,11 @@ type NoHomeError struct{ Dir string }
 func (e *NoHomeError) Error() string {
 	return fmt.Sprintf("rien à lier : %s/home absent (dry run sans clone ?)", e.Dir)
 }
+
+// ModuleSources are the home/ files that `dot settings` and `dot mcp` merge across profiles. With
+// two or more registered profiles they are per-profile inputs and are not linked into ~; with one,
+// they are linked like any other file.
+var ModuleSources = []string{".claude/settings.base.json", ".config/mcp/servers.json"}
 
 // Tilde shortens a path under home to ~/…, like the bash `${p/#$HOME/~}`.
 func Tilde(home, p string) string {
@@ -52,12 +59,16 @@ func files(root string, keep func(fs.DirEntry) bool) ([]string, error) {
 	return out, err
 }
 
-func homeLinks(dir, home string) ([]Link, error) {
+// homeLinks lists the home/ links of a profile; multi leaves out the ModuleSources.
+func homeLinks(dir, home string, multi bool) ([]Link, error) {
 	root := filepath.Join(dir, "home")
 	fl, err := files(root, func(fs.DirEntry) bool { return true })
 	links := make([]Link, 0, len(fl))
 	for _, f := range fl {
 		rel, _ := filepath.Rel(root, f)
+		if multi && slices.Contains(ModuleSources, filepath.ToSlash(rel)) {
+			continue
+		}
 		links = append(links, Link{f, filepath.Join(home, rel)})
 	}
 	return links, err
@@ -80,9 +91,12 @@ func binLinks(dir, home string) ([]Link, error) {
 }
 
 // Plan lists every link a profile wants (home/** file by file, then bin/ executables), sorted by Dst.
-func Plan(dir, home string) ([]Link, error) {
+func Plan(dir, home string) ([]Link, error) { return PlanFor(dir, home, false) }
+
+// PlanFor is Plan for a run with several registered profiles when multi: the ModuleSources are not planned.
+func PlanFor(dir, home string, multi bool) ([]Link, error) {
 	dir, _ = filepath.Abs(dir)
-	h, err := homeLinks(dir, home)
+	h, err := homeLinks(dir, home, multi)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +116,9 @@ type Linker struct {
 	Out    io.Writer // progress lines (stdout in bash)
 	Err    io.Writer // warnings (stderr in bash)
 	Backup string    // ~/.local/state/dotfiles/backup/<stamp>, fixed at New
+	// Registered lists the clone of every registered profile. With two or more, Apply skips the
+	// ModuleSources and removes an existing link to one of them from these clones.
+	Registered []string
 }
 
 // New fixes the backup directory from now(); a nil writer discards.
@@ -112,7 +129,7 @@ func New(home string, dry bool, out, errOut io.Writer, now func() time.Time) *Li
 	if errOut == nil {
 		errOut = io.Discard
 	}
-	return &Linker{home, dry, out, errOut, filepath.Join(BackupBase(home), now().Format(stampLayout))}
+	return &Linker{Home: home, Dry: dry, Out: out, Err: errOut, Backup: filepath.Join(BackupBase(home), now().Format(stampLayout))}
 }
 
 const stampLayout = "20060102-150405"
@@ -142,13 +159,19 @@ func (l *Linker) Apply(dir string) error {
 	if i, err := os.Stat(filepath.Join(dir, "home")); err != nil || !i.IsDir() {
 		return &NoHomeError{dir}
 	}
-	hl, err := homeLinks(dir, l.Home)
+	multi := len(l.Registered) > 1
+	hl, err := homeLinks(dir, l.Home, multi)
 	if err != nil {
 		return err
 	}
 	bl, err := binLinks(dir, l.Home)
 	if err != nil {
 		return err
+	}
+	if multi {
+		if err := l.dropModuleLinks(); err != nil {
+			return err
+		}
 	}
 	for _, k := range hl {
 		if err := l.one(k); err != nil {
@@ -161,6 +184,29 @@ func (l *Linker) Apply(dir string) error {
 	for _, k := range bl {
 		if err := l.one(k); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// dropModuleLinks removes the links to a ModuleSource of a registered profile left by an install
+// that had a single profile: the modules then merge the profiles instead of reading one of them.
+func (l *Linker) dropModuleLinks() error {
+	for _, rel := range ModuleSources {
+		dst := filepath.Join(l.Home, rel)
+		t, err := os.Readlink(dst)
+		if err != nil {
+			continue
+		}
+		for _, d := range l.Registered {
+			if abs, _ := filepath.Abs(d); t != filepath.Join(abs, "home", rel) {
+				continue
+			}
+			fmt.Fprintf(l.Out, "  lien retiré : %s\n", Tilde(l.Home, dst))
+			if err := l.run("rm -f "+dst, func() error { return os.Remove(dst) }); err != nil {
+				return err
+			}
+			break
 		}
 	}
 	return nil
@@ -233,9 +279,10 @@ func sameContent(a, b string) bool {
 }
 
 // Detached lists the home/ files of dir whose ~ twin is not a link to them, as ~/… paths.
+// With several registered profiles the ModuleSources are not expected to be linked.
 func Detached(dir, home string) []string {
 	dir, _ = filepath.Abs(dir)
-	links, _ := homeLinks(dir, home)
+	links, _ := homeLinks(dir, home, multiProfile(home))
 	var out []string
 	for _, k := range links {
 		if t, err := os.Readlink(k.Dst); err != nil || t != k.Src {
@@ -243,6 +290,12 @@ func Detached(dir, home string) []string {
 		}
 	}
 	return out
+}
+
+// multiProfile tells whether two or more profiles are registered; an unreadable registry counts as one.
+func multiProfile(home string) bool {
+	r, err := registry.Load(filepath.Join(home, ".dot", "profiles.json"))
+	return err == nil && len(r.Keys()) > 1
 }
 
 // Drift is Detached formatted as the report lines of `dot status`.
@@ -278,8 +331,10 @@ func removeEmptyDir(d string) bool {
 }
 
 // Unlink removes the links of home that point into dir/home/ or dir/bin/ (nothing else, backups
-// stay) and the parent directories they leave empty, home excluded.
-// ponytail: links to files since deleted from the profile are only found under ~/.local/bin.
+// stay) and the parent directories they leave empty, home excluded. It looks at the planned
+// destinations and, without recursing, at every symlink in their parent directories and in
+// ~/.local/bin, so a link to a file deleted from the profile since the install goes too.
+// ponytail: a leftover link in a directory the profile no longer has any file in is not found.
 func Unlink(dir, home string, out io.Writer) error {
 	if out == nil {
 		out = io.Discard
@@ -289,14 +344,19 @@ func Unlink(dir, home string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	cands := make([]string, 0, len(plan))
+	var cands []string
+	dirs := []string{filepath.Join(home, ".local", "bin")}
 	for _, k := range plan {
 		cands = append(cands, k.Dst)
+		dirs = append(dirs, filepath.Dir(k.Dst))
 	}
-	bin := filepath.Join(home, ".local", "bin")
-	if entries, _ := os.ReadDir(bin); entries != nil {
+	slices.Sort(dirs)
+	for _, d := range slices.Compact(dirs) {
+		entries, _ := os.ReadDir(d)
 		for _, e := range entries {
-			cands = append(cands, filepath.Join(bin, e.Name()))
+			if e.Type()&fs.ModeSymlink != 0 {
+				cands = append(cands, filepath.Join(d, e.Name()))
+			}
 		}
 	}
 	slices.Sort(cands)

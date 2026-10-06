@@ -1,6 +1,7 @@
 package install
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -102,6 +103,13 @@ func (in *Installer) ensureClone(dir, url string) (created bool, err error) {
 	if entries, rerr := os.ReadDir(dir); rerr == nil && len(entries) > 0 {
 		return false, fmt.Errorf("%s existe déjà et n'est pas un clone git", dir)
 	}
+	branch, berr := defaultBranch(url)
+	if berr != nil {
+		if !in.Dry {
+			return false, fmt.Errorf("clone de %s impossible : %w", url, berr)
+		}
+		branch = "main" // ponytail: a dry run previews with main when the remote cannot be asked
+	}
 	fmt.Fprintf(in.Out, "clone partiel → %s\n", dir)
 	if in.Dry {
 		fmt.Fprintf(in.Out, "  [dry] mkdir -p %s\n", dir)
@@ -109,19 +117,43 @@ func (in *Installer) ensureClone(dir, url string) (created bool, err error) {
 		return false, err
 	}
 	for _, a := range [][]string{
-		{"init", "-q", "-b", "main"},
+		{"init", "-q", "-b", branch},
 		{"remote", "add", "origin", url},
 		{"config", "remote.origin.promisor", "true"},
 		{"config", "remote.origin.partialclonefilter", "blob:none"},
 		{"sparse-checkout", "set", "--cone"},
-		{"fetch", "-q", "--filter=blob:none", "origin", "main"},
-		{"checkout", "-q", "main"},
+		{"fetch", "-q", "--filter=blob:none", "origin", branch},
+		{"checkout", "-q", branch},
 	} {
 		if err := in.run(dir, a...); err != nil {
 			return true, fmt.Errorf("clone de %s impossible : %w", url, err)
 		}
 	}
 	return true, nil
+}
+
+// defaultBranch asks the remote for the branch its HEAD points to. Without a symref (detached
+// HEAD) it keeps main when refs/heads/main exists; an empty or unreachable remote is an error.
+func defaultBranch(url string) (string, error) {
+	out, err := gitOut("", "ls-remote", "--symref", url, "HEAD", "refs/heads/main")
+	if err != nil {
+		return "", err
+	}
+	hasMain := false
+	for _, line := range strings.Split(string(out), "\n") {
+		if ref, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
+			if b, _, _ := strings.Cut(ref, "\t"); b != "" && !strings.HasPrefix(b, "-") {
+				return b, nil
+			}
+		}
+		if strings.HasSuffix(line, "\trefs/heads/main") {
+			hasMain = true
+		}
+	}
+	if hasMain {
+		return "main", nil
+	}
+	return "", errors.New("branche par défaut introuvable (dépôt vide ?)")
 }
 
 // Uninstall removes the links of a profile and its registry entry. The clone stays unless purge;
@@ -150,6 +182,9 @@ func (in *Installer) Uninstall(key string, purge, force bool) error {
 	if err := r.Save(in.regPath()); err != nil {
 		return err
 	}
+	if rest := r.Keys(); len(rest) == 1 {
+		in.relinkHint(in.dirOf(rest[0]))
+	}
 	if !purge {
 		fmt.Fprintf(in.Out, "profil %s désinstallé (clone gardé : %s)\n", key, link.Tilde(in.Home, dir))
 		return nil
@@ -159,6 +194,19 @@ func (in *Installer) Uninstall(key string, purge, force bool) error {
 	}
 	fmt.Fprintf(in.Out, "profil %s désinstallé (clone supprimé : %s)\n", key, link.Tilde(in.Home, dir))
 	return nil
+}
+
+// relinkHint tells that the last profile left does not get its ModuleSources linked back by an uninstall.
+func (in *Installer) relinkHint(dir string) {
+	for _, rel := range link.ModuleSources {
+		src, dst := filepath.Join(dir, "home", rel), filepath.Join(in.Home, rel)
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		if t, err := os.Readlink(dst); err != nil || t != src {
+			fmt.Fprintf(in.Out, "  %s n'est pas relié (un seul profil reste) : `dot install` le reliera\n", link.Tilde(in.Home, dst))
+		}
+	}
 }
 
 func (in *Installer) checkPurge(dir string, force bool) error {

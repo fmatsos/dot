@@ -370,3 +370,128 @@ func TestUninstall(t *testing.T) {
 		t.Error("registry not empty")
 	}
 }
+
+var moduleFiles = map[string]string{
+	"home/.claude/settings.base.json": "{}\n",
+	"home/.config/mcp/servers.json":   "{}\n",
+}
+
+// Two profiles providing the module sources is the normal multi-profile case: the install works
+// and the files stay per-profile inputs, unlinked.
+func TestModuleSourcesAcrossProfiles(t *testing.T) {
+	home := sandbox(t)
+	in, out, _ := newInstaller(home, false)
+	settingsLink := filepath.Join(home, ".claude", "settings.base.json")
+	serversLink := filepath.Join(home, ".config", "mcp", "servers.json")
+	if err := in.Add(remote(t, "a", moduleFiles), "a"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{settingsLink, serversLink} { // one profile: linked as before
+		if got, _ := os.Readlink(p); got == "" {
+			t.Fatalf("%s not linked with a single profile", p)
+		}
+	}
+	out.Reset()
+	if err := in.Add(remote(t, "b", moduleFiles), "b"); err != nil {
+		t.Fatalf("two profiles with the module sources: %v", err)
+	}
+	for _, p := range []string{settingsLink, serversLink} {
+		if exists(p) {
+			t.Errorf("%s still linked with two profiles", p)
+		}
+	}
+	if n := strings.Count(out.String(), "lien retiré"); n != 2 {
+		t.Errorf("%d \"lien retiré\" lines ; want 2:\n%s", n, out.String())
+	}
+	if !exists(filepath.Join(home, ".arc")) || !exists(filepath.Join(home, ".brc")) {
+		t.Error("other files not linked")
+	}
+	// A reinstall stays unlinked and quiet.
+	out.Reset()
+	if err := in.Reinstall([]Profile{{"a", filepath.Join(home, ".dot", "a")}}); err != nil || exists(settingsLink) || strings.Contains(out.String(), "lien retiré") {
+		t.Errorf("reinstall: %v\n%s", err, out.String())
+	}
+	// Back to one profile: nothing is linked on its own, the message says so; install links again.
+	out.Reset()
+	if err := in.Uninstall("b", false, false); err != nil {
+		t.Fatal(err)
+	}
+	if exists(settingsLink) || exists(serversLink) || strings.Count(out.String(), "dot install") != 2 {
+		t.Errorf("uninstall of one of two:\n%s", out.String())
+	}
+	if err := in.Reinstall([]Profile{{"a", filepath.Join(home, ".dot", "a")}}); err != nil || !exists(settingsLink) || !exists(serversLink) {
+		t.Errorf("reinstall of the last profile: %v", err)
+	}
+}
+
+// defaultBranchRemote is a profile remote whose default branch is branch.
+func defaultBranchRemote(t *testing.T, key, branch string) string {
+	t.Helper()
+	dir := remote(t, key, nil)
+	gitIn(t, dir, "branch", "-m", branch)
+	return dir
+}
+
+func TestAddResolvesDefaultBranch(t *testing.T) {
+	for _, branch := range []string{"master", "trunk", "feature/x"} {
+		t.Run(branch, func(t *testing.T) {
+			home := sandbox(t)
+			in, _, _ := newInstaller(home, false)
+			if err := in.Add(defaultBranchRemote(t, "a", branch), "a"); err != nil {
+				t.Fatal(err)
+			}
+			clone := filepath.Join(home, ".dot", "a")
+			out, err := gitOut(clone, "symbolic-ref", "--short", "HEAD")
+			if err != nil || strings.TrimSpace(string(out)) != branch {
+				t.Errorf("HEAD = %q, %v ; want %s", out, err, branch)
+			}
+			if !exists(filepath.Join(home, ".arc")) {
+				t.Error("profile not linked")
+			}
+		})
+	}
+	t.Run("dry run previews the real branch", func(t *testing.T) {
+		home := sandbox(t)
+		in, out, _ := newInstaller(home, true)
+		if err := in.Add(defaultBranchRemote(t, "a", "trunk"), "a"); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "origin trunk") || !strings.Contains(out.String(), "init -q -b trunk") {
+			t.Errorf("out = %s", out.String())
+		}
+	})
+	t.Run("detached HEAD keeps main", func(t *testing.T) {
+		home := sandbox(t)
+		in, _, _ := newInstaller(home, false)
+		url := remote(t, "a", nil)
+		gitIn(t, url, "checkout", "-q", "--detach")
+		if err := in.Add(url, "a"); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestAddWithoutDefaultBranchCleansUp(t *testing.T) {
+	t.Run("empty repository", func(t *testing.T) {
+		home := sandbox(t)
+		in, _, _ := newInstaller(home, false)
+		url := filepath.Join(t.TempDir(), "empty")
+		gitIn(t, t.TempDir(), "init", "-q", "--bare", "-b", "main", url)
+		err := in.Add(url, "empty")
+		if err == nil || !strings.Contains(err.Error(), "branche par défaut introuvable") {
+			t.Fatalf("err = %v", err)
+		}
+		if exists(filepath.Join(home, ".dot", "empty")) || exists(filepath.Join(home, ".dot", "profiles.json")) {
+			t.Error("leftovers after an empty remote")
+		}
+	})
+	t.Run("detached HEAD without main", func(t *testing.T) {
+		home := sandbox(t)
+		in, _, _ := newInstaller(home, false)
+		url := defaultBranchRemote(t, "a", "trunk")
+		gitIn(t, url, "checkout", "-q", "--detach")
+		if err := in.Add(url, "a"); err == nil || exists(filepath.Join(home, ".dot", "a")) {
+			t.Errorf("err = %v", err)
+		}
+	})
+}

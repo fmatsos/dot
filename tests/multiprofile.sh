@@ -29,12 +29,13 @@ dot install "$B" -p b >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 for p in a b; do
   while IFS= read -r -d '' f; do
     [ "$(readlink "$HOME/${f#"$HOME/.dot/$p/home/"}")" = "$f" ]
-  done < <(find "$HOME/.dot/$p/home" -type f -print0)
+  done < <(find "$HOME/.dot/$p/home" -type f ! -name settings.base.json -print0)
   [ "$(readlink "$HOME/.local/bin/$p-tool")" = "$HOME/.dot/$p/bin/$p-tool" ]
   [ "$(git -C "$HOME/.dot/$p" config user.email)" = "$p@example.com" ]
 done
 [ "$(dot config get default)" = a ]
 dot config list | grep -q '"b"'
+[ ! -e "$HOME/.claude/settings.base.json" ] # a module source is no link once two profiles are registered
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ "$(grep -c '^==> ' "$S/out")" -eq 2 ]; [ "$(tail -n1 "$S/out")" = ok ]
 echo 'OK   two profiles install side by side, the first stays the default, a bare install redoes both'
@@ -157,3 +158,45 @@ echo 'OK   push goes on after a failing profile and exits 1 naming it'
 # send is gone: it falls back to git like any unknown word.
 fails 1 dot send; grep -q "'send' is not a git command" "$S/err"
 echo 'OK   dot send is no dot command any more (git fallback)'
+
+# Both profiles provide the module sources (settings.base.json, servers.json): the install must
+# work, nothing links them, and `dot settings` / `dot mcp` merge the two. Separate HOME and PATH.
+(
+  export HOME=$S/home2 XDG_CONFIG_HOME=$S/home2/.config XDG_DATA_HOME=$S/home2/.local/share XDG_CACHE_HOME=$S/home2/.cache
+  export XDG_STATE_HOME=$S/home2/.local/state CODEX_HOME=$S/home2/.codex
+  mkdir -p "$HOME" "$S/bin2"; cp "$S/bin/claude" "$S/bin2/claude"
+  export PATH=$S/bin2:/usr/bin:/bin
+  for n in p1 p2; do
+    mkremote a "$S/remotes/$n"; rm -rf "$S/remotes/$n/bin"
+    sed -i.bak "s/\"a\"/\"$n\"/g; s/a\.gitconfig/$n.gitconfig/; s/\"modules\": \[.*\]/\"modules\": [\"settings\", \"mcp\"]/" "$S/remotes/$n/dot.json"; rm "$S/remotes/$n/dot.json.bak"
+    mv "$S/remotes/$n/home/.config/git/profiles/a.gitconfig" "$S/remotes/$n/home/.config/git/profiles/$n.gitconfig"
+    rm -r "$S/remotes/$n/home/.a-rc" "$S/remotes/$n/home/.config/a"
+    printf '{"%s-key":true}\n' "$n" >"$S/remotes/$n/home/.claude/settings.base.json"
+    mkdir -p "$S/remotes/$n/home/.config/mcp"; printf '{"%s-srv":{"command":"%s-mcp"}}\n' "$n" "$n" >"$S/remotes/$n/home/.config/mcp/servers.json"
+    commit "$S/remotes/$n"
+  done
+  dot install "$S/remotes/p1" -p p1 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+  [ "$(readlink "$HOME/.claude/settings.base.json")" = "$HOME/.dot/p1/home/.claude/settings.base.json" ]
+  [ "$(readlink "$HOME/.config/mcp/servers.json")" = "$HOME/.dot/p1/home/.config/mcp/servers.json" ]
+  dot install "$S/remotes/p2" -p p2 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+  [ "$(grep -c 'lien retiré' "$S/out")" -eq 2 ]
+  [ ! -e "$HOME/.claude/settings.base.json" ] && [ ! -e "$HOME/.config/mcp/servers.json" ]
+  jq -e '."p1-key" and ."p2-key"' "$HOME/.claude/settings.json" >/dev/null
+  rm "$HOME/.claude/settings.json"; dot settings -n >"$S/out" 2>&1
+  grep -q 'p1-key' "$S/out"; grep -q 'p2-key' "$S/out"; [ ! -e "$HOME/.claude/settings.json" ]
+  dot mcp -n >"$S/out" 2>&1
+  grep -Fxq 'claude : ajout p1-srv' "$S/out"; grep -Fxq 'claude : ajout p2-srv' "$S/out"
+  dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+  [ ! -e "$HOME/.claude/settings.base.json" ]; ! grep -q 'lien retiré' "$S/out"
+  dot status >"$S/out" 2>"$S/err"; ! grep -q 'settings.base.json' "$S/err"
+  echo 'OK   two profiles with the same module sources install, link neither and are merged by dot settings and dot mcp'
+
+  dot config set default p1
+  dot uninstall -p p2 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+  [ ! -e "$HOME/.claude/settings.base.json" ] && [ ! -e "$HOME/.config/mcp/servers.json" ]
+  grep -q 'un seul profil reste' "$S/out"; grep -q 'dot install' "$S/out"
+  dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+  [ "$(readlink "$HOME/.claude/settings.base.json")" = "$HOME/.dot/p1/home/.claude/settings.base.json" ]
+  [ "$(readlink "$HOME/.config/mcp/servers.json")" = "$HOME/.dot/p1/home/.config/mcp/servers.json" ]
+  echo 'OK   uninstalling one of two profiles does not relink the last one by itself, the message says to run dot install'
+)

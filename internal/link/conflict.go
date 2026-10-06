@@ -34,12 +34,13 @@ func (e *ConflictError) Error() string {
 	return b.String()
 }
 
-// Conflicts finds targets (home/ files and bin/ names) linked by more than one profile.
+// Conflicts finds targets (home/ files and bin/ names) linked by more than one profile. With two
+// profiles or more the ModuleSources are not linked, so they never conflict.
 // It returns the conflicts sorted by Dst and, when there are any, a *ConflictError.
 func Conflicts(home string, profiles []Profile) ([]Conflict, error) {
 	byDst := map[string]*Conflict{}
 	for _, p := range profiles {
-		plan, err := Plan(p.Dir, home)
+		plan, err := PlanFor(p.Dir, home, len(profiles) > 1)
 		if err != nil {
 			return nil, fmt.Errorf("profil %s : %w", p.Key, err)
 		}

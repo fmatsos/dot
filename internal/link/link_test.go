@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fmatsos/dot/internal/registry"
 )
 
 var clock = func() time.Time { return time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC) }
@@ -375,5 +377,170 @@ func TestApplyThroughDirectoryLinkKeepsProfileSource(t *testing.T) {
 	}
 	if strings.Contains(out.String(), ".config/foo/bar") || strings.Contains(errOut.String(), ".config/foo/bar") {
 		t.Errorf("message for a file already linked: %q %q", out.String(), errOut.String())
+	}
+}
+
+func linkTarget(p string) string { t, _ := os.Readlink(p); return t }
+
+// A file deleted from the profile after the install leaves its link behind: Unlink still finds it
+// in the directories of the planned links, and only removes links into the profile.
+func TestUnlinkRemovesOrphanLinks(t *testing.T) {
+	home, dir := fixture(t)
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	must(t, os.Symlink(dir+"/home/.old", home+"/.old"))                       // source never existed
+	must(t, os.Symlink(dir+"/home/.config/git/old", home+"/.config/git/old")) // orphan in a planned directory
+	must(t, os.Symlink(dir+"-other/home/x", home+"/.config/git/lookalike"))   // prefix without the trailing slash
+	must(t, os.Symlink("/nowhere/x", home+"/.config/git/foreign"))
+	write(t, home+"/.config/git/regular", "mine\n", 0o644)
+	must(t, Unlink(dir, home, nil))
+	for _, rel := range []string{".old", ".config/git/old", ".zshrc", ".config/git/config"} {
+		if _, err := os.Lstat(filepath.Join(home, rel)); err == nil {
+			t.Errorf("%s still there", rel)
+		}
+	}
+	for _, rel := range []string{".config/git/lookalike", ".config/git/foreign", ".config/git/regular"} {
+		if _, err := os.Lstat(filepath.Join(home, rel)); err != nil {
+			t.Errorf("%s removed: %v", rel, err)
+		}
+	}
+}
+
+// The source is removed from the clone before the uninstall, like a file dropped by a pull.
+func TestUnlinkAfterSourceDeleted(t *testing.T) {
+	home, dir := fixture(t)
+	write(t, dir+"/home/.bashrc", "bash\n", 0o644) // keeps ~ in the plan once .zshrc is gone
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	must(t, os.Remove(dir+"/home/.zshrc"))
+	if _, err := os.Stat(home + "/.zshrc"); err == nil {
+		t.Fatal("link not dead")
+	}
+	var out bytes.Buffer
+	must(t, Unlink(dir, home, &out))
+	if _, err := os.Lstat(home + "/.zshrc"); err == nil {
+		t.Error("dead link left in ~")
+	}
+	if !strings.Contains(out.String(), "  lien retiré : ~/.zshrc\n") {
+		t.Errorf("out = %q", out.String())
+	}
+}
+
+func moduleProfile(t *testing.T, name string) Profile {
+	t.Helper()
+	d := filepath.Join(t.TempDir(), name)
+	write(t, d+"/home/.claude/settings.base.json", "{}\n", 0o644)
+	write(t, d+"/home/.config/mcp/servers.json", "{}\n", 0o644)
+	write(t, d+"/home/."+name+"rc", "x\n", 0o644)
+	return Profile{name, d}
+}
+
+func TestModuleSourcesNeverConflictBetweenProfiles(t *testing.T) {
+	home := t.TempDir()
+	a, b := moduleProfile(t, "a"), moduleProfile(t, "b")
+	if cs, err := Conflicts(home, []Profile{a, b}); err != nil || cs != nil {
+		t.Fatalf("module sources conflict: %v, %v", cs, err)
+	}
+	write(t, b.Dir+"/home/.arc", "x\n", 0o644)
+	cs, err := Conflicts(home, []Profile{a, b})
+	if err == nil || len(cs) != 1 || cs[0].Dst != filepath.Join(home, ".arc") {
+		t.Fatalf("other files still conflict: %v, %v", cs, err)
+	}
+	plan, _ := PlanFor(a.Dir, home, true)
+	for _, k := range plan {
+		for _, rel := range ModuleSources {
+			if k.Dst == filepath.Join(home, rel) {
+				t.Errorf("%s planned in multi mode", rel)
+			}
+		}
+	}
+	if plan, _ = Plan(a.Dir, home); len(plan) != 3 {
+		t.Errorf("single plan = %d links ; want 3", len(plan))
+	}
+}
+
+func TestApplyModuleSources(t *testing.T) {
+	setup := func(t *testing.T) (home string, a, b Profile) {
+		home = filepath.Join(t.TempDir(), "home")
+		must(t, os.MkdirAll(home, 0o755))
+		return home, moduleProfile(t, "a"), moduleProfile(t, "b")
+	}
+	t.Run("one profile links them", func(t *testing.T) {
+		home, a, _ := setup(t)
+		lk := New(home, false, nil, nil, clock)
+		lk.Registered = []string{a.Dir}
+		must(t, lk.Apply(a.Dir))
+		for _, rel := range ModuleSources {
+			if linkTarget(filepath.Join(home, rel)) != a.Dir+"/home/"+rel {
+				t.Errorf("%s not linked", rel)
+			}
+		}
+	})
+	t.Run("two profiles link nothing and drop a link left by one", func(t *testing.T) {
+		home, a, b := setup(t)
+		first := New(home, false, nil, nil, clock)
+		first.Registered = []string{a.Dir}
+		must(t, first.Apply(a.Dir))
+		var out bytes.Buffer
+		lk := New(home, false, &out, nil, clock)
+		lk.Registered = []string{a.Dir, b.Dir}
+		must(t, lk.Apply(b.Dir))
+		for _, rel := range ModuleSources {
+			if _, err := os.Lstat(filepath.Join(home, rel)); err == nil {
+				t.Errorf("%s still linked", rel)
+			}
+			if !strings.Contains(out.String(), "  lien retiré : ~/"+rel+"\n") {
+				t.Errorf("no message for %s: %q", rel, out.String())
+			}
+		}
+		if linkTarget(home+"/.brc") != b.Dir+"/home/.brc" {
+			t.Error("other files not linked")
+		}
+		if _, err := os.Stat(home + "/.claude"); err != nil {
+			t.Error("parent directory removed")
+		}
+	})
+	t.Run("a foreign link or a regular file stays", func(t *testing.T) {
+		home, a, b := setup(t)
+		must(t, os.MkdirAll(home+"/.claude", 0o755))
+		must(t, os.Symlink("/nowhere/settings", home+"/.claude/settings.base.json"))
+		write(t, home+"/.config/mcp/servers.json", "mine\n", 0o644)
+		lk := New(home, false, nil, nil, clock)
+		lk.Registered = []string{a.Dir, b.Dir}
+		must(t, lk.Apply(a.Dir))
+		if linkTarget(home+"/.claude/settings.base.json") != "/nowhere/settings" {
+			t.Error("foreign link removed")
+		}
+		if body, _ := os.ReadFile(home + "/.config/mcp/servers.json"); string(body) != "mine\n" {
+			t.Error("regular file touched")
+		}
+	})
+	t.Run("dry run removes nothing", func(t *testing.T) {
+		home, a, b := setup(t)
+		first := New(home, false, nil, nil, clock)
+		first.Registered = []string{a.Dir}
+		must(t, first.Apply(a.Dir))
+		var out bytes.Buffer
+		lk := New(home, true, &out, nil, clock)
+		lk.Registered = []string{a.Dir, b.Dir}
+		must(t, lk.Apply(b.Dir))
+		if linkTarget(home+"/.claude/settings.base.json") == "" || !strings.Contains(out.String(), "[dry] rm -f") {
+			t.Errorf("dry run: %q", out.String())
+		}
+	})
+}
+
+func TestDetachedIgnoresModuleSourcesWithSeveralProfiles(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	a := moduleProfile(t, "a")
+	if d := Detached(a.Dir, home); len(d) != 3 {
+		t.Fatalf("single profile: %v", d)
+	}
+	r := &registry.Registry{}
+	must(t, r.Add("a", "/x/a"))
+	must(t, r.Add("b", "/x/b"))
+	must(t, os.MkdirAll(home+"/.dot", 0o755))
+	must(t, r.Save(home+"/.dot/profiles.json"))
+	d := Detached(a.Dir, home)
+	if len(d) != 1 || d[0] != "~/.arc" {
+		t.Fatalf("several profiles: %v", d)
 	}
 }

@@ -176,6 +176,9 @@ func (in *Installer) install(batch, all []Profile, lenient bool, commit func() e
 		}
 	}
 	lk := link.New(in.Home, in.Dry, in.Out, in.Err, in.Now)
+	for _, p := range all {
+		lk.Registered = append(lk.Registered, p.Dir)
+	}
 	var done []loaded
 	for _, l := range ls {
 		in.header(batch, l.Profile)
