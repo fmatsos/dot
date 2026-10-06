@@ -148,6 +148,10 @@ func newAdoptCmd(env *Env) *cobra.Command {
 					refuse(tilde, fmt.Sprintf("destination existante (%s:%s/%s)", key, layer, filepath.ToSlash(rel)))
 					continue
 				}
+				if above, ok := link.ShadowedBy(dir, layer, rel); ok {
+					refuse(tilde, fmt.Sprintf("masqué par %s:%s/%s, qui l'emporte sur %s", key, above, filepath.ToSlash(rel), layer))
+					continue
+				}
 				if owners := link.ClaimedBy(rel, others); len(owners) > 0 {
 					refuse(tilde, fmt.Sprintf("fichier lié par plusieurs profils : %s (home/%s) et %s", strings.Join(owners, ", "), filepath.ToSlash(rel), key))
 					continue

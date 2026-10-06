@@ -98,7 +98,12 @@ grep -qF 'adopt ~/.adopted-host -> v:home@laptop/.adopted-host' "$S/out"
 [ "$(readlink "$HOME/.adopted-host")" = "$V/home@laptop/.adopted-host" ]
 printf 'x\n' >"$HOME/.both"; fails 2 dot adopt --os --host "$HOME/.both"; [ -f "$HOME/.both" ] && [ ! -L "$HOME/.both" ]
 DOT_HOSTNAME=linux fails 1 dot adopt --host "$HOME/.both"; grep -q 'nom de machine' "$S/err"
-echo 'OK   adopt --os and --host file into the variants, and refuse to be combined'
+# A path a higher layer already gives would never be linked from the lower one: refused.
+printf 'host\n' >"$V/home@laptop/.shadowed"; printf 'mine\n' >"$HOME/.shadowed"
+fails 1 dot adopt "$HOME/.shadowed"; grep -q 'masqué par v:home@laptop/.shadowed' "$S/err"
+fails 1 dot adopt --os "$HOME/.shadowed"; [ ! -L "$HOME/.shadowed" ] && [ ! -e "$V/home/.shadowed" ]
+rm -f "$V/home@laptop/.shadowed" "$HOME/.shadowed"
+echo 'OK   adopt --os and --host file into the variants, refuse to be combined or shadowed'
 
 # Uninstall removes the links into every layer, the inactive ones included.
 ln -s "$V/home@desk/.desk-only" "$HOME/.desk-only"

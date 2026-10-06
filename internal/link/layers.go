@@ -118,3 +118,29 @@ func ProvidedBy(dir, rel string) bool {
 	}
 	return false
 }
+
+// inLayerAt tells whether the link target t is <dir>/<any home layer>/rel.
+func inLayerAt(t, dir, rel string) bool {
+	r, err := filepath.Rel(dir, t)
+	if err != nil {
+		return false
+	}
+	top, rest, ok := strings.Cut(r, string(filepath.Separator))
+	return ok && IsHomeLayer(top) && rest == filepath.Clean(rel)
+}
+
+// ShadowedBy names the active layer of the profile in dir, above layer, that already gives
+// ~/rel: a file adopted into layer would never be linked here.
+func ShadowedBy(dir, layer, rel string) (string, bool) {
+	active := activeLayers()
+	i := slices.Index(active, layer)
+	if i < 0 {
+		return "", false
+	}
+	for _, l := range active[i+1:] {
+		if _, err := os.Lstat(filepath.Join(dir, l, rel)); err == nil {
+			return l, true
+		}
+	}
+	return "", false
+}

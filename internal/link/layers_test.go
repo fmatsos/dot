@@ -202,3 +202,42 @@ func TestClaimedByUsesActiveLayers(t *testing.T) {
 		t.Errorf("claimed = %v", got)
 	}
 }
+
+func TestMultiProfileDropsModuleLinkFromVariant(t *testing.T) {
+	root := t.TempDir()
+	home, a, b := filepath.Join(root, "home"), filepath.Join(root, "a"), filepath.Join(root, "b")
+	must(t, os.MkdirAll(home, 0o755))
+	machine(t, "linux", "work")
+	write(t, a+"/home/.a", "a", 0o644)
+	write(t, a+"/home@work/.config/mcp/servers.json", "{}", 0o644)
+	write(t, b+"/home/.b", "b", 0o644)
+	must(t, New(home, false, nil, nil, clock).Apply(a))
+	dst := filepath.Join(home, ".config/mcp/servers.json")
+	if got, _ := os.Readlink(dst); got != a+"/home@work/.config/mcp/servers.json" {
+		t.Fatalf("single-profile link = %q", got)
+	}
+	// A second profile: module sources are merged by dot mcp, so the variant link must go.
+	l := New(home, false, nil, nil, clock)
+	l.Registered = []string{a, b}
+	must(t, l.Apply(a))
+	if _, err := os.Lstat(dst); err == nil {
+		t.Errorf("module link from a variant kept in multi-profile mode")
+	}
+}
+
+func TestShadowedBy(t *testing.T) {
+	_, dir := variants(t)
+	machine(t, "linux", "work")
+	if l, ok := ShadowedBy(dir, "home", ".rc"); !ok || l != "home@linux" {
+		t.Errorf("home/.rc: %q %v", l, ok)
+	}
+	if l, ok := ShadowedBy(dir, "home@linux", ".rc"); !ok || l != "home@work" {
+		t.Errorf("home@linux/.rc: %q %v", l, ok)
+	}
+	if _, ok := ShadowedBy(dir, "home@work", ".rc"); ok {
+		t.Error("the top layer is never shadowed")
+	}
+	if _, ok := ShadowedBy(dir, "home", ".new"); ok {
+		t.Error("a path no layer gives is not shadowed")
+	}
+}

@@ -195,7 +195,7 @@ func (l *Linker) dropModuleLinks() error {
 			continue
 		}
 		for _, d := range l.Registered {
-			if abs, _ := filepath.Abs(d); t != filepath.Join(abs, "home", rel) {
+			if abs, _ := filepath.Abs(d); !inLayerAt(t, abs, rel) {
 				continue
 			}
 			fmt.Fprintf(l.Out, "  lien retiré : %s\n", Tilde(l.Home, dst))
