@@ -71,6 +71,10 @@ jobs:
         run: |
           brew install bash
           echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          # The default TMPDIR sits under /var -> /private/var: git matches includeIf gitdir: against
+          # the resolved path, so test fixtures built on the unresolved one would never match.
+          mkdir -p "$RUNNER_TEMP/tmp"
+          echo "TMPDIR=$(cd "$RUNNER_TEMP/tmp" && pwd -P)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v7
         if: steps.mod.outputs.present == 'true'
         with:
