@@ -8,7 +8,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=tests/lib.sh
 . "$root/tests/lib.sh"
 fx=$root/tests/fixtures/guard
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 # The repo hooks call `dot` through the PATH.
 mkdir "$S/pathbin"; ln -s "$DOT_BIN" "$S/pathbin/dot"; PATH=$S/pathbin:$PATH
 printf '%s\n' '# fictional terms' acmecorp 'globex-?inc' '(^|[^a-z0-9])zed([^a-z0-9]|$)' >"$S/terms"

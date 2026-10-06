@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/tests/lib.sh"
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home GIT_CONFIG_GLOBAL=$S/gitconfig GIT_CONFIG_NOSYSTEM=1 DOTFILES_DEPLOY=$S/deploy
 mkdir -p "$HOME"
 git config --global init.defaultBranch main

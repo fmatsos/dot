@@ -26,3 +26,6 @@ in_pty() {
     script -q -e "$1" /bin/bash -c "$2"
   fi
 }
+
+# A check that aborts the script under set -e names its line instead of exiting silently.
+trap 'echo "FAIL ${BASH_SOURCE[0]##*/}:$LINENO : $BASH_COMMAND" >&2' ERR

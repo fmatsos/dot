@@ -4,7 +4,7 @@ set -Eeuo pipefail
 trap 'echo "FAIL multiprofile line $LINENO" >&2' ERR
 root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/tests/lib.sh" # builds DOT_BIN before HOME is redirected
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home GIT_CONFIG_GLOBAL=$S/gitconfig GIT_CONFIG_NOSYSTEM=1
 export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share XDG_CACHE_HOME=$HOME/.cache
 export XDG_STATE_HOME=$HOME/.local/state CODEX_HOME=$HOME/.codex DOTFILES_TOOLS=0

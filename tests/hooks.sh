@@ -6,7 +6,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/tests/lib.sh"
 fx=$root/tests/fixtures/guard
 hook=$fx/git-hooks/pre-push
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home GIT_CONFIG_GLOBAL=$S/gitconfig GIT_CONFIG_NOSYSTEM=1 STUB=$S/stub
 unset DOTFILES_DEPLOY DOTFILES_GUARD
 mkdir -p "$HOME/.config/git/profiles" "$HOME/.config/git/hooks" "$STUB" "$S/bin"

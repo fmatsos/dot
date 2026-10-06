@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/lib.sh"
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 fail() { echo "FAIL install-sh: $*" >&2; exit 1; }
 
 sh -n "$root/install.sh" || fail "syntax"

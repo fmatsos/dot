@@ -5,7 +5,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/lib.sh"
 fx=$root/tests/fixtures/doctor
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home DOTFILES_DEPLOY=$S/deploy DOT_SRC=$S/home/src DOT_SANDBOX=$S/home/sandbox
 export GIT_CONFIG_GLOBAL=$S/gitconfig GIT_CONFIG_NOSYSTEM=1 CODEX_HOME=$S/home/.codex
 export XDG_CONFIG_HOME=$HOME/.config

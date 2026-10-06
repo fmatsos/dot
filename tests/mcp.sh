@@ -4,7 +4,7 @@ set -Eeuo pipefail
 trap 'echo "FAIL mcp line $LINENO" >&2' ERR
 root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/tests/lib.sh" # builds DOT_BIN before HOME is redirected
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home CODEX_HOME=$S/home/.codex XDG_CONFIG_HOME=$S/home/.config
 export DOTFILES_DEPLOY=$S/deploy FAKE_CALLS=$S/calls FAKE_WRITES=$S/writes FAKE_READ=$S/secret-read
 mkdir -p "$S/bin" "$HOME/.config/mcp" "$HOME/.config/opencode" "$HOME/.local/bin" "$CODEX_HOME" "$DOTFILES_DEPLOY"

@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/lib.sh"
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home GIT_CONFIG_GLOBAL=$S/gitconfig GIT_CONFIG_NOSYSTEM=1 DOT_SRC=$S/src DOT_SANDBOX=$S/sandbox
 unset DOTFILES_DEPLOY DOT_PROFILE NO_COLOR
 mkdir -p "$HOME/.dot" "$S/pathbin" "$S/remotes"
