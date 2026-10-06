@@ -5,6 +5,7 @@ package guard
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -16,6 +17,9 @@ var (
 	ErrInvalid = errors.New("invalide ou illisible")
 )
 
+// ErrMatchesEmpty is an ErrInvalid: some pattern matches the empty string, hence every line.
+var ErrMatchesEmpty = fmt.Errorf("%w : un terme correspond à la chaîne vide, donc à tout (a*, ^, x?…)", ErrInvalid)
+
 // Terms matches text line by line against case-insensitive extended regular expressions.
 // A nil *Terms matches nothing (secrets-only mode).
 type Terms struct{ re *regexp.Regexp }
@@ -25,6 +29,7 @@ type Terms struct{ re *regexp.Regexp }
 // never skipped, and a pattern is never echoed back in an error.
 func ParseTerms(data []byte) (*Terms, error) {
 	var parts []string
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")) // a BOM would otherwise stick to the first pattern
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSuffix(line, "\r") // a CRLF list would otherwise never match
 		if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
@@ -34,8 +39,13 @@ func ParseTerms(data []byte) (*Terms, error) {
 			return nil, ErrInvalid
 		}
 		// Each line is compiled alone: wrapping first could make "a)(b" look valid.
-		if _, err := regexp.Compile("(?i)" + line); err != nil {
+		// A pattern matching the empty string (a*, x?, ^) would block every line: refused.
+		one, err := regexp.Compile("(?i)" + line)
+		if err != nil {
 			return nil, ErrInvalid
+		}
+		if one.MatchString("") {
+			return nil, ErrMatchesEmpty
 		}
 		parts = append(parts, "(?:"+line+")")
 	}

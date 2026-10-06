@@ -33,6 +33,7 @@ get)
   case $3 in
   'Chat login') printf 'fake-xoxc-123\n'; echo fake-xoxc-123 >&2 ;;
   Newlines) printf 'fake-newlines\n\n\n' ;;
+  Multiline) printf 'fake-line1\r\nfake-line2\n' ;;
   Empty) ;;
   Fail) echo fake-xoxc-123; echo fake-xoxc-123 >&2; exit 1 ;;
   *) exit 1 ;;
@@ -99,6 +100,7 @@ EMPTY_PASS=pass:Développement/Empty
 FAIL_BW=bw:Fail
 FAIL_PASS=pass:Développement/Fail
 NEWLINE_TOKEN=bw:Newlines
+MULTI_TOKEN=bw:Multiline
 MAP
 printf '%s' fake-session-123 >"$DOTFILES_DEPLOY/bw-session.local"
 secret() { "$DOT_BIN" secrets "$@"; }
@@ -168,6 +170,14 @@ cmp -s "$FAKE_STDIN/newlines.expected" "$FAKE_STDIN/newlines.actual"
 BASH
 invoke run NEWLINE_TOKEN -- bash "$S/newlines"
 check 'F9: run preserves both secret trailing newlines' test "$rc" -eq 0
+cat >"$S/multi" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'fake-line1\r\nfake-line2' | cmp -s - <(printf '%s' "$MULTI_TOKEN")
+BASH
+invoke run MULTI_TOKEN -- bash "$S/multi"
+check 'run keeps inner newlines and CR of a multi-line value, strips one final newline' test "$rc" -eq 0
+check 'multi-line value never in argv' no_values "$FAKE_LOG"
 invoke get UNKNOWN
 check 'unknown NAME fails clearly' unknown_fails
 
@@ -206,6 +216,14 @@ for line in 'BAD=bw:' 'BAD=pass:/Title' 'BAD=pass:Vault/' 'BAD=other:Title' 'not
   check 'malformed/duplicate mapping fails' test "$rc" -ne 0
   check 'malformed mapping does not echo contents' grep -q '^secret : ligne [0-9]' "$S/err"
 done
+for bad in $'CRLF_TOKEN=bw:Chat login\r' $'\xef\xbb\xbfBOM_TOKEN=bw:Chat login' 'BAD-NAME=bw:Chat login' '1BAD=bw:Chat login' 'SECRET_IN_REF=bw:' 'CHAT_TOKEN=pass:Vault/Dup'; do
+  cp "$S/mapping" "$DOTFILES_DEPLOY/secrets.local"
+  printf '%s\n' "$bad" >>"$DOTFILES_DEPLOY/secrets.local"
+  invoke get CHAT_TOKEN
+  check 'CRLF/BOM/invalid name/duplicate: refused, line number only' grep -Eq '^secret : ligne [0-9]+ ' "$S/err"
+  check 'edge mapping: no value or item name echoed' test "$(grep -c 'Chat login\|Vault/Dup' "$S/err")" -eq 0
+done
+cp "$S/mapping" "$DOTFILES_DEPLOY/secrets.local"
 rm "$DOTFILES_DEPLOY/secrets.local"
 invoke get CHAT_TOKEN
 check 'missing mapping file fails' test "$rc" -ne 0
