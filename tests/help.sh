@@ -21,7 +21,7 @@ ko() { echo "FAIL $1"; exit 1; }
 for args in "" help -h --help; do
   out=$(dot $args)
   grep -q '^usage : dot <commande>' <<<"$out" && grep -q '^  clone ' <<<"$out" || ko "dot $args : aide complète"
-  grep -q '^  repos ' <<<"$out" && grep -q '^  st ' <<<"$out" && grep -q '^  terms ' <<<"$out" || ko "dot $args : commandes absentes"
+  grep -q '^  repos ' <<<"$out" && grep -q '^  status ' <<<"$out" && grep -q '^  terms ' <<<"$out" || ko "dot $args : commandes absentes"
 done
 ok "dot, dot help, -h, --help : aide complète"
 out=$(dot clone --help)
@@ -29,8 +29,8 @@ grep -q '^usage : dot clone \[--path\]' <<<"$out" && grep -q 'sous-groupes' <<<"
   ! grep -q 'dot send' <<<"$out" || ko "dot clone --help"
 [ "$(dot help clone)" = "$out" ] || ko "dot help clone = dot clone --help"
 ok "dot <cmd> --help et dot help <cmd> : cette commande seule, avec ses détails"
-[ "$(dot help status)" = "$(dot st --help)" ] || ko "alias status"
-ok "alias : dot help status = dot st --help"
+[ "$(dot help status)" = "$(dot status --help)" ] || ko "alias status"
+ok "alias : dot help status = dot status --help"
 if dot help nope >/dev/null 2>"$S/err"; then ko "commande inconnue acceptée"; else [ $? -eq 2 ] || ko "code"; fi
 grep -q 'commande inconnue : nope' "$S/err" || ko "message de commande inconnue"
 ok "dot help <inconnue> : code 2"

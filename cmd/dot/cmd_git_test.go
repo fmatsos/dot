@@ -23,6 +23,9 @@ func TestRoute(t *testing.T) {
 		{[]string{"-pacmecorp", "clone", "-p", "x"}, []string{"clone", "-p", "x"}, false, "acmecorp"},
 		{[]string{"st"}, []string{"st"}, false, ""},
 		{[]string{"status"}, []string{"status"}, false, ""},
+		{[]string{"push", "msg"}, []string{"push", "msg"}, false, ""},
+		{[]string{"-p", "a", "push"}, []string{"push"}, false, "a"},
+		{[]string{"send"}, []string{"send"}, true, ""},
 		{[]string{"help", "nope"}, []string{"help", "nope"}, false, ""},
 		{[]string{"--nope"}, []string{"--nope"}, false, ""},
 		{[]string{"--help"}, []string{"--help"}, false, ""},
@@ -118,4 +121,41 @@ func TestStatusUsesDriftReport(t *testing.T) {
 
 func runGitInit(dir string) error {
 	return gitCmd(dir, "init", "-q").Run()
+}
+
+func TestStatusAndPushScope(t *testing.T) {
+	env, out, errb := testEnv(t)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(env.Home, "gitconfig"))
+	writeRegistry(t, env, `{"default":"a","profiles":{"a":{"repo":"https://example.com/a.git"},"b":{"repo":"https://example.com/b.git"}}}`)
+	for _, k := range []string{"a", "b"} {
+		if err := os.MkdirAll(env.ProfileDirFor(k), 0o755); err != nil || runGitInit(env.ProfileDirFor(k)) != nil {
+			t.Fatal(err)
+		}
+	}
+	driftReport = func(d string) []string { return []string{"détaché : " + filepath.Base(d)} }
+	t.Cleanup(func() { driftReport = nil })
+	if code := execute(env, []string{"status"}); code != 0 || !strings.Contains(out.String(), "==> a\n") ||
+		!strings.Contains(out.String(), "==> b\n") || errb.String() != "détaché : a\ndétaché : b\n" {
+		t.Fatalf("tous les profils : code %d, %q, %q", code, out, errb)
+	}
+	out.Reset()
+	errb.Reset()
+	if code := execute(env, []string{"-p", "b", "st"}); code != 0 || strings.Contains(out.String(), "==> ") || errb.String() != "détaché : b\n" {
+		t.Fatalf("un profil : code %d, %q, %q", code, out, errb)
+	}
+	// Two empty clones have nothing to send; a clone that is no repository fails alone, and is named.
+	out.Reset()
+	errb.Reset()
+	if code := execute(env, []string{"push", "msg"}); code != 0 || strings.Count(out.String(), "rien à envoyer") != 2 {
+		t.Fatalf("push : code %d, %q, %q", code, out, errb)
+	}
+	if err := os.RemoveAll(filepath.Join(env.ProfileDirFor("a"), ".git")); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errb.Reset()
+	if code := execute(env, []string{"push", "msg"}); code != 1 || strings.Count(out.String(), "rien à envoyer") != 1 ||
+		!strings.HasSuffix(errb.String(), "échec : a\n") {
+		t.Fatalf("push en échec : code %d, %q, %q", code, out, errb)
+	}
 }

@@ -81,6 +81,11 @@ invoke
 [ "$code" -eq 1 ]; grep -q '^✗ email du clone' "$S/out"
 git -C "$DOTFILES_DEPLOY" config user.email tester@example.com
 echo 'OK   wrong deploy identity fails'
+printf 'x\n' >"$DOTFILES_DEPLOY/pending"
+invoke
+grep -q '^! clone modifié : dot push$' "$S/out"; ! grep -q 'dot send' "$S/out"
+rm "$DOTFILES_DEPLOY/pending"
+echo 'OK   modified clone points to dot push'
 invoke
 grep -q '^✓ profil demo$' "$S/out"
 mv "$HOME/.config/git/profiles/demo.gitconfig" "$S/profile"

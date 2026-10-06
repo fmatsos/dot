@@ -140,7 +140,7 @@ func TestFailuresAndWarnings(t *testing.T) {
 		}, Fail, "hooks du clone : relancer install.sh"},
 		{"clone modifié", func(t *testing.T, _ string, p Profile) {
 			write(t, filepath.Join(p.Dir, "new"), "x", 0o644)
-		}, Warn, "clone modifié : dot send"},
+		}, Warn, "clone modifié : dot push"},
 		{"lien mort", func(t *testing.T, home string, _ Profile) {
 			write(t, filepath.Join(home, ".local/bin/.keep"), "", 0o644)
 			os.Symlink(filepath.Join(home, "absent"), filepath.Join(home, ".local/bin/dead"))

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Extensions (dot-<cmd>), git fallback on the profile clone, -p, st, send, whoami, repos colors.
+# Extensions (dot-<cmd>), git fallback on the profile clone, -p, st, push, whoami, repos colors.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/lib.sh"
@@ -63,23 +63,23 @@ code=0; out=$(dot only z) || code=$?
 [ "$(dot only --help)" = "only deploy=$HOME/.dot/perso args=--help" ] || ko "dot <extension> --help"
 ok "extensions : bin/ du profil avant PATH, DOTFILES_DEPLOY, code de sortie, aide"
 
-# st: git status -sb on the profile clone.
-out=$(dot st)
+# st: git status -sb on the targeted profile clone (several profiles: see multiprofile.sh).
+out=$(dot -p perso st)
 grep -q '^## main' <<<"$out" && grep -q 'home/file' <<<"$out" || ko "st"
-[ "$(dot status)" = "$out" ] || ko "alias status"
+[ "$(dot -p perso status)" = "$out" ] || ko "alias status"
 ok "st et status : état du clone"
 
-# send: commits tracked changes only, warns about new files, pushes, then has nothing left.
+# push: commits tracked changes only, warns about new files, pushes, then has nothing left.
 printf 'untracked\n' >"$HOME/.dot/perso/home/new"
-dot send >"$S/out" 2>"$S/err"
-grep -q 'fichiers nouveaux non suivis' "$S/err" && grep -q '^home/new$' "$S/err" || ko "send : fichiers nouveaux"
-[ "$(git -C "$HOME/.dot/perso" log -1 --format=%s)" = "Update file" ] || ko "send : message par défaut"
-[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "Update file" ] || ko "send : push"
-[ "$(dot send)" = "rien à envoyer" ] || ko "send : rien à envoyer"
+dot -p perso push >"$S/out" 2>"$S/err"
+grep -q 'fichiers nouveaux non suivis' "$S/err" && grep -q '^home/new$' "$S/err" || ko "push : fichiers nouveaux"
+[ "$(git -C "$HOME/.dot/perso" log -1 --format=%s)" = "Update file" ] || ko "push : message par défaut"
+[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "Update file" ] || ko "push : push"
+[ "$(dot -p perso push)" = "rien à envoyer" ] || ko "push : rien à envoyer"
 printf 'again\n' >>"$HOME/.dot/perso/home/file"
-dot send fix: un message libre >/dev/null 2>&1
-[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "fix: un message libre" ] || ko "send : message"
-ok "send : commit des fichiers suivis, avertissement, push, rien à envoyer"
+dot -p perso push fix: un message libre >/dev/null 2>&1
+[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "fix: un message libre" ] || ko "push : message"
+ok "push : commit des fichiers suivis, avertissement, push, rien à envoyer"
 
 # whoami: identity in force here, and where it comes from.
 out=$(dot whoami 2>&1)

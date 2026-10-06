@@ -110,3 +110,50 @@ dot install "$A" -p a >"$S/out" 2>&1; printf 'wip\n' >"$HOME/.dot/a/wip.txt"
 dot uninstall -p a --purge --force >"$S/out" 2>&1; [ ! -e "$HOME/.dot/a" ]
 [ "$(dot config get default)" = b ]; [ -d "$HOME/.dot/b" ]
 echo 'OK   --purge deletes the clone, but refuses a link or uncommitted work (unless --force)'
+
+# push and status: every profile without -p, one with -p; each clone has its own bare remote.
+rm -f "$HOME/.dot/s"; dot config unset profiles.s.repo
+dot install "$A" -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+for p in a b; do
+  git init -q --bare -b main "$S/remotes/push-$p.git"
+  git -C "$HOME/.dot/$p" remote set-url origin "$S/remotes/push-$p.git"
+  git -C "$HOME/.dot/$p" push -q -u origin main 2>/dev/null
+done
+subject() { git -C "$S/remotes/push-$1.git" log -1 --format=%s; }
+for p in a b; do printf 'edit\n' >>"$HOME/.dot/$p/home/.$p-new"; done
+rm "$HOME/.a-rc" "$HOME/.b-rc"; printf 'tool\n' >"$HOME/.a-rc"; printf 'tool\n' >"$HOME/.b-rc"
+dot status >"$S/out" 2>"$S/err"
+grep -qx '==> a' "$S/out"; grep -qx '==> b' "$S/out"
+section() { awk -v k="==> $1" '/^==> /{on = ($0 == k); next} on' "$S/out"; } # lines under one profile header
+section a | grep -q 'M home/.a-new'; ! section a | grep -q 'home/.b-new'
+section b | grep -q 'M home/.b-new'; ! section b | grep -q 'home/.a-new'
+grep -qF '~/.a-rc' "$S/err"; grep -qF '~/.b-rc' "$S/err"
+[ "$(dot st 2>/dev/null)" = "$(cat "$S/out")" ]
+dot status -p a >"$S/out" 2>"$S/err"; ! grep -q '^==> ' "$S/out"; grep -q 'M home/.a-new' "$S/out"; ! grep -q 'home/.b-new' "$S/out"
+DOT_PROFILE=b dot status >"$S/out" 2>&1; ! grep -q '^==> ' "$S/out"; grep -q 'M home/.b-new' "$S/out"
+for p in a b; do ln -sf "$HOME/.dot/$p/home/.$p-rc" "$HOME/.$p-rc"; done
+echo 'OK   status lists every profile under its name with its changes and detached files, or only the targeted one'
+
+dot push "msg all" >"$S/out" 2>"$S/err" || { cat "$S/out" "$S/err"; exit 1; }
+grep -qx '==> a' "$S/out"; grep -qx '==> b' "$S/out"
+[ "$(subject a)" = "msg all" ]; [ "$(subject b)" = "msg all" ]
+dot push >"$S/out" 2>&1; [ "$(grep -c '^rien à envoyer$' "$S/out")" -eq 2 ]
+echo 'OK   push without -p commits and pushes every profile with the same message'
+
+for p in a b; do printf 'edit\n' >>"$HOME/.dot/$p/home/.$p-new"; done
+dot push -p a "only a" >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+! grep -q '^==> ' "$S/out"; [ "$(subject a)" = "only a" ]; [ "$(subject b)" = "msg all" ]
+[ -n "$(git -C "$HOME/.dot/b" status --porcelain)" ]
+echo 'OK   push -p a pushes that profile only'
+
+# A profile whose push fails does not stop the others: exit 1, name reported.
+mv "$S/remotes/push-b.git" "$S/remotes/push-b.away"
+printf 'edit\n' >>"$HOME/.dot/a/home/.a-new"
+fails 1 dot push "late"
+[ "$(subject a)" = "late" ]; grep -qx 'échec : b' "$S/err"; ! grep -q 'échec : a' "$S/err"
+mv "$S/remotes/push-b.away" "$S/remotes/push-b.git"
+echo 'OK   push goes on after a failing profile and exits 1 naming it'
+
+# send is gone: it falls back to git like any unknown word.
+fails 1 dot send; grep -q "'send' is not a git command" "$S/err"
+echo 'OK   dot send is no dot command any more (git fallback)'

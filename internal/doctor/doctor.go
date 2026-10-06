@@ -218,7 +218,7 @@ func (c *checker) clone(s *state) {
 		}
 	}
 	if st, _ := git(dir, "status", "--porcelain=v1", "--untracked-files=all"); st != "" {
-		c.add(Warn, "clone modifié : dot send")
+		c.add(Warn, "clone modifié : dot push")
 	} else {
 		c.add(OK, "clone sans changements")
 	}
@@ -231,7 +231,7 @@ func (c *checker) clone(s *state) {
 		fmt.Sscan(counts, &ahead, &behind)
 	}
 	if ahead > 0 || behind > 0 {
-		c.add(Warn, "clone : ⇡%d ⇣%d — dot send / dot pull", ahead, behind)
+		c.add(Warn, "clone : ⇡%d ⇣%d — dot push / dot pull", ahead, behind)
 	} else {
 		c.add(OK, "clone sans avance ni retard connus")
 	}

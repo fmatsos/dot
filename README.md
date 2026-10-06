@@ -34,10 +34,12 @@ Le détail des décisions, de l'architecture et des phases est dans [PLAN.md](PL
 dot install <url> [-p <clé>] [-n]   clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
 dot install [-n]                    réinstalle tous les profils inscrits
 dot pull                            met à jour les profils (git pull --rebase, puis installation)
+dot push [message]                  commite les fichiers suivis modifiés des profils, puis pousse
+dot status                          changements des clones et fichiers détachés (alias st)
 dot uninstall -p <clé> [--purge]    retire les liens et l'entrée du registre
 dot doctor                          bilan en lecture seule
 dot config list|get|set|unset       lit et modifie le registre ~/.dot/profiles.json
-dot st | send | whoami | profile | terms | clone | repos
+dot whoami | profile | terms | clone | repos
 dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       garde-fou des hooks git (termes interdits, secrets)
 dot settings [-n] | dot mcp [-n]   fusion des réglages Claude et des serveurs MCP
@@ -45,8 +47,8 @@ dot <cmd>                           lance dot-<cmd> (bin/ du profil, puis PATH),
 ```
 
 Le profil visé se choisit avec `-p/--profile <clé>`, puis `DOT_PROFILE`, puis le profil par
-défaut du registre. Sans `-p`, `pull`, `doctor`, `settings` et `mcp` agissent sur tous les
-profils, les autres commandes sur le profil par défaut. `DOTFILES_DEPLOY=<dossier>` désigne
+défaut du registre. Sans `-p`, `pull`, `push`, `status`, `doctor`, `settings` et `mcp` agissent sur tous les
+profils inscrits, les autres commandes sur le profil par défaut. `DOTFILES_DEPLOY=<dossier>` désigne
 directement le dossier d'un profil (compatibilité de transition et point d'entrée des tests).
 La clé d'un `dot install <url>` sans `-p` est le nom du dépôt de l'URL.
 
