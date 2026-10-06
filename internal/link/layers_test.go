@@ -261,3 +261,21 @@ func TestOrphanUnderRootOnlyAnInactiveLayerGave(t *testing.T) {
 		t.Error("link into an inactive host layer kept")
 	}
 }
+
+func TestFileAndDescendantAcrossLayers(t *testing.T) {
+	root := t.TempDir()
+	home, dir := filepath.Join(root, "home"), filepath.Join(root, "p")
+	must(t, os.MkdirAll(home, 0o755))
+	write(t, dir+"/home/.config/app/rc", "base", 0o644)
+	write(t, dir+"/home@work/.config", "file", 0o644) // a file above a lower layer's folder
+	write(t, dir+"/home/.tool", "file", 0o644)
+	write(t, dir+"/home@linux/.tool/conf", "dir", 0o644) // a folder above a lower layer's file
+	machine(t, "linux", "work")
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	if got, _ := os.Readlink(filepath.Join(home, ".config")); got != dir+"/home@work/.config" {
+		t.Errorf("~/.config = %q", got)
+	}
+	if got, _ := os.Readlink(filepath.Join(home, ".tool/conf")); got != dir+"/home@linux/.tool/conf" {
+		t.Errorf("~/.tool/conf = %q", got)
+	}
+}

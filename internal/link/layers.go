@@ -71,8 +71,9 @@ func allLayers(dir string) []string {
 // multi leaves out the ModuleSources. The result is sorted by Dst.
 func layerLinks(dir, home string, layers []string, multi bool) ([]Link, error) {
 	byRel := map[string]Link{}
+	rank := map[string]int{} // layer index of each entry, higher wins
 	var firstErr error
-	for _, layer := range layers {
+	for i, layer := range layers {
 		root := filepath.Join(dir, layer)
 		fl, err := files(root, func(fs.DirEntry) bool { return true })
 		if err != nil && firstErr == nil {
@@ -83,7 +84,22 @@ func layerLinks(dir, home string, layers []string, multi bool) ([]Link, error) {
 			if multi && slices.Contains(ModuleSources, filepath.ToSlash(rel)) {
 				continue
 			}
-			byRel[rel] = Link{Src: f, Dst: filepath.Join(home, rel), Layer: layer}
+			byRel[rel], rank[rel] = Link{Src: f, Dst: filepath.Join(home, rel), Layer: layer}, i
+		}
+	}
+	// A file in one layer and a path below it in another cannot both exist in ~: the higher
+	// layer wins, as for identical paths.
+	for rel := range byRel {
+		for a := filepath.Dir(rel); a != "." && a != string(filepath.Separator); a = filepath.Dir(a) {
+			if _, ok := byRel[a]; !ok {
+				continue
+			}
+			if rank[a] > rank[rel] {
+				delete(byRel, rel)
+			} else {
+				delete(byRel, a)
+			}
+			break
 		}
 	}
 	links := make([]Link, 0, len(byRel))
