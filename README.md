@@ -2,109 +2,159 @@
 
 [![ci](https://github.com/fmatsos/dot/actions/workflows/ci.yml/badge.svg)](https://github.com/fmatsos/dot/actions/workflows/ci.yml)
 
-`dot` installe et entretient un ou plusieurs profils de dotfiles. Un profil est un dépôt de
-données avec un manifeste `dot.json`, cloné dans `~/.dot/<clé>`. `dot` apporte le reste : les
-liens dans `~`, un garde-fou contre les fuites (termes interdits, secrets), les secrets via
-`bw` et `pass-cli`, et la fusion des serveurs MCP et des réglages pour Claude Code, Codex et
-OpenCode.
+`dot` installs and maintains one or more dotfiles profiles. A profile is a data repository with a
+`dot.json` manifest, cloned into `~/.dot/<key>`. `dot` brings the rest: links in `~`, a leak guard
+(forbidden terms, secrets), secrets fetched on demand from `bw` and `pass-cli`, and merged MCP
+servers and settings for Claude Code, Codex and OpenCode.
 
-## État
+`dot` is a single static Go binary for Linux and macOS. It holds no personal value: everything
+specific to a user lives in their profile repositories. Its messages and help are in French.
 
-**Phases 1 à 3 du plan implémentées, ainsi que la chaîne de release signée ; phases 4 (bascule de
-la machine) et 5 (profil travail) non commencées, et pas encore de release.** Le binaire Go couvre
-toutes les commandes du CLI bash, plus le multi-profil, et passe les tests boîte noire
-(`tests/*.sh`) et les tests Go, sur Linux et macOS.
+## Status
 
-Reste avant une première release `v0.1.0` (le scanner betterleaks est épinglé en 1.9.0, sha256 compilé
-dans le binaire ; `DOT_BETTERLEAKS=<chemin>` le remplace, pour les tests uniquement) :
+**Plan phases 1 to 3 are implemented, along with the signed release chain. Phase 4 (switching
+the real machine over) and phase 5 (work profile) have not started, and there is no release
+yet.** The binary covers every command of the former bash CLI, plus multi-profile support, and
+passes the black-box tests (`tests/*.sh`) and the Go tests on Linux and macOS.
 
-- **La clé de signature des releases** n'existe pas encore : `scripts/gen-release-key.sh` la
-  génère, `internal/selfupdate/release.pub` (vide pour l'instant) reçoit la clé publique, et la
-  clé privée devient le secret `RELEASE_SIGNING_KEY`. D'ici là, le workflow de release échoue et
-  `dot self-update` refuse, volontairement.
-- **L'amorce `install.sh`** est écrite mais pas figée : après la première release,
-  `scripts/pin-install.sh vX.Y.Z` y inscrit la version et les sommes (signature vérifiée d'abord).
-- **Bascule de la machine** (phase 4) : déplacer `~/.config/dotfiles` vers `~/.dot/perso`, retirer
-  le bash du dépôt de données. Elle touche la machine réelle et se fait à blanc d'abord ;
-  `dot backups restore` permet de revenir sur les fichiers remplacés par des liens.
-- Les hooks du dépôt de données deviennent `exec dot guard staged`, `exec dot guard msg "$1"` et
+Left before a first `v0.1.0` release:
+
+- **Release signing key.** It does not exist yet. `scripts/gen-release-key.sh` generates it,
+  `internal/selfupdate/release.pub` (empty for now) receives the public key, and the private key
+  becomes the `RELEASE_SIGNING_KEY` repository secret (OpenSSL 3 required; macOS's stock
+  LibreSSL cannot sign raw Ed25519). Until then the release workflow fails and
+  `dot self-update` refuses, on purpose.
+- **Bootstrap `install.sh`.** It is written but not pinned: after the first release,
+  `scripts/pin-install.sh vX.Y.Z` writes the version and checksums into it, after verifying
+  the signature.
+- **Machine switch (phase 4).** Move `~/.config/dotfiles` to `~/.dot/perso` and remove the bash
+  CLI from the data repository. It touches the real machine and is dry-run first;
+  `dot backups restore` brings back files that were replaced by links.
+- The data repository's hooks become `exec dot guard staged`, `exec dot guard msg "$1"` and
   `exec dot guard push "$@"`.
 
-Le détail des décisions, de l'architecture et des phases est dans [PLAN.md](PLAN.md).
+Decisions, architecture and phases are detailed in [PLAN.md](PLAN.md) (French).
 
-## Commandes
+## Commands
 
 ```text
-dot install <url> [-p <clé>] [-n]   clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
-dot install [-n]                    réinstalle tous les profils inscrits
-dot pull                            met à jour les profils (git pull --rebase, puis installation)
-dot push [message]                  commite les fichiers suivis modifiés des profils, puis pousse
-dot status                          changements des clones et fichiers détachés (alias st)
-dot uninstall -p <clé> [--purge]    retire les liens et l'entrée du registre
-dot adopt [-p <clé>] [-n] <fichier>  range un fichier de ~ dans home/ du profil (garde-fou d'abord)
-dot backups list|restore [-n]       fichiers de ~ sauvegardés par install, et leur restauration
-dot self-update [--version v] [-n]  met dot à jour depuis une release signée
-dot doctor                          bilan en lecture seule
-dot config list|get|set|unset       lit et modifie le registre ~/.dot/profiles.json
+dot install <url> [-p <key>] [-n]       clone a profile into ~/.dot/<key>, register it, install it
+dot install [-n]                        reinstall every registered profile
+dot pull                                update profiles (git pull --rebase, then install)
+dot push [message]                      commit the profiles' modified tracked files, then push
+dot status                              clone changes and detached files (alias st)
+dot uninstall -p <key> [--purge]        remove the profile's links and its registry entry
+dot adopt [-p <key>] [-n] [--os|--host] <file>...
+                                        move a file of ~ into the profile, guard checks first
+dot backups list|restore [-n]           files of ~ backed up by install, and their restoration
+dot self-update [--version vX.Y.Z] [-n] update dot from a signed release
+dot doctor                              read-only health check
+dot config list|get|set|unset           read and edit the registry ~/.dot/profiles.json
 dot whoami | profile | terms | clone | repos
 dot secrets add|get|run|unlock|lock|status
-dot guard staged|msg|push|all       garde-fou des hooks git (termes interdits, secrets)
-dot settings [-n] | dot mcp [-n]   fusion des réglages Claude et des serveurs MCP
-dot <cmd>                           lance dot-<cmd> (bin/ des profils, puis PATH), sinon git sur le clone
+dot guard staged|msg|push|all           git hook guard (forbidden terms, secrets)
+dot settings [-n] | dot mcp [-n]        merge Claude settings and MCP servers
+dot <cmd>                               run dot-<cmd> (profiles' bin/, then PATH), else git on the clone
 ```
 
-Sans `-p` et avec plusieurs profils inscrits, `dot <cmd>` cherche `bin/dot-<cmd>` dans tous les
-profils : un nom revendiqué par deux profils est refusé (`précisez -p <clé>`). La complétion
-propose les clés du registre pour `-p` et les clés de `dot config get|unset`.
+### Targeting a profile
 
-Le profil visé se choisit avec `-p/--profile <clé>`, puis `DOT_PROFILE`, puis le profil par
-défaut du registre. Sans `-p`, `pull`, `push`, `status`, `doctor`, `settings` et `mcp` agissent sur tous les
-profils inscrits, les autres commandes sur le profil par défaut. `DOTFILES_DEPLOY=<dossier>` désigne
-directement le dossier d'un profil (compatibilité de transition et point d'entrée des tests).
-La clé d'un `dot install <url>` sans `-p` est le nom du dépôt de l'URL.
+- The profile is chosen with `-p/--profile <key>`, then `DOT_PROFILE`, then the registry's
+  default profile.
+- Without `-p`, `pull`, `push`, `status`, `doctor`, `settings` and `mcp` act on every
+  registered profile, with a `==> <key>` header for each; a failure does not stop the others.
+  The other commands act on the default profile.
+- `DOTFILES_DEPLOY=<dir>` points directly at a profile directory (transition compatibility and
+  test entry point).
+- Without `-p`, the key of `dot install <url>` is the repository name from the URL.
+- Shell completion offers the registry keys for `-p` and the keys of `dot config get|unset`.
 
-## Variantes par système et par machine
+### Extensions
 
-À côté de `home/`, un profil peut porter `home@darwin/`, `home@linux/` et `home@<machine>/` (nom
-court de la machine, en minuscules). Pour un même chemin de `~`, `home@<machine>` l'emporte sur
-`home@<os>`, qui l'emporte sur `home/` ; les variantes d'un autre système ou d'une autre machine
-sont ignorées. Il n'y a pas de moteur de modèles : les fichiers de `~` restent des liens vers le
-clone. Les conflits entre profils se calculent après cette résolution, `dot install -n` affiche la
-couche retenue quand ce n'est pas `home`, et `dot adopt --os|--host` range un fichier dans la
-variante. Un `deploy.sparse` doit citer chaque variante voulue (`home@darwin`…).
-`DOT_HOSTNAME` remplace le nom de la machine, pour les tests uniquement.
+`dot <cmd>` runs an executable `dot-<cmd>` found in a profile's `bin/`, then in the `PATH`, and
+otherwise runs `git <cmd>` on the profile clone. Without `-p` and with several profiles
+registered, every profile's `bin/` is searched: a name claimed by two profiles is refused, and
+you must pass `-p <key>`.
 
-Limite actuelle : `dot settings`, `dot mcp` et la configuration mise lisent encore `home/` seul.
+### Adopting a file
+
+`dot adopt ~/.foo` moves an existing file of `~` into the target profile's `home/` and replaces
+it with a link. Before anything moves, the file name and content go through the target
+profile's forbidden-terms list and the secret scanner. A hit, a missing or invalid term list or
+an unavailable scanner refuses the file, and only its name is reported. Symlinks, files outside
+`~`, paths already provided by another profile and a sparse checkout without `home` are refused
+too. Nothing is committed: `dot push` does that.
+
+### Backups
+
+When `dot install` replaces an existing file of `~` with a link, the file is moved to
+`~/.local/state/dotfiles/backup/<timestamp>/`. `dot backups list` shows the runs, and
+`dot backups restore [<run>] [<path>...]` moves files back. A file is restored only when its
+place in `~` is empty or holds a link managed by dot; a real file is never overwritten.
+`dot install` recreates the links, so uninstall the profile or remove the file from it for a
+restore to stick.
+
+## Per-OS and per-host variants
+
+Besides `home/`, a profile may carry `home@darwin/`, `home@linux/` and `home@<host>/`, where
+`<host>` is the machine's short hostname in lower case. For a given path of `~`,
+`home@<host>` wins over `home@<os>`, which wins over `home/`. Variants for another system or
+another machine are ignored.
+
+- There is no templating engine: files in `~` stay links into the clone.
+- Conflicts between profiles are computed after this resolution.
+- `dot install -n` shows the winning layer when it is not `home`.
+- `dot adopt --os|--host` moves a file into the matching variant.
+- A `deploy.sparse` list must name each wanted variant (`home@darwin`...).
+- `DOT_HOSTNAME` replaces the hostname, for tests only.
+
+Current limitation: `dot settings`, `dot mcp` and the mise configuration still read `home/`
+only.
+
+## Leak guard
+
+`dot guard staged | msg <file> | push | all` blocks commits and pushes that contain a forbidden
+term (case-insensitive RE2 patterns from the profile's `forbidden.local`) or a secret found by
+betterleaks.
+
+- It fails closed: a missing, empty or invalid list, a failed git command or an unavailable
+  scanner blocks.
+- It reports file names or commits, never the matched text.
+- A term that matches the empty string (`a*`, `^`) is refused, since it would match everything.
+- betterleaks is pinned to 1.9.0 and downloaded into `~/.cache/dot/`, its sha256 compiled into
+  the binary. `DOT_BETTERLEAKS=<path>` replaces it, for tests only.
+- Known blind spot: there is no Unicode normalization, so a term written in NFC does not match a
+  file name in NFD, which macOS can produce without `core.precomposeunicode`.
 
 ## Installation
 
-L'amorce `install.sh` télécharge la release figée dans le script, vérifie son sha256 contre la
-somme qu'il contient, l'installe dans `~/.local/bin/dot`, puis lance
-`dot install <url du premier profil>` si une URL est donnée. Binaires statiques pour Linux et
-macOS, en x64 et arm64 (`dot-linux-x64`, `dot-linux-arm64`, `dot-macos-x64`, `dot-macos-arm64`),
-avec `SHA256SUMS` et sa signature Ed25519 `SHA256SUMS.sig` joints à chaque release.
+The `install.sh` bootstrap downloads the release pinned in the script, checks its sha256
+against the checksum it contains, installs it into `~/.local/bin/dot`, then runs
+`dot install <first profile url>` if a URL is given. Releases ship static binaries for Linux and
+macOS on x64 and arm64 (`dot-linux-x64`, `dot-linux-arm64`, `dot-macos-x64`,
+`dot-macos-arm64`), with `SHA256SUMS` and its Ed25519 signature `SHA256SUMS.sig`.
 
-Ensuite, `dot self-update` vérifie la signature de `SHA256SUMS` avec la clé publique compilée
-dans le binaire, puis la somme du binaire, avant de remplacer l'exécutable de façon atomique.
-La somme seule ne suffirait pas : publiée avec la release, elle ne protège pas d'une release
-compromise. La vérification n'utilise que `crypto/ed25519` ; la signature se fait en CI avec
+After that, `dot self-update` verifies the signature of `SHA256SUMS` with the public key compiled
+into the binary, then the binary's checksum, before replacing the executable atomically. A
+checksum alone would not be enough: published with the release, it does not protect against a
+compromised release. Verification only uses Go's `crypto/ed25519`; signing happens in CI with
 OpenSSL 3 (`openssl pkeyutl -sign -rawin`).
 
-## Développement
+## Development
 
-Go, avec [cobra](https://github.com/spf13/cobra) pour la ligne de commande. `make test` lance
-`go vet` et `go test -race` ; `make build` produit le binaire statique `./dot`.
+Go, with [cobra](https://github.com/spf13/cobra) for the command line. `make test` runs
+`go vet` and `go test -race`; `make build` produces the static `./dot` binary.
 
-Une commande vit dans son propre fichier `cmd/dot/cmd_<nom>.go` et s'enregistre avec
-`func init() { register(newXxxCmd) }` : aucun fichier partagé n'est modifié. Les tests boîte
-noire sont des scripts bash `tests/<nom>.sh` qui font `source tests/lib.sh` et appellent
-`dot` (le binaire de `$DOT_BIN`, construit au besoin).
+A command lives in its own file `cmd/dot/cmd_<name>.go` and registers itself with
+`func init() { register(newXxxCmd) }`, so adding one touches no shared file. Black-box tests are
+bash scripts `tests/<name>.sh` that `source tests/lib.sh` and call `dot` (the `$DOT_BIN`
+binary, built when needed). They must run with GNU and BSD tools alike: `tests/lib.sh`
+provides portable helpers (`stat_inode_mtime`, `in_pty`).
 
-- `ci.yml` (push, pull request) : garde-fou (termes interdits dans les fichiers et les
-  métadonnées de commit, scan de secrets), puis `go vet`, `go test -race`, le build statique et
-  les tests boîte noire de `tests/*.sh`, dès qu'un `go.mod` existe.
-- `ci.yml` fait tourner le job Go sur Linux et macOS (bash 4+ de Homebrew pour les tests boîte noire).
-- `release.yml` (tag `vX.Y.Z`) : construit les quatre binaires statiques, calcule `SHA256SUMS`,
-  le signe avec le secret `RELEASE_SIGNING_KEY`, vérifie la signature contre la clé publique
-  versionnée, et publie la release.
-- `dependabot.yml` : mises à jour hebdomadaires des actions et des modules Go.
+- `ci.yml` (push, pull request) runs the guard first: forbidden terms in files and commit
+  metadata, then a secret scan. It then runs `go vet`, `go test -race`, the static build and
+  the black-box tests, on Linux and macOS (Homebrew's bash 4+ on macOS).
+- `release.yml` (tag `vX.Y.Z`) builds the four static binaries, computes `SHA256SUMS`, signs it
+  with the `RELEASE_SIGNING_KEY` secret, checks the signature against the committed public key,
+  and publishes the release.
+- `dependabot.yml` updates the actions and Go modules weekly.
