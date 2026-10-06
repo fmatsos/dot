@@ -253,4 +253,5 @@ Chaque phase passe par le cycle déjà rodé : consigne numérotée à Codex, re
   - Dépôt du profil travail et suppression de nvm : non traités ici (phases 4 et 5).
 - Écarts assumés par rapport au bash : le garde-fou et les secrets n'ont plus besoin de `jq` ; l'aide est générée par cobra (plus de `help.awk`) ; les erreurs d'usage sortent en code 2 ; les termes interdits sont des regex RE2 insensibles à la casse (les extensions POSIX/GNU comme les rétro-références sont refusées, en échec fermé).
 - `dot send` est remplacé par `dot push [message]`, et `dot status` (alias `st`) devient une commande à part ; sans `-p`, `pull`, `push`, `status`, `doctor`, `settings` et `mcp` agissent sur tous les profils inscrits, avec `==> <clé>` devant chacun et un échec qui n'arrête pas les autres.
-- À faire : figer les sommes betterleaks, écrire l'amorce `install.sh`, `dot self-update`, refus d'un nom `dot-<cmd>` revendiqué par deux profils, bascule de la machine.
+- Sommes betterleaks figées pour la v1.9.0 (recalculées sur les archives, identiques au `checksums.txt` de la release).
+- À faire : écrire l'amorce `install.sh`, `dot self-update`, refus d'un nom `dot-<cmd>` revendiqué par deux profils, bascule de la machine.

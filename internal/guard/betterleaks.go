@@ -37,18 +37,16 @@ const (
 )
 
 // Betterleaks is the release dot guard runs. The sums are compiled in: a mismatch or an empty
-// entry fails closed.
-// TODO: pin the sha256 of each archive with scripts/pin-betterleaks.sh 1.9.0 and paste its
-// output here; also check the asset names against the real release page. Until then the
-// guard refuses to run on every platform (no sum is ever invented).
+// entry fails closed. The v1.9.0 sums were recomputed from the downloaded archives and match
+// the release's checksums.txt; bump them with scripts/pin-betterleaks.sh <version>.
 var Betterleaks = Release{
 	Version: "1.9.0",
 	BaseURL: "https://github.com/betterleaks/betterleaks/releases/download",
 	Assets: map[string]Asset{
-		"linux-x64":   {Name: "betterleaks_1.9.0_linux_x64.tar.gz", SHA256: ""},
-		"linux-arm64": {Name: "betterleaks_1.9.0_linux_arm64.tar.gz", SHA256: ""},
-		"macos-x64":   {Name: "betterleaks_1.9.0_darwin_x64.tar.gz", SHA256: ""},
-		"macos-arm64": {Name: "betterleaks_1.9.0_darwin_arm64.tar.gz", SHA256: ""},
+		"linux-x64":   {Name: "betterleaks_1.9.0_linux_x64.tar.gz", SHA256: "f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7"},
+		"linux-arm64": {Name: "betterleaks_1.9.0_linux_arm64.tar.gz", SHA256: "1d39116e0a58dc94574715e2aa12a2dbd5062f193eee3fec011fef6ba06bd13b"},
+		"macos-x64":   {Name: "betterleaks_1.9.0_darwin_x64.tar.gz", SHA256: "68dfd83458d9e7f90663daa7a81c7f944083b170dae82e4f5f8d0581ed519ef1"},
+		"macos-arm64": {Name: "betterleaks_1.9.0_darwin_arm64.tar.gz", SHA256: "83dd7eaab13d44a1e8e347a17064cdef153a1478db473276d41b38d55613d3f2"},
 	},
 }
 

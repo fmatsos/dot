@@ -14,11 +14,9 @@ OpenCode.
 non commencées, et pas encore de release.** Le binaire Go couvre toutes les commandes du CLI bash,
 plus le multi-profil, et passe les tests boîte noire portés (`tests/*.sh`) et les tests Go.
 
-Reste avant une première release `v0.1.0` :
+Reste avant une première release `v0.1.0` (le scanner betterleaks est épinglé en 1.9.0, sha256 compilé
+dans le binaire ; `DOT_BETTERLEAKS=<chemin>` le remplace, pour les tests uniquement) :
 
-- **Sommes betterleaks à figer** : la table de `internal/guard/betterleaks.go` a des empreintes
-  vides, donc `dot guard` échoue fermé (voir `scripts/pin-betterleaks.sh`). Tant qu'elles sont
-  vides, `DOT_BETTERLEAKS=<chemin>` permet de pointer un scanner existant.
 - **L'amorce `install.sh`** (téléchargement vérifié de la release) n'est pas écrite : elle
   suppose une release publiée dont on connaît la somme.
 - **Bascule de la machine** (phase 4) : déplacer `~/.config/dotfiles` vers `~/.dot/perso`, retirer
