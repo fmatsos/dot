@@ -10,31 +10,45 @@ OpenCode.
 
 ## État
 
-**Squelette en place, commandes à porter : `dot` n'est pas encore utilisable.** La phase 1 du
-plan est livrée : le binaire Go (cobra), l'option globale `-p/--profile`, `--version`, la
-complétion zsh générée, le registre `~/.dot/profiles.json` (`internal/registry`), la lecture
-validée du manifeste `dot.json` (`internal/manifest`) et la commande `dot config`
-(`list|get|set|unset`). Les autres commandes (`install`, `pull`, `doctor`, `guard`, `secrets`,
-`mcp`, `settings`…) ne sont pas portées : elles arrivent phase par phase, dans l'ordre du plan.
-L'implémentation actuelle reste un CLI bash qui vit dans un dépôt de dotfiles ; cette réécriture
-la remplacera, sans régression. Le détail des décisions, de l'architecture et des phases est
-dans [PLAN.md](PLAN.md).
+**Phases 1 à 3 du plan implémentées ; phases 4 (bascule de la machine) et 5 (profil travail)
+non commencées, et pas encore de release.** Le binaire Go couvre toutes les commandes du CLI bash,
+plus le multi-profil, et passe les tests boîte noire portés (`tests/*.sh`) et les tests Go.
 
-## Usage prévu
+Reste avant une première release `v0.1.0` :
 
-Seul `dot config` existe pour l'instant ; le reste est à venir.
+- **Sommes betterleaks à figer** : la table de `internal/guard/betterleaks.go` a des empreintes
+  vides, donc `dot guard` échoue fermé (voir `scripts/pin-betterleaks.sh`). Tant qu'elles sont
+  vides, `DOT_BETTERLEAKS=<chemin>` permet de pointer un scanner existant.
+- **L'amorce `install.sh`** (téléchargement vérifié de la release) n'est pas écrite : elle
+  suppose une release publiée dont on connaît la somme.
+- **Bascule de la machine** (phase 4) : déplacer `~/.config/dotfiles` vers `~/.dot/perso`, retirer
+  le bash du dépôt de données. Elle touche la machine réelle et se fait à blanc d'abord.
+- Les hooks du dépôt de données deviennent `exec dot guard staged`, `exec dot guard msg "$1"` et
+  `exec dot guard push "$@"`.
+
+Le détail des décisions, de l'architecture et des phases est dans [PLAN.md](PLAN.md).
+
+## Commandes
 
 ```text
-dot install <url> [-p <clé>]      clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
-dot install                       réinstalle tous les profils inscrits
-dot pull                          met à jour les profils
-dot doctor                        bilan en lecture seule
-dot config list|get|set|unset     lit et modifie le registre ~/.dot/profiles.json
+dot install <url> [-p <clé>] [-n]   clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
+dot install [-n]                    réinstalle tous les profils inscrits
+dot pull                            met à jour les profils (git pull --rebase, puis installation)
+dot uninstall -p <clé> [--purge]    retire les liens et l'entrée du registre
+dot doctor                          bilan en lecture seule
+dot config list|get|set|unset       lit et modifie le registre ~/.dot/profiles.json
+dot st | send | whoami | profile | terms | clone | repos
+dot secrets add|get|run|unlock|lock|status
+dot guard staged|msg|push|all       garde-fou des hooks git (termes interdits, secrets)
+dot settings [-n] | dot mcp [-n]   fusion des réglages Claude et des serveurs MCP
+dot <cmd>                           lance dot-<cmd> (bin/ du profil, puis PATH), sinon git sur le clone
 ```
 
 Le profil visé se choisit avec `-p/--profile <clé>`, puis `DOT_PROFILE`, puis le profil par
-défaut du registre. Sans `-p`, `pull` et `doctor` agissent sur tous les profils, les autres
-commandes sur le profil par défaut.
+défaut du registre. Sans `-p`, `pull`, `doctor`, `settings` et `mcp` agissent sur tous les
+profils, les autres commandes sur le profil par défaut. `DOTFILES_DEPLOY=<dossier>` désigne
+directement le dossier d'un profil (compatibilité de transition et point d'entrée des tests).
+La clé d'un `dot install <url>` sans `-p` est le nom du dépôt de l'URL.
 
 ## Installation prévue
 

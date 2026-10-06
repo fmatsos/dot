@@ -1,6 +1,6 @@
 # Plan dot v2 — Go et multi-profils
 
-État : plan à relire, phase 0 ouverte. Aucun code n'est écrit.
+État : phases 1 à 3 implémentées (voir l'avancement en fin de document) ; phases 4 et 5 à faire.
 
 ## Contexte et objectifs
 
@@ -243,3 +243,13 @@ Chaque phase passe par le cycle déjà rodé : consigne numérotée à Codex, re
 - [ ] Nom de transition du binaire Go (`dot2`) ou remplacement direct dès la première commande portée ?
 - [ ] Le profil travail : son dépôt existe-t-il déjà, et sur quel hébergement ?
 - [ ] Suppression de nvm : objectif séparé, ou inclus dans la bascule ?
+
+## Avancement
+
+- Phases 1 à 3 : faites. Tous les tests bash portés (`tests/*.sh`) et les tests Go passent.
+- Questions de la phase 0 : le code a avancé avec ces hypothèses, à confirmer.
+  - `dot config` masque `git config` transmis au clone : accepté, `git -C ~/.dot/<clé>` en contournement.
+  - Nom de transition : le binaire se construit sous le nom `dot` ; installer l'exécutable sous `dot2` relève de la phase 4, pas du code.
+  - Dépôt du profil travail et suppression de nvm : non traités ici (phases 4 et 5).
+- Écarts assumés par rapport au bash : le garde-fou et les secrets n'ont plus besoin de `jq` ; l'aide est générée par cobra (plus de `help.awk`) ; les erreurs d'usage sortent en code 2 ; les termes interdits sont des regex RE2 insensibles à la casse (les extensions POSIX/GNU comme les rétro-références sont refusées, en échec fermé).
+- À faire : figer les sommes betterleaks, écrire l'amorce `install.sh`, `dot self-update`, refus d'un nom `dot-<cmd>` revendiqué par deux profils, bascule de la machine.
