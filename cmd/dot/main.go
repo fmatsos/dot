@@ -16,6 +16,15 @@ type usageError struct{ msg string }
 
 func (e usageError) Error() string { return e.msg }
 
+// exitError carries a specific exit code (a wrapped child's, or 3 for a locked vault).
+// An empty msg means the command already reported its error.
+type exitError struct {
+	code int
+	msg  string
+}
+
+func (e exitError) Error() string { return e.msg }
+
 func usagef(format string, a ...any) error { return usageError{fmt.Sprintf(format, a...)} }
 
 // exactArgs wraps an argument count check into a usageError carrying the command's usage line.
@@ -67,6 +76,13 @@ func execute(env *Env, args []string) int {
 	err := root.Execute()
 	if err == nil {
 		return 0
+	}
+	var x exitError
+	if errors.As(err, &x) {
+		if x.msg != "" {
+			fmt.Fprintf(env.Stderr, "dot : %s\n", x.msg)
+		}
+		return x.code
 	}
 	var u usageError
 	if errors.As(err, &u) {
