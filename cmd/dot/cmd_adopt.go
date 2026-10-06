@@ -49,8 +49,9 @@ func adoptGuard(env *Env, dir string) (*guard.Guard, error) {
 	return g, nil
 }
 
-// sparseHasHome refuses an adoption into a clone whose sparse set leaves home/ out.
-func sparseHasHome(dir string) error {
+// sparseHasLayer refuses an adoption into a clone whose sparse set leaves the layer (home or a
+// home@ variant) out.
+func sparseHasLayer(dir, layer string) error {
 	m, err := manifest.Load(filepath.Join(dir, "dot.json"))
 	if err != nil {
 		if _, serr := os.Stat(filepath.Join(dir, "dot.json")); serr != nil {
@@ -58,19 +59,21 @@ func sparseHasHome(dir string) error {
 		}
 		return err
 	}
-	if len(m.Sparse) > 0 && !slices.Contains(m.Sparse, "home") {
-		return fmt.Errorf("home/ est hors du sparse checkout du profil (deploy.sparse : %s)", strings.Join(m.Sparse, ", "))
+	if len(m.Sparse) > 0 && !slices.Contains(m.Sparse, layer) {
+		return fmt.Errorf("%s/ est hors du sparse checkout du profil (deploy.sparse : %s)", layer, strings.Join(m.Sparse, ", "))
 	}
 	return nil
 }
 
 func newAdoptCmd(env *Env) *cobra.Command {
-	var dry bool
+	var dry, onOS, onHost bool
 	cmd := &cobra.Command{
-		Use:   "adopt [-p <clé>] [-n] <fichier>...",
+		Use:   "adopt [-p <clé>] [-n] [--os | --host] <fichier>...",
 		Short: "Range des fichiers existants de ~ dans un profil et les remplace par des liens",
 		Long: "Pour chaque fichier ordinaire de ~ : le déplace vers <profil>/home/<même chemin> et crée à sa place le lien\n" +
-			"que dot install aurait créé. Le profil visé est -p, $DOT_PROFILE, puis le défaut du registre.\n\n" +
+			"que dot install aurait créé. Le profil visé est -p, $DOT_PROFILE, puis le défaut du registre.\n" +
+			"--os range dans home@<système>/ (darwin, linux), --host dans home@<machine>/ : variantes de home/ qui ne\n" +
+			"valent que pour ce système ou cette machine (le sparse checkout doit les lister).\n\n" +
 			"Refus (exit 1, les autres fichiers continuent) : hors de ~ ou dans ~/.dot, lien symbolique (un fichier déjà\n" +
 			"lié aussi), dossier, destination existante, fichier déjà lié par un autre profil, home/ hors du sparse\n" +
 			"checkout, terme interdit de la liste du profil visé, secret (betterleaks). Le contrôle précède tout\n" +
@@ -83,18 +86,30 @@ func newAdoptCmd(env *Env) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, args []string) error {
+			layer := "home"
+			switch {
+			case onOS && onHost:
+				return usagef("adopt : --os et --host s'excluent")
+			case onOS:
+				layer = link.OSLayer()
+			case onHost:
+				var ok bool
+				if layer, ok = link.HostLayer(); !ok {
+					return errors.New("adopt : --host : nom de machine inconnu ou invalide")
+				}
+			}
 			dir, err := env.ProfileDir()
 			if err != nil {
 				return err
 			}
 			dir, _ = filepath.Abs(dir)
 			key := filepath.Base(dir)
-			if _, err := os.Stat(filepath.Join(dir, "home")); err != nil {
+			if _, err := os.Stat(filepath.Join(dir, layer)); err != nil {
 				if fi, serr := os.Stat(dir); serr != nil || !fi.IsDir() {
 					return fmt.Errorf("adopt : clone absent (%s)", dir)
 				}
 			}
-			if err := sparseHasHome(dir); err != nil {
+			if err := sparseHasLayer(dir, layer); err != nil {
 				return fmt.Errorf("adopt : %v", err)
 			}
 			g, err := adoptGuard(env, dir)
@@ -128,9 +143,9 @@ func newAdoptCmd(env *Env) *cobra.Command {
 					continue
 				}
 				tilde := link.Tilde(env.Home, src)
-				dst := filepath.Join(dir, "home", rel)
+				dst := filepath.Join(dir, layer, rel)
 				if _, err := os.Lstat(dst); err == nil {
-					refuse(tilde, fmt.Sprintf("destination existante (%s:home/%s)", key, filepath.ToSlash(rel)))
+					refuse(tilde, fmt.Sprintf("destination existante (%s:%s/%s)", key, layer, filepath.ToSlash(rel)))
 					continue
 				}
 				if owners := link.ClaimedBy(rel, others); len(owners) > 0 {
@@ -146,7 +161,7 @@ func newAdoptCmd(env *Env) *cobra.Command {
 					refuse(tilde, msg)
 					continue
 				}
-				fmt.Fprintf(env.Stdout, "adopt %s -> %s:home/%s\n", tilde, key, filepath.ToSlash(rel))
+				fmt.Fprintf(env.Stdout, "adopt %s -> %s:%s/%s\n", tilde, key, layer, filepath.ToSlash(rel))
 				if dry {
 					continue
 				}
@@ -165,6 +180,8 @@ func newAdoptCmd(env *Env) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&onOS, "os", false, "range dans home@<système>/ (variante de ce système)")
+	cmd.Flags().BoolVar(&onHost, "host", false, "range dans home@<machine>/ (variante de cette machine)")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "affiche le plan et contrôle sans rien écrire")
 	return cmd
 }
