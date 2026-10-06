@@ -63,6 +63,19 @@ profils inscrits, les autres commandes sur le profil par défaut. `DOTFILES_DEPL
 directement le dossier d'un profil (compatibilité de transition et point d'entrée des tests).
 La clé d'un `dot install <url>` sans `-p` est le nom du dépôt de l'URL.
 
+## Variantes par système et par machine
+
+À côté de `home/`, un profil peut porter `home@darwin/`, `home@linux/` et `home@<machine>/` (nom
+court de la machine, en minuscules). Pour un même chemin de `~`, `home@<machine>` l'emporte sur
+`home@<os>`, qui l'emporte sur `home/` ; les variantes d'un autre système ou d'une autre machine
+sont ignorées. Il n'y a pas de moteur de modèles : les fichiers de `~` restent des liens vers le
+clone. Les conflits entre profils se calculent après cette résolution, `dot install -n` affiche la
+couche retenue quand ce n'est pas `home`, et `dot adopt --os|--host` range un fichier dans la
+variante. Un `deploy.sparse` doit citer chaque variante voulue (`home@darwin`…).
+`DOT_HOSTNAME` remplace le nom de la machine, pour les tests uniquement.
+
+Limite actuelle : `dot settings`, `dot mcp` et la configuration mise lisent encore `home/` seul.
+
 ## Installation
 
 L'amorce `install.sh` télécharge la release figée dans le script, vérifie son sha256 contre la
