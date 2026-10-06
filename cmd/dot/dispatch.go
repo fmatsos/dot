@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,22 +45,48 @@ loop:
 	return rest, c == root
 }
 
-// findExtension looks for an executable dot-<name> in the profile's bin/, then in the PATH.
-func findExtension(env *Env, name string) (path string, deploy string) {
+// findExtension looks for an executable dot-<name> in a profile's bin/, then in the PATH.
+// Without -p, DOT_PROFILE or DOTFILES_DEPLOY and with several profiles registered, every
+// profile's bin/ is searched: a name claimed by two profiles is refused.
+func findExtension(env *Env, name string) (path string, deploy string, err error) {
 	if !extensionName.MatchString(name) {
-		return "", ""
+		return "", "", nil
 	}
 	if dir, err := env.ProfileDir(); err == nil {
 		deploy = dir
-		p := filepath.Join(dir, "bin", "dot-"+name)
-		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0 {
-			return p, deploy
+	}
+	targeted := env.Profile != "" || env.Getenv("DOT_PROFILE") != "" || env.Getenv("DOTFILES_DEPLOY") != ""
+	keys, kerr := env.ProfileKeys()
+	if targeted || kerr != nil || len(keys) <= 1 {
+		if deploy != "" {
+			if p := filepath.Join(deploy, "bin", "dot-"+name); isExecutable(p) {
+				return p, deploy, nil
+			}
+		}
+	} else {
+		var owners []string
+		for _, k := range keys {
+			if p := filepath.Join(env.ProfileDirFor(k), "bin", "dot-"+name); isExecutable(p) {
+				owners, path = append(owners, k), p
+			}
+		}
+		switch len(owners) {
+		case 1:
+			return path, env.ProfileDirFor(owners[0]), nil
+		case 0:
+		default:
+			return "", "", fmt.Errorf("extension dot-%s revendiquée par plusieurs profils (%s) : précisez -p <clé>", name, strings.Join(owners, ", "))
 		}
 	}
 	if p, err := exec.LookPath("dot-" + name); err == nil {
-		return p, deploy
+		return p, deploy, nil
 	}
-	return "", deploy
+	return "", deploy, nil
+}
+
+func isExecutable(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0
 }
 
 // runWithStdio runs a child with the env's standard streams (stdin unless already set); its exit status becomes an exitError.
@@ -88,7 +115,9 @@ func runExtension(env *Env, path, deploy string, args []string) error {
 // runExternal runs `dot <name> args…`: the extension dot-<name> if any, else git on the profile clone.
 func runExternal(env *Env, args []string) error {
 	name := args[0]
-	if path, deploy := findExtension(env, name); path != "" {
+	if path, deploy, err := findExtension(env, name); err != nil {
+		return err
+	} else if path != "" {
 		return runExtension(env, path, deploy, args[1:])
 	}
 	dir, err := env.ProfileDir()

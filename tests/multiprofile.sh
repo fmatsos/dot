@@ -159,6 +159,22 @@ echo 'OK   push goes on after a failing profile and exits 1 naming it'
 fails 1 dot send; grep -q "'send' is not a git command" "$S/err"
 echo 'OK   dot send is no dot command any more (git fallback)'
 
+# Multi-profile extensions: search all profiles when no -p, fail if claimed by two, run if by one.
+mkdir -p "$HOME/.dot/a/bin" "$HOME/.dot/b/bin"
+printf '#!/bin/sh\necho "a-only from profile a"\nexit 0\n' >"$HOME/.dot/a/bin/dot-a-only"; chmod +x "$HOME/.dot/a/bin/dot-a-only"
+printf '#!/bin/sh\necho "both from a"\nexit 0\n' >"$HOME/.dot/a/bin/dot-shared"; chmod +x "$HOME/.dot/a/bin/dot-shared"
+printf '#!/bin/sh\necho "both from b"\nexit 0\n' >"$HOME/.dot/b/bin/dot-shared"; chmod +x "$HOME/.dot/b/bin/dot-shared"
+[ "$(dot a-only)" = "a-only from profile a" ] || { echo "FAIL: a-only extension"; exit 1; }
+echo 'OK   extension only in profile a is run'
+fails 1 dot shared
+grep -q 'plusieurs profils' "$S/err" && grep -q '\ba\b' "$S/err" && grep -q '\bb\b' "$S/err" || { echo "FAIL: multi-profile error"; cat "$S/err"; exit 1; }
+echo 'OK   extension claimed by two profiles is refused with profile names'
+dot -p a shared >"$S/out" 2>&1; [ "$(cat "$S/out")" = "both from a" ] || { echo "FAIL: -p a should run a version"; exit 1; }
+echo 'OK   with -p, extension is run from that profile even if others have it'
+printf '#!/bin/sh\necho "from path"\nexit 0\n' >"$S/bin/dot-pathonly"; chmod +x "$S/bin/dot-pathonly"
+[ "$(dot pathonly)" = "from path" ] || { echo "FAIL: path-only extension"; exit 1; }
+echo 'OK   extension only in PATH is run when no profile has it'
+
 # Both profiles provide the module sources (settings.base.json, servers.json): the install must
 # work, nothing links them, and `dot settings` / `dot mcp` merge the two. Separate HOME and PATH.
 (

@@ -50,8 +50,8 @@ func TestConfigGetCompletion(t *testing.T) {
 
 	completions, _ := getCmd.ValidArgsFunction(getCmd, []string{}, "")
 	expectedKeys := map[string]bool{
-		"default":               true,
-		"profiles.perso.repo":   true,
+		"default":                true,
+		"profiles.perso.repo":    true,
 		"profiles.acmecorp.repo": true,
 	}
 
@@ -83,8 +83,8 @@ func TestConfigUnsetCompletion(t *testing.T) {
 
 	completions, _ := unsetCmd.ValidArgsFunction(unsetCmd, []string{}, "")
 	expectedKeys := map[string]bool{
-		"default":               true,
-		"profiles.perso.repo":   true,
+		"default":                true,
+		"profiles.perso.repo":    true,
 		"profiles.acmecorp.repo": true,
 	}
 

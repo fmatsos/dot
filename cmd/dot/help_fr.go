@@ -40,7 +40,9 @@ func frenchHelp(env *Env, root *cobra.Command) {
 				return target.Help()
 			}
 			if len(args) == 1 {
-				if path, deploy := findExtension(env, args[0]); path != "" {
+				if path, deploy, err := findExtension(env, args[0]); err != nil {
+					return err
+				} else if path != "" {
 					return runExtension(env, path, deploy, []string{"--help"})
 				}
 			}
