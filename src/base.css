@@ -1,0 +1,41 @@
+/* Generic mechanics, no design: inlined first by build.py; the site's own CSS comes after
+   and sets the look. Needs from the site: --focus-in / --focus-out (two contrasting colors
+   for the focus ring, visible on every background), @font-face with font-display: optional
+   (a late web font must not reflow the page: CLS). */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: var(--hh, 0px); }
+html[data-motion="off"], html.dragging { scroll-behavior: auto; }
+body { margin: 0; overflow-x: hidden; }
+img { max-width: 100%; height: auto; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }         /* reflow at 320 px (RGAA 10.11) */
+.table { overflow-x: auto; }                                     /* a wide table scrolls, as a focusable region */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 16px; top: -100px; z-index: 100; }
+.skip:focus { top: 12px; }
+:focus-visible { outline: 3px solid var(--focus-in, #000); outline-offset: 3px; box-shadow: 0 0 0 3px var(--focus-out, #fff); }
+main:focus { outline: none; box-shadow: none; }
+[hidden] { display: none !important; }
+:where(nav, ul, ol) a, :where(button) { display: inline-block; min-height: 24px; min-width: 24px; }   /* target size (WCAG 2.5.8); zero specificity: the design overrides */
+
+/* motion: every loop and every "not shown yet" state lives under [data-motion="on"] (and .ready) */
+.sprite { overflow: hidden; display: none; pointer-events: none; }
+.sprite img { width: calc(var(--frames, 6) * 100%); max-width: none; height: 100%; display: block; }
+[data-motion="on"] .sprite { display: block; }
+[data-motion="on"] .sprite img { animation: sprite-frames var(--speed, 1.2s) steps(var(--frames, 6)) infinite; }
+@keyframes sprite-frames { to { transform: translateX(-100%); } }
+[data-hop] { position: absolute; left: 0; top: 0; z-index: 2; }
+
+/* entrances: .enter elements of a [data-part] play in when it becomes .active; --d staggers them */
+[data-motion="on"].ready [data-part] .enter { transition: opacity .6s, transform .7s cubic-bezier(.3, 1.4, .5, 1); transition-delay: calc(var(--d, 0) * 100ms); }
+[data-motion="on"].ready [data-part]:not(.active) .enter { opacity: 0; transform: var(--enter-from, translateY(32px)); transition-delay: 0s; }
+
+/* parts that each fill the screen: opt in with html[data-snap]; mandatory only when all fit */
+html[data-snap] { scroll-snap-type: y proximity; }
+html[data-snap].snap { scroll-snap-type: y mandatory; }
+html[data-snap].dragging { scroll-snap-type: none; }
+html[data-snap] [data-part] { scroll-snap-align: start; min-height: calc(100svh - var(--hh, 0px)); }
+
+/* the rail's labels are shown by the site on hover / focus; Escape hides them */
+[data-rail].quiet a span { opacity: 0 !important; }
+[data-rail-thumb] { touch-action: none; cursor: grab; }
+[data-rail-thumb]:active { cursor: grabbing; }

@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en" class="home" data-motion="off">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dot — Dotfiles profiles, safely linked</title>
+<meta name="description" content="One tool for all your dotfiles profiles: linked into your home, guarded against leaks, with secrets from your vault.">
+<link rel="canonical" href="https://fmatsos.github.io/dot/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="dot">
+<meta property="og:title" content="dot — Dotfiles profiles, safely linked">
+<meta property="og:description" content="One tool for all your dotfiles profiles: linked into your home, guarded against leaks, with secrets from your vault.">
+<meta property="og:url" content="https://fmatsos.github.io/dot/">
+<meta property="og:image" content="https://fmatsos.github.io/dot/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="dot&#x27;s four-armed ladybug mascot in a twilight garden">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#171027">
+<link rel="icon" href="./assets/favicon-64.png" type="image/png" sizes="64x64">
+<link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
+<link rel="preload" href="./assets/fonts/fraunces-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" as="image" href="assets/hero-800.avif" imagesrcset="assets/hero-800.avif 800w, assets/hero-1600.avif 1600w" imagesizes="100vw" fetchpriority="high">
+<style>
+/* Generic mechanics, no design: inlined first by build.py; the site's own CSS comes after
+   and sets the look. Needs from the site: --focus-in / --focus-out (two contrasting colors
+   for the focus ring, visible on every background), @font-face with font-display: optional
+   (a late web font must not reflow the page: CLS). */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: var(--hh, 0px); }
+html[data-motion="off"], html.dragging { scroll-behavior: auto; }
+body { margin: 0; overflow-x: hidden; }
+img { max-width: 100%; height: auto; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }         /* reflow at 320 px (RGAA 10.11) */
+.table { overflow-x: auto; }                                     /* a wide table scrolls, as a focusable region */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 16px; top: -100px; z-index: 100; }
+.skip:focus { top: 12px; }
+:focus-visible { outline: 3px solid var(--focus-in, #000); outline-offset: 3px; box-shadow: 0 0 0 3px var(--focus-out, #fff); }
+main:focus { outline: none; box-shadow: none; }
+[hidden] { display: none !important; }
+:where(nav, ul, ol) a, :where(button) { display: inline-block; min-height: 24px; min-width: 24px; }   /* target size (WCAG 2.5.8); zero specificity: the design overrides */
+
+/* motion: every loop and every "not shown yet" state lives under [data-motion="on"] (and .ready) */
+.sprite { overflow: hidden; display: none; pointer-events: none; }
+.sprite img { width: calc(var(--frames, 6) * 100%); max-width: none; height: 100%; display: block; }
+[data-motion="on"] .sprite { display: block; }
+[data-motion="on"] .sprite img { animation: sprite-frames var(--speed, 1.2s) steps(var(--frames, 6)) infinite; }
+@keyframes sprite-frames { to { transform: translateX(-100%); } }
+[data-hop] { position: absolute; left: 0; top: 0; z-index: 2; }
+
+/* entrances: .enter elements of a [data-part] play in when it becomes .active; --d staggers them */
+[data-motion="on"].ready [data-part] .enter { transition: opacity .6s, transform .7s cubic-bezier(.3, 1.4, .5, 1); transition-delay: calc(var(--d, 0) * 100ms); }
+[data-motion="on"].ready [data-part]:not(.active) .enter { opacity: 0; transform: var(--enter-from, translateY(32px)); transition-delay: 0s; }
+
+/* parts that each fill the screen: opt in with html[data-snap]; mandatory only when all fit */
+html[data-snap] { scroll-snap-type: y proximity; }
+html[data-snap].snap { scroll-snap-type: y mandatory; }
+html[data-snap].dragging { scroll-snap-type: none; }
+html[data-snap] [data-part] { scroll-snap-align: start; min-height: calc(100svh - var(--hh, 0px)); }
+
+/* the rail's labels are shown by the site on hover / focus; Escape hides them */
+[data-rail].quiet a span { opacity: 0 !important; }
+[data-rail-thumb] { touch-action: none; cursor: grab; }
+[data-rail-thumb]:active { cursor: grabbing; }
+
+@font-face{font-family:Fraunces;src:url(./assets/fonts/fraunces-600.woff2) format("woff2");font-weight:600;font-display:optional}
+:root{--soil:#171027;--soil-2:#211637;--soil-3:#2d2045;--cream:#fff5df;--muted:#d0c4df;--lime:#c3ff73;--lime-deep:#a2dc53;--red:#ff8377;--line:rgba(255,245,223,.18);--focus-in:#c3ff73;--focus-out:#171027;--serif:Fraunces,Georgia,serif;--mono:"SFMono-Regular",ui-monospace,Consolas,monospace;color-scheme:dark}
+html{background:var(--soil);color:var(--cream);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.65;scroll-padding-top:5rem}
+body{position:relative;background:var(--soil);color:var(--cream);font-size:1rem;overflow-wrap:anywhere}
+a{color:inherit;text-underline-offset:.22em;text-decoration-thickness:.08em}
+a:hover{color:var(--lime)}
+button{font:inherit;color:inherit}
+code,pre{font-family:var(--mono);font-size:.9em}
+code{color:var(--lime)}
+h1,h2,h3,p{margin-top:0}
+h1,h2,h3{line-height:1.12}
+h1,h2{font-family:var(--serif);font-weight:600;letter-spacing:-.035em}
+h1{font-size:clamp(3.2rem,8vw,7.8rem);margin-bottom:1rem}
+h2{font-size:clamp(2.65rem,5.5vw,5.4rem);max-width:14ch;margin-bottom:1.3rem}
+h2 em{color:var(--lime);font-style:normal}
+h3{font-size:1.25rem}
+.site-header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:1.25rem;min-height:4.5rem;padding:.65rem clamp(1rem,4vw,4rem);background:rgba(23,16,39,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(16px)}
+.brand,.footer-brand{display:inline-flex;align-items:center;gap:.55rem;font-family:var(--serif);font-size:1.65rem;font-weight:600;text-decoration:none;line-height:1}
+.brand img{border-radius:50%}.brand-period{color:var(--lime)}
+.site-header nav ul,.site-footer nav ul{display:flex;align-items:center;gap:clamp(.65rem,2vw,1.6rem);padding:0;margin:0;list-style:none}
+.site-header nav a,.site-footer nav a{font-size:.88rem;text-decoration:none}
+.motion-toggle,.copy-button{border:1px solid var(--line);border-radius:999px;background:transparent;padding:.55rem .9rem;cursor:pointer;font-size:.85rem}
+.motion-toggle[aria-pressed="true"]{border-color:var(--lime);color:var(--lime)}
+.part{position:relative;min-height:78svh;display:grid;align-items:center;padding:clamp(4.5rem,9vw,8.5rem) clamp(1.25rem,7vw,7rem);border-bottom:1px solid var(--line);isolation:isolate;overflow:hidden}
+.section-wrap{position:relative;z-index:1;width:min(100%,76rem);margin-inline:auto}
+.section-heading{max-width:52rem;margin:0 auto 3rem;text-align:center}
+.section-heading h2{margin-inline:auto}
+.section-heading>p:last-child,.section-copy>p,.hero-copy{max-width:44rem;color:var(--muted);font-size:clamp(1rem,1.4vw,1.17rem)}
+.section-heading>p:last-child{margin-inline:auto}
+.eyebrow{margin-bottom:1rem;color:var(--lime);font-family:var(--mono);font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase}
+.text-link{display:inline-flex;gap:.5rem;align-items:center;margin-top:.7rem;color:var(--lime);font-weight:650;text-decoration:none}
+.text-link span,.button span{font-size:1.2em}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:.75rem;min-height:3.25rem;padding:.75rem 1.15rem;border:1px solid transparent;border-radius:999px;text-decoration:none;font-weight:700}
+.button-lime{background:var(--lime);color:var(--soil)}
+.button-lime:hover{background:#d5ffa0;color:var(--soil)}
+.hero{min-height:min(860px,calc(100svh - 4.5rem));padding:clamp(4rem,9vw,8rem) clamp(1.25rem,9vw,9rem);overflow:hidden}
+.hero-picture,.hero-shade{position:absolute;inset:0;z-index:-2}
+.hero-picture img{width:100%;height:100%;object-fit:cover;object-position:center 57%}
+.hero-shade{z-index:-1;background:linear-gradient(90deg,rgba(19,12,36,.95),rgba(21,13,39,.76) 45%,rgba(20,12,38,.17)),linear-gradient(0deg,rgba(19,12,36,.6),transparent 45%)}
+.hero-inner{position:relative;width:min(100%,75rem);margin:0 auto}
+.global-hopper{position:absolute;width:86px;height:86px;z-index:40}
+.hero h1{max-width:9ch}.hero h1 span{color:var(--lime)}
+.hero-copy{max-width:34rem;margin-bottom:2rem;font-size:clamp(1.1rem,2vw,1.4rem)}
+.hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:1.25rem}
+.hero-mascot{position:absolute;right:7%;bottom:-5rem;width:clamp(110px,18vw,220px)!important;height:clamp(110px,18vw,220px)!important;filter:drop-shadow(0 12px 30px rgba(5,3,15,.55))}
+.hero-note{font-weight:500;margin:2.5rem 0 0;color:var(--muted);font-family:var(--mono);font-size:.76rem}
+.scroll-cue{position:absolute;right:clamp(1.25rem,5vw,4rem);bottom:1.4rem;display:flex;gap:.7rem;align-items:center;color:var(--cream);font-size:.8rem;text-decoration:none}
+.scroll-cue span{color:var(--lime);font-size:1.5rem}
+.why,.agents{background:radial-gradient(ellipse at 84% 20%,rgba(117,72,151,.19),transparent 46%),var(--soil)}
+.why-layout,.guard-layout,.secret-layout,.agents-layout,.quick-layout,.dev-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr);align-items:center;gap:clamp(2rem,7vw,7rem)}
+.plot-card,.file-node,.patch,.agent-plan,.license-card{border:1px solid var(--line);border-radius:1.35rem;background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.018));box-shadow:0 22px 64px rgba(6,3,16,.18)}
+.plot-card{padding:clamp(1.5rem,4vw,3rem)}
+.plot-label,.node-index,.patch-tag{font-weight:500;color:var(--lime);font-family:var(--mono);font-size:.76rem;text-transform:uppercase;letter-spacing:.09em}
+.plot-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(2.5rem,.4fr) minmax(0,.65fr);align-items:center;gap:.65rem;padding:1.1rem 0;border-bottom:1px solid var(--line)}
+.plot-row code{font-size:clamp(.7rem,1vw,.88rem);overflow-wrap:anywhere}
+.glow-line{height:2px;background:linear-gradient(90deg,var(--lime),rgba(195,255,115,.12));box-shadow:0 0 12px var(--lime)}
+.plot-foot,.section-foot{margin:1.4rem 0 0;color:var(--muted);font-size:.92rem}
+.files{background:radial-gradient(ellipse at 50% 100%,rgba(75,119,54,.15),transparent 45%),#1c1530}
+.file-garden{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.file-node{position:relative;z-index:1;min-width:0;padding:1.5rem}
+.file-node h3{margin:.55rem 0 1rem}.file-node pre{padding:.9rem;border-radius:.7rem;background:rgba(8,6,17,.56);color:var(--cream);font-size:.8rem;line-height:1.8}
+.file-node pre code{color:var(--cream)}.file-note p{color:var(--muted);font-size:.93rem}
+.file-linker{position:absolute;z-index:2;left:0;top:0}
+.files .section-foot{text-align:center}
+.guard{background:radial-gradient(ellipse at 19% 50%,rgba(195,255,115,.08),transparent 32%),var(--soil-2)}
+.guard-art{position:relative;display:grid;place-items:center;min-height:22rem}
+.guard-mascot{position:relative;z-index:2;width:clamp(170px,26vw,270px)!important;height:clamp(170px,26vw,270px)!important}
+.lock-orbit{position:absolute;width:min(78%,20rem);aspect-ratio:1;border:1px solid rgba(195,255,115,.3);border-radius:50%;box-shadow:0 0 50px rgba(195,255,115,.09),inset 0 0 50px rgba(195,255,115,.05)}
+.orbit{position:absolute;inset:12%;border:1px dashed rgba(255,245,223,.2);border-radius:50%}.orbit-two{inset:25%;border-style:solid;border-color:rgba(255,131,119,.23)}.orbit-dot{position:absolute;top:15%;right:17%;width:.65rem;height:.65rem;border-radius:50%;background:var(--lime);box-shadow:0 0 16px var(--lime)}
+.callout{padding:1rem 1.2rem;border-left:2px solid var(--lime);background:rgba(195,255,115,.06);color:var(--cream)!important}
+.secrets{background:radial-gradient(ellipse at 80% 25%,rgba(255,131,119,.09),transparent 35%),#1c142e}
+.secret-console,.quick-terminal{min-width:0;border:1px solid rgba(195,255,115,.28);border-radius:1.1rem;background:#100c1c;box-shadow:0 24px 64px rgba(0,0,0,.28);overflow:hidden}
+html[data-motion="on"] .secret-console.copied,html[data-motion="on"] .quick-terminal.copied{border-color:var(--lime);box-shadow:0 0 2rem rgba(195,255,115,.18)}
+.console-top,.terminal-top{font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.85rem 1.1rem;border-bottom:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:.72rem}
+.console-top>span:first-child{display:flex;gap:.35rem}.console-top i{width:.55rem;height:.55rem;border-radius:50%;background:var(--red)}.console-top i:nth-child(2){background:var(--lime)}.console-top i:nth-child(3){background:#b59bff}
+.secret-console pre,.quick-terminal pre{margin:0;padding:1.4rem;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--cream);line-height:2}
+.secret-console pre code,.quick-terminal pre code{color:var(--lime);font-size:.82rem}
+.copy-button{margin:0 1.2rem 1.2rem;border-color:rgba(195,255,115,.45);color:var(--lime)}.copy-button:hover{background:rgba(195,255,115,.1)}
+.secret-mascot{justify-self:end;grid-column:2;width:120px!important;height:120px!important;margin-top:-1rem}
+.profiles{background:radial-gradient(ellipse at 50% 0,rgba(112,72,137,.2),transparent 42%),var(--soil)}
+.profile-patches{display:grid;grid-template-columns:minmax(0,1fr) 5rem minmax(0,1fr);align-items:center;gap:1.2rem}
+.patch{min-width:0;padding:clamp(1.35rem,3vw,2.3rem);border-color:rgba(195,255,115,.24)}.patch-work{border-color:rgba(255,131,119,.3);background:linear-gradient(145deg,rgba(255,131,119,.07),rgba(255,255,255,.015))}
+.patch h3{font-family:var(--serif);font-size:2rem}.patch>code{display:block;padding:.7rem;border-radius:.55rem;background:rgba(8,6,17,.45);font-size:.77rem;overflow-wrap:anywhere}.patch>p:last-child{margin:.9rem 0 0;color:var(--muted)}
+.patch-work .patch-tag{color:var(--red)}.patch-path{text-align:center;color:var(--lime);font-family:var(--mono);overflow:hidden}
+.profiles .section-foot{text-align:center}
+.agent-plan{display:grid;grid-template-columns:minmax(0,1fr) 4rem minmax(8rem,.8fr);align-items:center;gap:.8rem;padding:1.5rem}
+.agent-source{display:grid;gap:.65rem}.agent-source span{color:var(--lime);font-family:var(--mono);font-size:.74rem;text-transform:uppercase}.agent-source code{padding:.55rem;border-radius:.5rem;background:rgba(8,6,17,.5);font-size:.72rem;overflow-wrap:anywhere}
+.agent-branch{height:1px;background:linear-gradient(90deg,var(--lime),rgba(195,255,115,.12));box-shadow:0 0 12px var(--lime)}.agent-targets{display:grid;gap:.65rem;padding:0;margin:0;list-style:none}.agent-targets li{padding:.55rem .65rem;border:1px solid var(--line);border-radius:.55rem;font-size:.8rem}
+.quick-start{background:radial-gradient(ellipse at 72% 50%,rgba(195,255,115,.1),transparent 40%),#201632}
+.quick-terminal pre{padding-bottom:1rem}.quick-launch{justify-self:start;margin-top:-2rem}
+.commands{background:#1a132b}.command-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem;margin-bottom:1.7rem}.command-grid article{padding:1.2rem;border:1px solid var(--line);border-radius:.9rem;background:rgba(255,255,255,.025)}.command-grid article>code{font-size:.82rem}.command-grid p{margin:.55rem 0 0;color:var(--muted);font-size:.88rem}
+.development{background:radial-gradient(ellipse at 79% 65%,rgba(195,255,115,.09),transparent 34%),var(--soil-2)}
+.dev-links{display:flex;flex-wrap:wrap;gap:.7rem 1.5rem;margin-top:1rem}.license-card{padding:2rem;text-align:center}.license-mark{display:grid;place-items:center;width:4rem;height:4rem;margin:0 auto 1.2rem;border:1px solid rgba(195,255,115,.45);border-radius:50%;color:var(--lime);font-size:2rem}.license-card p{margin-bottom:.25rem;color:var(--muted);font-family:var(--mono);font-size:.78rem;text-transform:uppercase}.license-card h3{font-family:var(--serif);font-size:2rem}.license-card a{color:var(--lime);font-size:.9rem}
+.site-footer{display:grid;grid-template-columns:1fr auto;align-items:center;gap:.8rem 2rem;padding:2.3rem clamp(1.25rem,7vw,7rem);background:#100c1c;border-top:1px solid var(--line)}
+.site-footer p{margin:0;color:var(--muted);font-size:.9rem}.site-footer nav{grid-column:2;grid-row:1 / span 2}.site-footer nav ul{flex-wrap:wrap;justify-content:flex-end}.site-footer small{color:var(--muted);font-family:var(--mono);font-size:.72rem}
+html[data-motion="on"] .glow-line{animation:line-breathe 3.8s ease-in-out infinite alternate}
+@keyframes line-breathe{to{opacity:.58;filter:brightness(.72)}}
+.prose{max-width:72rem;margin:3rem auto;color:var(--cream)}.prose h2,.prose h3,.prose h4{margin-top:2.2em}.prose h2{font-size:clamp(1.8rem,3vw,2.7rem)}.prose h3{font-family:var(--serif)}.prose a{color:var(--lime)}.prose img{height:auto}.prose pre,.prose code{overflow-wrap:anywhere}.prose table{border-collapse:collapse}.prose th,.prose td{padding:.65rem;border:1px solid var(--line);text-align:left}.prose th{color:var(--lime)}.prose blockquote{border-left:2px solid var(--lime);padding-left:1rem;color:var(--muted)}
+.doc main,.doc #main{max-width:76rem;margin-inline:auto;padding:clamp(2rem,6vw,5rem) clamp(1.25rem,5vw,4rem)}
+.home #main{position:relative}
+.doc #main>h1{font-size:clamp(2.5rem,5vw,4.5rem)}.doc #main>nav{margin:1rem 0 2rem}.doc #main>nav ul{display:flex;flex-wrap:wrap;gap:.55rem;padding:0;list-style:none}.doc #main>nav a,.pager a{display:block;padding:.45rem .8rem;border:1px solid var(--line);border-radius:999px;text-decoration:none}.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:3rem}.pager a{max-width:48%;color:var(--lime)}.pager small{display:block;color:var(--muted)}
+.sitemap #main{max-width:70rem;margin-inline:auto;padding:4rem 1.5rem}.sitemap #main li{margin:.5rem 0}.sitemap #main a{color:var(--lime)}
+@media(max-width:800px){.site-header{flex-wrap:wrap}.site-header nav{order:3;width:100%;overflow:visible}.site-header nav ul{justify-content:flex-start;flex-wrap:wrap;min-width:0}.site-header nav li{flex:0 0 auto}.motion-toggle{margin-left:auto}.why-layout,.guard-layout,.secret-layout,.agents-layout,.quick-layout,.dev-layout{grid-template-columns:1fr;gap:2.5rem}.hero{min-height:calc(100svh - 7.6rem);align-items:center}.hero-mascot{right:0;bottom:-8rem;opacity:.76}.file-garden{grid-template-columns:1fr}.file-linker{display:none}.profile-patches{grid-template-columns:1fr;gap:1rem}.patch-path{display:none}.patch-work{margin-top:.5rem}.agent-plan{grid-template-columns:minmax(0,1fr) 2rem minmax(7rem,.7fr)}.command-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.secret-mascot{grid-column:auto}.quick-launch{margin-top:0}.site-footer{grid-template-columns:1fr}.site-footer nav{grid-column:1;grid-row:auto}.site-footer nav ul{justify-content:flex-start}}
+@media(max-width:480px){.hero{padding-inline:1.25rem}.hero h1{font-size:clamp(3rem,15vw,4.4rem)}.hero-shade{background:linear-gradient(90deg,rgba(19,12,36,.94),rgba(21,13,39,.7) 70%,rgba(20,12,38,.4)),linear-gradient(0deg,rgba(19,12,36,.68),transparent 55%)}.hero-actions{align-items:flex-start;flex-direction:column;gap:.75rem}.plot-row{grid-template-columns:1fr;gap:.45rem}.glow-line{width:55%;margin:.35rem 0}.command-grid{grid-template-columns:1fr}.agent-plan{grid-template-columns:1fr}.agent-branch{width:1px;height:2rem;margin-inline:auto}.agent-targets{grid-template-columns:1fr}.part{padding-inline:1.15rem}.section-heading{text-align:left}.section-heading h2,.section-heading>p:last-child{margin-left:0}.secret-console pre,.quick-terminal pre{padding:1rem}.site-footer nav ul{gap:.4rem 1rem}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+</style>
+<script>
+try { var m = localStorage.getItem("site-motion"); } catch (e) {}
+document.documentElement.dataset.motion = m || (matchMedia("(prefers-reduced-motion: reduce)").matches ? "off" : "on");
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header" data-header>
+  <a aria-current="page" class="brand" href="./index.html" aria-label="dot home"><img src="./assets/favicon-64.png" alt="" width="32" height="32"><span>dot<span class="brand-period">.</span></span></a>
+  <nav aria-label="Main navigation">
+    <ul>
+      <li><a href="./index.html#why">Why dot</a></li>
+      <li><a href="./index.html#profiles">Profiles</a></li>
+      <li><a href="./index.html#quick-start">Get started</a></li>
+      <li><a href="./docs/">Docs</a></li>
+      <li><a href="https://github.com/fmatsos/dot">Source</a></li>
+    </ul>
+  </nav>
+  <button class="motion-toggle" type="button" data-motion-toggle aria-pressed="true" hidden>Animations</button>
+</header>
+<main id="main" tabindex="-1">
+<section class="part hero" data-part id="top" aria-labelledby="hero-title">
+<picture class="hero-picture"><source type="image/avif" srcset="./assets/hero-800.avif 800w, ./assets/hero-1600.avif 1600w" sizes="100vw"><img src="./assets/hero-1600.webp" srcset="./assets/hero-800.webp 800w, ./assets/hero-1600.webp 1600w" sizes="100vw" width="1600" height="900" fetchpriority="high" alt="A twilight garden where bright green paths connect young shoots."></picture>
+<div class="hero-shade" aria-hidden="true"></div><div class="hero-inner">
+<p class="eyebrow">A quieter way to tend your home directory</p><h1 id="hero-title">One garden.<br><span>Every setup.</span></h1>
+<p class="hero-copy">Keep your dotfiles in profiles, link them into <code>~</code>, and keep secrets in their vault.</p>
+<div class="hero-actions"><a class="button button-lime flight-stop" href="#quick-start">Plant your first profile <span aria-hidden="true">↘</span></a><a class="text-link flight-stop" href="./docs/">Read the docs</a></div>
+<div class="sprite hero-mascot" aria-hidden="true" style="--frames:12;--speed:1.2s;width:144px;height:144px"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" data-src="./assets/sprites/sprite-idle-wide.webp" data-srcset="./assets/sprites/sprite-idle.webp 1536w, ./assets/sprites/sprite-idle-wide.webp 3072w" sizes="2640px" alt="" width="3072" height="256" loading="lazy" decoding="async"></div>
+<p class="hero-note">Open source · Unlicense</p></div>
+<a class="scroll-cue" href="#why">Scroll to explore <span aria-hidden="true">↓</span></a></section>
+
+<section class="part why" data-part id="why" aria-labelledby="why-title"><div class="section-wrap why-layout"><div class="section-copy enter"><p class="eyebrow">A profile is a plot of its own</p><h2 id="why-title">Your setup, <em>kept together.</em></h2><p><code>dot</code> installs and maintains one or more dotfiles profiles. Each profile is a data repository with a <code>dot.json</code> manifest, cloned into <code>~/.dot/&lt;key&gt;</code>.</p><p>The files stay in their repository. Symbolic links bring them into your home directory, while the guard and vault integrations help keep the sensitive parts in the right place.</p><a class="text-link" href="./docs/">Explore the documentation <span aria-hidden="true">→</span></a></div>
+<div class="plot-card enter" style="--d:2"><p class="plot-label">one profile</p><div class="plot-row"><code>~/.dot/personal/home/.zshrc</code><span class="glow-line" aria-hidden="true"></span><code>~/.zshrc</code></div><div class="plot-row"><code>~/.dot/personal/bin/</code><span class="glow-line" aria-hidden="true"></span><code>~/.local/bin/</code></div><p class="plot-foot">The path in <code>~</code> leads back to the profile.</p></div></div></section>
+
+<section class="part files" data-part id="files" aria-labelledby="files-title"><div class="section-wrap"><div class="section-heading enter"><p class="eyebrow">Plant files where programs expect them</p><h2 id="files-title">From repository to <em>home.</em></h2><p>Keep deployable files under <code>home/</code> and executables under <code>bin/</code>. <code>dot install</code> links them into the places your system already uses.</p></div>
+<div class="file-garden"><div class="sprite file-linker" data-hop=".file-node" aria-hidden="true" style="--frames:12;--speed:1.2s;width:92px;height:92px"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" data-src="./assets/sprites/sprite-link-wide.webp" data-srcset="./assets/sprites/sprite-link.webp 1536w, ./assets/sprites/sprite-link-wide.webp 3072w" sizes="1104px" alt="" width="3072" height="256" loading="lazy" decoding="async"></div>
+<article class="file-node enter"><span class="node-index">01</span><h3>Files become links</h3><pre><code>home/.zshrc → ~/.zshrc<br>bin/backup → ~/.local/bin/backup</code></pre></article>
+<article class="file-node enter" style="--d:1"><span class="node-index">02</span><h3>Keep editing in place</h3><pre><code>~/.zshrc → profile/home/.zshrc</code></pre></article>
+<article class="file-node file-note enter" style="--d:2"><span class="node-index">03</span><h3>Safe to repeat</h3><p>Existing files move to a backup. Running <code>dot install</code> again changes nothing.</p><p><code>dot install -n</code> prints steps without running them. Existing files are not overwritten.</p></article></div></div></section>
+
+<section class="part guard" data-part id="guard" aria-labelledby="guard-title"><div class="section-wrap guard-layout"><div class="guard-art enter"><div class="lock-orbit" aria-hidden="true"><span class="orbit orbit-one"></span><span class="orbit orbit-two"></span><span class="orbit-dot"></span></div><div class="sprite guard-mascot" aria-hidden="true" style="--frames:12;--speed:1.2s;width:220px;height:220px"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" data-src="./assets/sprites/sprite-guard-wide.webp" data-srcset="./assets/sprites/sprite-guard.webp 1536w, ./assets/sprites/sprite-guard-wide.webp 3072w" sizes="3240px" alt="" width="3072" height="256" loading="lazy" decoding="async"></div></div>
+<div class="section-copy enter" style="--d:1"><p class="eyebrow">A lock on the garden gate</p><h2 id="guard-title">Catch a leak <em>before it leaves.</em></h2><p><code>dot guard</code> checks files and git metadata for forbidden terms and secrets, from one-line hooks on commit and push.</p><p>The guard fails closed if its terms list is missing or its scanner is unavailable. It reports file names, branches and commits, never the text it found.</p><p class="callout">Checks happen before <code>dot push</code> writes and pushes profile changes.</p></div></div></section>
+
+<section class="part secrets" data-part id="secrets" aria-labelledby="secrets-title"><div class="section-wrap secret-layout"><div class="section-copy enter"><p class="eyebrow">The key stays with the vault</p><h2 id="secrets-title">Use a secret.<br><em>Keep it out of config.</em></h2><p>Store a reference in your profile. <code>dot secrets run</code> reads the value from Bitwarden (<code>bw</code>) or Proton Pass (<code>pass-cli</code>) only when the wrapped command needs it.</p><p>Names stay in a local <code>secrets.local</code> file with mode <code>600</code>. A value is not passed as a process argument or left in your shell.</p></div>
+<div class="secret-console enter" style="--d:2"><div class="console-top"><span aria-hidden="true"><i></i><i></i><i></i></span><span>vault → command</span></div><pre id="secret-commands"><code>dot secrets add GITHUB_TOKEN bw:github-token<br>dot secrets run GITHUB_TOKEN -- gh api user</code></pre><button class="copy-button" type="button" data-copy><span aria-hidden="true">↗</span> Copy commands<span class="sr-only"> for secrets</span></button></div>
+<div class="sprite secret-mascot enter" aria-hidden="true" style="--frames:12;--speed:1.8s;width:138px;height:138px;--d:3"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" data-src="./assets/sprites/sprite-secret-wide.webp" data-srcset="./assets/sprites/sprite-secret.webp 1536w, ./assets/sprites/sprite-secret-wide.webp 3072w" sizes="1656px" alt="" width="3072" height="256" loading="lazy" decoding="async"></div></div></section>
+
+<section class="part profiles" data-part id="profiles" aria-labelledby="profiles-title"><div class="section-wrap"><div class="section-heading enter"><p class="eyebrow">Personal and work can share a machine</p><h2 id="profiles-title">More than one <em>patch.</em></h2><p>Keep profiles side by side. Each can bring a different git identity, and <code>dot</code> treats them all the same way.</p></div>
+<div class="profile-patches"><article class="patch enter"><p class="patch-tag">personal</p><h3>personal</h3><code>dot install https://github.com/you/dotfiles-perso.git</code><p>One repository, one profile.</p></article><span class="patch-path" aria-hidden="true">················</span><article class="patch patch-work enter" style="--d:2"><p class="patch-tag">work</p><h3>work</h3><code>dot install https://github.com/you/dotfiles-work.git -p work</code><p>Choose a profile for repositories under a folder.</p></article></div><p class="section-foot enter">Both profiles update with <code>dot pull</code>. If they claim the same link, install refuses before writing.</p></div></section>
+
+<section class="part agents" data-part id="agents" aria-labelledby="agents-title"><div class="section-wrap agents-layout"><div class="section-copy enter"><p class="eyebrow">Tend shared tools from one profile</p><h2 id="agents-title">One place for <em>agent config.</em></h2><p><code>dot settings</code> and <code>dot mcp</code> merge a profile's settings and MCP servers into Claude Code, Codex and OpenCode.</p><p>Preview the plan before applying it, or preview the settings diff.</p></div><div class="agent-plan enter" style="--d:2"><div class="agent-source"><span>profile</span><code>home/.claude/settings.base.json</code><code>home/.config/mcp/servers.json</code></div><span class="agent-branch" aria-hidden="true"></span><ul class="agent-targets" aria-label="Configured coding agents"><li>Claude Code</li><li>Codex</li><li>OpenCode</li></ul></div></div></section>
+
+<section class="part quick-start" data-part id="quick-start" aria-labelledby="quick-title"><div class="section-wrap quick-layout"><div class="quick-copy enter"><p class="eyebrow">Start with a profile</p><h2 id="quick-title">Put down <em>roots.</em></h2><p>Install the static binary and, if you want, give the installer a profile URL. The installer checks the download, then runs <code>dot self-update</code>.</p><a class="text-link" href="./docs/">All documentation <span aria-hidden="true">→</span></a></div>
+<div class="quick-terminal enter" style="--d:2"><div class="terminal-top"><span>quick start</span><span>Linux · macOS</span></div><pre id="quick-commands"><code>curl -fsSL https://raw.githubusercontent.com/fmatsos/dot/main/install.sh | sh -s -- https://github.com/you/dotfiles.git<br>dot install https://github.com/you/dotfiles.git -n<br>dot doctor</code></pre><button class="copy-button" type="button" data-copy data-copy-shell>Copy commands</button></div><a class="button button-lime quick-launch launch-stop" href="https://github.com/fmatsos/dot">View dot on GitHub <span aria-hidden="true">↗</span></a></div></section>
+
+<section class="part commands" data-part id="commands" aria-labelledby="commands-title"><div class="section-wrap"><div class="section-heading enter"><p class="eyebrow">A small set of clear commands</p><h2 id="commands-title">The tools in your <em>kit.</em></h2><p>From installing links to checking a profile, the command reference is in the README.</p></div><div class="command-grid enter" style="--d:1"><article><code>dot install</code><p>Clone, register and link a profile.</p></article><article><code>dot pull · dot push</code><p>Update profiles, or commit and push tracked changes.</p></article><article><code>dot status · dot doctor</code><p>See profile changes or get a read-only health report.</p></article><article><code>dot adopt · dot backups</code><p>Bring a home file into a profile, or restore a backup.</p></article><article><code>dot guard · dot secrets</code><p>Check for leaks and resolve secrets from your vault.</p></article><article><code>dot settings · dot mcp</code><p>Merge agent settings and MCP servers.</p></article></div><a class="text-link enter" href="./docs/">See all commands and options <span aria-hidden="true">→</span></a></div></section>
+
+<section class="part development" data-part id="development" aria-labelledby="development-title"><div class="section-wrap dev-layout"><div class="section-copy enter"><p class="eyebrow">Grow the project</p><h2 id="development-title">Built in the <em>open.</em></h2><p><code>dot</code> is written in Go with Cobra. The project documents its design, development workflow and private vulnerability reporting.</p><div class="dev-links"><a class="text-link" href="./docs/DESIGN.html">Design <span aria-hidden="true">↗</span></a><a class="text-link" href="./docs/CONTRIBUTING.html">Contributing <span aria-hidden="true">↗</span></a><a class="text-link" href="./docs/SECURITY.html">Security <span aria-hidden="true">↗</span></a></div></div><div class="license-card enter" style="--d:2"><span class="license-mark" aria-hidden="true">∞</span><p>Public domain</p><h3>Unlicense</h3><a href="https://github.com/fmatsos/dot/blob/main/LICENSE">Read the license <span aria-hidden="true">↗</span></a></div></div></section>
+<div class="sprite global-hopper" data-hop="#top .flight-stop, .plot-card, .file-node, .guard-layout .section-copy, .secret-console, .patch, .agent-plan, #quick-start .quick-launch, .command-grid article, .license-card" aria-hidden="true" style="--frames:12;--speed:.85s;width:86px;height:86px"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" data-src="./assets/sprites/sprite-fly-wide.webp" data-srcset="./assets/sprites/sprite-fly.webp 1536w, ./assets/sprites/sprite-fly-wide.webp 3072w" sizes="1032px" alt="" width="3072" height="256" loading="lazy" decoding="async"></div>
+
+</main>
+<footer class="site-footer">
+  <a aria-current="page" class="footer-brand" href="./index.html">dot<span class="brand-period">.</span></a>
+  <p>One tool for all your dotfiles profiles, without leaking a thing.</p>
+  <nav aria-label="Footer navigation">
+    <ul>
+      <li><a href="./sitemap.html">Site map</a></li>
+      <li><a href="./docs/">Documentation</a></li>
+      <li><a href="https://github.com/fmatsos/dot">Source on GitHub</a></li>
+    </ul>
+  </nav>
+  <small>Public domain · Unlicense</small>
+</footer>
+<p class="sr-only" role="status" id="status" aria-live="polite"></p>
+<script>
+/* Generic behaviours, each switched on by markup; no design. Inlined first by build.py.
+   [data-motion-toggle]   the Animations button (aria-pressed); html[data-motion] = on|off
+   img[data-src]          decorative sprites: loaded after `load`, only while motion is on
+   [data-copy]            a button copying the text of its previous sibling (or of data-copy="#id");
+                          data-copy-shell drops "$ " prompts and "# comments"; fires "site:copied"
+   [data-part]            parts of a page: the one under the middle of the screen gets .active,
+                          links to it in [data-parts-nav] get aria-current="true"; html.snap when
+                          every part fits the screen (with html[data-snap]); --hh = header height
+   [data-rail]            a scroll rail: its [data-rail-thumb] follows the scroll and can be dragged
+   [data-hop="sel"]       a sprite that jumps onto the elements matching sel inside its parent,
+                          measured from their positions (any layout), while its part is active
+   html.ready             set once the above is wired: "not shown yet" styles may apply */
+(() => {
+  const html = document.documentElement, on = () => html.dataset.motion === "on";
+  const status = document.getElementById("status");
+  const say = msg => { if (!status) return; status.textContent = msg; setTimeout(() => { status.textContent = ""; }, 4000); };
+  const listeners = [];   // run when motion is switched
+  const onMotion = f => listeners.push(f);
+
+  // decorative sprites
+  let loaded = false;
+  const sprites = () => {
+    if (loaded || !on() || document.readyState !== "complete") return;
+    loaded = true;
+    document.querySelectorAll("img[data-src]").forEach(i => {
+      if (i.dataset.srcset) i.srcset = i.dataset.srcset;
+      i.src = i.dataset.src;
+    });
+  };
+  addEventListener("load", sprites);
+  onMotion(sprites);
+
+  // RGAA 13.8: every looping animation can be stopped, and the choice sticks
+  document.querySelectorAll("[data-motion-toggle]").forEach(b => {
+    b.hidden = false;
+    b.setAttribute("aria-pressed", String(on()));
+    b.addEventListener("click", () => {
+      html.dataset.motion = on() ? "off" : "on";
+      document.querySelectorAll("[data-motion-toggle]").forEach(x => x.setAttribute("aria-pressed", String(on())));
+      try { localStorage.setItem("site-motion", html.dataset.motion); } catch (e) {}
+      listeners.forEach(f => f());
+    });
+  });
+
+  // copy buttons
+  document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => {
+    const src = b.dataset.copy ? document.querySelector(b.dataset.copy) : b.previousElementSibling;
+    let t = src.innerText;
+    if ("copyShell" in b.dataset) t = t.split("\n").map(l => l.replace(/^\$ /, "").replace(/\s+# .*$/, "")).join("\n");
+    navigator.clipboard.writeText(t.trim()).then(() => {
+      say(b.dataset.copied || "Copied to the clipboard.");
+      b.dispatchEvent(new CustomEvent("site:copied", { bubbles: true, detail: { motion: on() } }));
+    }, () => say("Copy failed: select the text and copy it by hand."));
+  }));
+
+  // parts of a page
+  const parts = [...document.querySelectorAll("[data-part]")];
+  const header = document.querySelector("[data-header]");
+  const navLinks = [...document.querySelectorAll("[data-parts-nav] a[href^='#']")];
+  const max = () => html.scrollHeight - innerHeight;
+  let cur;
+  const hops = [];
+  const current = () => {
+    if (!parts.length) return;
+    const mid = innerHeight / 2;
+    const p = scrollY >= max() - 2 ? parts.at(-1) : parts.find(x => { const r = x.getBoundingClientRect(); return r.top <= mid && r.bottom > mid; });
+    if (!p || p === cur) return;
+    cur = p;
+    parts.forEach(x => x.classList.toggle("active", x === p));
+    navLinks.forEach(a => a.getAttribute("href") === "#" + p.id ? a.setAttribute("aria-current", "true") : a.removeAttribute("aria-current"));
+    hops.forEach(h => h.start());
+  };
+  const fit = () => {
+    const hh = header ? header.offsetHeight : 0;
+    html.style.setProperty("--hh", hh + "px");
+    if ("snap" in html.dataset) html.classList.toggle("snap", parts.every(s => s.offsetHeight <= innerHeight - hh + 1));
+  };
+  if (header) new ResizeObserver(fit).observe(header);
+  fit();
+
+  // the scroll rail
+  const rail = document.querySelector("[data-rail]"), thumb = rail && rail.querySelector("[data-rail-thumb]");
+  const place = () => { if (thumb) thumb.style.transform = `translateY(${(scrollY / Math.max(1, max())) * (rail.clientHeight - thumb.offsetHeight)}px)`; };
+  if (thumb) {
+    const toY = e => { const r = rail.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientY - r.top - thumb.offsetHeight / 2) / (r.height - thumb.offsetHeight))) * max(); };
+    thumb.addEventListener("pointerdown", e => {
+      e.preventDefault(); thumb.setPointerCapture(e.pointerId); html.classList.add("dragging");
+      const move = ev => scrollTo({ top: toY(ev), behavior: "instant" });
+      const up = () => { html.classList.remove("dragging"); thumb.removeEventListener("pointermove", move); thumb.removeEventListener("pointerup", up); };
+      thumb.addEventListener("pointermove", move); thumb.addEventListener("pointerup", up);
+    });
+    rail.addEventListener("click", e => { if (!e.target.closest("a, [data-rail-thumb]")) scrollTo({ top: toY(e) }); });
+    addEventListener("keydown", e => { if (e.key === "Escape") rail.classList.add("quiet"); });   // WCAG 1.4.13
+    ["pointerleave", "focusout"].forEach(ev => rail.addEventListener(ev, () => rail.classList.remove("quiet")));
+  }
+
+  // sprites that jump from element to element
+  document.querySelectorAll("[data-hop]").forEach(sprite => {
+    const box = sprite.parentElement, part = sprite.closest("[data-part]");
+    const targets = () => [...box.querySelectorAll(sprite.dataset.hop)];
+    let at = null, timer;
+    const spot = el => {
+      const r = box.getBoundingClientRect(), k = el.getBoundingClientRect();
+      const hh = parseFloat(getComputedStyle(html).getPropertyValue("--hh")) || 0;
+      const clearTop = sprite.classList.contains("global-hopper") ? hh + 8 - r.top : 0;
+      return [k.left - r.left + (k.width - sprite.offsetWidth) / 2, Math.max(clearTop, k.top - r.top - sprite.offsetHeight + 8)];
+    };
+    const stand = () => { if (at) { const [x, y] = spot(at); sprite.style.transform = `translate(${x}px, ${y}px)`; } };
+    const start = () => {
+      clearTimeout(timer);
+      const hideForFiles = sprite.classList.contains("global-hopper") && cur?.id === "files";
+      sprite.hidden = hideForFiles;
+      if (hideForFiles) {
+        sprite.getAnimations().forEach(a => a.cancel());
+        sprite.style.removeProperty("transform");
+        return;
+      }
+      if (!on() || (part && cur !== part)) return;
+      const all = targets();
+      if (!all.length) return;
+      const firstRow = all[0].getBoundingClientRect().bottom;
+      const seen = all.filter(el => {   // local hops stay on their first row; the site-wide flyer follows visible stops
+        const k = el.getBoundingClientRect();
+        return k.left >= 0 && k.right <= innerWidth && (box === document.body || box.id === "main" ? k.top < innerHeight && k.bottom > 0 : k.top < firstRow);
+      });
+      if (!seen.length) { timer = setTimeout(start, 800); return; }
+      const next = seen.find(el => all.indexOf(el) > all.indexOf(at)) || seen[0];
+      const from = at ? spot(at) : spot(next), to = spot(next);
+      const flip = to[0] < from[0] ? " scaleX(-1)" : "";
+      const r = box.getBoundingClientRect(), hh = parseFloat(getComputedStyle(html).getPropertyValue("--hh")) || 0;
+      const clearTop = sprite.classList.contains("global-hopper") ? hh + 8 - r.top : 0;
+      const peak = Math.max(clearTop, Math.min(from[1], to[1]) - 90);
+      const jump = sprite.animate([
+        { transform: `translate(${from[0]}px, ${from[1]}px)${flip}`, easing: "ease-out" },
+        { transform: `translate(${(from[0] + to[0]) / 2}px, ${peak}px)${flip}`, easing: "ease-in" },
+        { transform: `translate(${to[0]}px, ${to[1]}px)${flip}` }], { duration: 700, fill: "forwards" });
+      jump.onfinish = () => {
+        at = next; stand(); jump.cancel();
+        next.animate([{ translate: "0 0" }, { translate: "0 12px", scale: "1.02 .96" }, { translate: "0 0" }], { duration: 400, easing: "ease-out" });
+        next.dispatchEvent(new CustomEvent("site:landed", { bubbles: true }));
+        timer = setTimeout(start, 1100);
+      };
+    };
+    hops.push({ start });
+    onMotion(start);
+    addEventListener("resize", () => { sprite.getAnimations().forEach(a => a.cancel()); stand(); });
+    box.querySelectorAll("*").forEach(el => { if (el.scrollWidth > el.clientWidth) el.addEventListener("scroll", stand, { passive: true }); });
+    if (!part) start();
+  });
+
+  addEventListener("scroll", () => { current(); requestAnimationFrame(place); }, { passive: true });
+  ["load", "hashchange", "resize"].forEach(e => addEventListener(e, () => { fit(); current(); place(); }));
+  current(); place();
+  html.classList.add("ready");
+})();
+
+// Small page-specific responses to the behaviours wired by base.js.
+document.addEventListener("site:copied", event => {
+  if (!event.detail.motion) return;
+  const panel = event.target.closest(".secret-console, .quick-terminal");
+  if (!panel) return;
+  panel.classList.add("copied");
+  setTimeout(() => panel.classList.remove("copied"), 900);
+});
+
+</script>
+</body>
+</html>

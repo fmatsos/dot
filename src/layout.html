@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="{{lang}}" class="{{html_class}}" data-motion="off">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="canonical" href="{{url}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{name}}">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{url}}">
+<meta property="og:image" content="{{og_image}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{og_image_alt}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#171027">
+<link rel="icon" href="{{root}}assets/favicon-64.png" type="image/png" sizes="64x64">
+<link rel="apple-touch-icon" href="{{root}}assets/apple-touch-icon.png">
+<link rel="preload" href="{{root}}assets/fonts/fraunces-600.woff2" as="font" type="font/woff2" crossorigin>
+{{head}}
+<style>
+{{css}}
+</style>
+<script>
+try { var m = localStorage.getItem("site-motion"); } catch (e) {}
+document.documentElement.dataset.motion = m || (matchMedia("(prefers-reduced-motion: reduce)").matches ? "off" : "on");
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header" data-header>
+  <a class="brand" href="{{root}}index.html" aria-label="dot home"><img src="{{root}}assets/favicon-64.png" alt="" width="32" height="32"><span>dot<span class="brand-period">.</span></span></a>
+  <nav aria-label="Main navigation">
+    <ul>
+      <li><a href="{{root}}index.html#why">Why dot</a></li>
+      <li><a href="{{root}}index.html#profiles">Profiles</a></li>
+      <li><a href="{{root}}index.html#quick-start">Get started</a></li>
+      <li><a href="{{root}}docs/">Docs</a></li>
+      <li><a href="{{repo}}">Source</a></li>
+    </ul>
+  </nav>
+  <button class="motion-toggle" type="button" data-motion-toggle aria-pressed="true" hidden>Animations</button>
+</header>
+<main id="main" tabindex="-1">
+{{main}}
+</main>
+<footer class="site-footer">
+  <a class="footer-brand" href="{{root}}index.html">dot<span class="brand-period">.</span></a>
+  <p>One tool for all your dotfiles profiles, without leaking a thing.</p>
+  <nav aria-label="Footer navigation">
+    <ul>
+      <li><a href="{{root}}sitemap.html">Site map</a></li>
+      <li><a href="{{root}}docs/">Documentation</a></li>
+      <li><a href="{{repo}}">Source on GitHub</a></li>
+    </ul>
+  </nav>
+  <small>Public domain · Unlicense</small>
+</footer>
+<p class="sr-only" role="status" id="status" aria-live="polite"></p>
+<script>
+{{js}}
+</script>
+</body>
+</html>

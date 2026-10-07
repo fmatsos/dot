@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en" class="doc" data-motion="off">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation · dot</title>
+<meta name="description" content="dot installs and maintains one or more dotfiles profiles, from a single static binary for Linux and macOS. A profile is a data repository with a dot.json…">
+<link rel="canonical" href="https://fmatsos.github.io/dot/docs/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="dot">
+<meta property="og:title" content="Documentation · dot">
+<meta property="og:description" content="dot installs and maintains one or more dotfiles profiles, from a single static binary for Linux and macOS. A profile is a data repository with a dot.json…">
+<meta property="og:url" content="https://fmatsos.github.io/dot/docs/">
+<meta property="og:image" content="https://fmatsos.github.io/dot/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="dot&#x27;s four-armed ladybug mascot in a twilight garden">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#171027">
+<link rel="icon" href="../assets/favicon-64.png" type="image/png" sizes="64x64">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="preload" href="../assets/fonts/fraunces-600.woff2" as="font" type="font/woff2" crossorigin>
+
+<style>
+/* Generic mechanics, no design: inlined first by build.py; the site's own CSS comes after
+   and sets the look. Needs from the site: --focus-in / --focus-out (two contrasting colors
+   for the focus ring, visible on every background), @font-face with font-display: optional
+   (a late web font must not reflow the page: CLS). */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: var(--hh, 0px); }
+html[data-motion="off"], html.dragging { scroll-behavior: auto; }
+body { margin: 0; overflow-x: hidden; }
+img { max-width: 100%; height: auto; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }         /* reflow at 320 px (RGAA 10.11) */
+.table { overflow-x: auto; }                                     /* a wide table scrolls, as a focusable region */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 16px; top: -100px; z-index: 100; }
+.skip:focus { top: 12px; }
+:focus-visible { outline: 3px solid var(--focus-in, #000); outline-offset: 3px; box-shadow: 0 0 0 3px var(--focus-out, #fff); }
+main:focus { outline: none; box-shadow: none; }
+[hidden] { display: none !important; }
+:where(nav, ul, ol) a, :where(button) { display: inline-block; min-height: 24px; min-width: 24px; }   /* target size (WCAG 2.5.8); zero specificity: the design overrides */
+
+/* motion: every loop and every "not shown yet" state lives under [data-motion="on"] (and .ready) */
+.sprite { overflow: hidden; display: none; pointer-events: none; }
+.sprite img { width: calc(var(--frames, 6) * 100%); max-width: none; height: 100%; display: block; }
+[data-motion="on"] .sprite { display: block; }
+[data-motion="on"] .sprite img { animation: sprite-frames var(--speed, 1.2s) steps(var(--frames, 6)) infinite; }
+@keyframes sprite-frames { to { transform: translateX(-100%); } }
+[data-hop] { position: absolute; left: 0; top: 0; z-index: 2; }
+
+/* entrances: .enter elements of a [data-part] play in when it becomes .active; --d staggers them */
+[data-motion="on"].ready [data-part] .enter { transition: opacity .6s, transform .7s cubic-bezier(.3, 1.4, .5, 1); transition-delay: calc(var(--d, 0) * 100ms); }
+[data-motion="on"].ready [data-part]:not(.active) .enter { opacity: 0; transform: var(--enter-from, translateY(32px)); transition-delay: 0s; }
+
+/* parts that each fill the screen: opt in with html[data-snap]; mandatory only when all fit */
+html[data-snap] { scroll-snap-type: y proximity; }
+html[data-snap].snap { scroll-snap-type: y mandatory; }
+html[data-snap].dragging { scroll-snap-type: none; }
+html[data-snap] [data-part] { scroll-snap-align: start; min-height: calc(100svh - var(--hh, 0px)); }
+
+/* the rail's labels are shown by the site on hover / focus; Escape hides them */
+[data-rail].quiet a span { opacity: 0 !important; }
+[data-rail-thumb] { touch-action: none; cursor: grab; }
+[data-rail-thumb]:active { cursor: grabbing; }
+
+@font-face{font-family:Fraunces;src:url(../assets/fonts/fraunces-600.woff2) format("woff2");font-weight:600;font-display:optional}
+:root{--soil:#171027;--soil-2:#211637;--soil-3:#2d2045;--cream:#fff5df;--muted:#d0c4df;--lime:#c3ff73;--lime-deep:#a2dc53;--red:#ff8377;--line:rgba(255,245,223,.18);--focus-in:#c3ff73;--focus-out:#171027;--serif:Fraunces,Georgia,serif;--mono:"SFMono-Regular",ui-monospace,Consolas,monospace;color-scheme:dark}
+html{background:var(--soil);color:var(--cream);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.65;scroll-padding-top:5rem}
+body{position:relative;background:var(--soil);color:var(--cream);font-size:1rem;overflow-wrap:anywhere}
+a{color:inherit;text-underline-offset:.22em;text-decoration-thickness:.08em}
+a:hover{color:var(--lime)}
+button{font:inherit;color:inherit}
+code,pre{font-family:var(--mono);font-size:.9em}
+code{color:var(--lime)}
+h1,h2,h3,p{margin-top:0}
+h1,h2,h3{line-height:1.12}
+h1,h2{font-family:var(--serif);font-weight:600;letter-spacing:-.035em}
+h1{font-size:clamp(3.2rem,8vw,7.8rem);margin-bottom:1rem}
+h2{font-size:clamp(2.65rem,5.5vw,5.4rem);max-width:14ch;margin-bottom:1.3rem}
+h2 em{color:var(--lime);font-style:normal}
+h3{font-size:1.25rem}
+.site-header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:1.25rem;min-height:4.5rem;padding:.65rem clamp(1rem,4vw,4rem);background:rgba(23,16,39,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(16px)}
+.brand,.footer-brand{display:inline-flex;align-items:center;gap:.55rem;font-family:var(--serif);font-size:1.65rem;font-weight:600;text-decoration:none;line-height:1}
+.brand img{border-radius:50%}.brand-period{color:var(--lime)}
+.site-header nav ul,.site-footer nav ul{display:flex;align-items:center;gap:clamp(.65rem,2vw,1.6rem);padding:0;margin:0;list-style:none}
+.site-header nav a,.site-footer nav a{font-size:.88rem;text-decoration:none}
+.motion-toggle,.copy-button{border:1px solid var(--line);border-radius:999px;background:transparent;padding:.55rem .9rem;cursor:pointer;font-size:.85rem}
+.motion-toggle[aria-pressed="true"]{border-color:var(--lime);color:var(--lime)}
+.part{position:relative;min-height:78svh;display:grid;align-items:center;padding:clamp(4.5rem,9vw,8.5rem) clamp(1.25rem,7vw,7rem);border-bottom:1px solid var(--line);isolation:isolate;overflow:hidden}
+.section-wrap{position:relative;z-index:1;width:min(100%,76rem);margin-inline:auto}
+.section-heading{max-width:52rem;margin:0 auto 3rem;text-align:center}
+.section-heading h2{margin-inline:auto}
+.section-heading>p:last-child,.section-copy>p,.hero-copy{max-width:44rem;color:var(--muted);font-size:clamp(1rem,1.4vw,1.17rem)}
+.section-heading>p:last-child{margin-inline:auto}
+.eyebrow{margin-bottom:1rem;color:var(--lime);font-family:var(--mono);font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase}
+.text-link{display:inline-flex;gap:.5rem;align-items:center;margin-top:.7rem;color:var(--lime);font-weight:650;text-decoration:none}
+.text-link span,.button span{font-size:1.2em}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:.75rem;min-height:3.25rem;padding:.75rem 1.15rem;border:1px solid transparent;border-radius:999px;text-decoration:none;font-weight:700}
+.button-lime{background:var(--lime);color:var(--soil)}
+.button-lime:hover{background:#d5ffa0;color:var(--soil)}
+.hero{min-height:min(860px,calc(100svh - 4.5rem));padding:clamp(4rem,9vw,8rem) clamp(1.25rem,9vw,9rem);overflow:hidden}
+.hero-picture,.hero-shade{position:absolute;inset:0;z-index:-2}
+.hero-picture img{width:100%;height:100%;object-fit:cover;object-position:center 57%}
+.hero-shade{z-index:-1;background:linear-gradient(90deg,rgba(19,12,36,.95),rgba(21,13,39,.76) 45%,rgba(20,12,38,.17)),linear-gradient(0deg,rgba(19,12,36,.6),transparent 45%)}
+.hero-inner{position:relative;width:min(100%,75rem);margin:0 auto}
+.global-hopper{position:absolute;width:86px;height:86px;z-index:40}
+.hero h1{max-width:9ch}.hero h1 span{color:var(--lime)}
+.hero-copy{max-width:34rem;margin-bottom:2rem;font-size:clamp(1.1rem,2vw,1.4rem)}
+.hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:1.25rem}
+.hero-mascot{position:absolute;right:7%;bottom:-5rem;width:clamp(110px,18vw,220px)!important;height:clamp(110px,18vw,220px)!important;filter:drop-shadow(0 12px 30px rgba(5,3,15,.55))}
+.hero-note{font-weight:500;margin:2.5rem 0 0;color:var(--muted);font-family:var(--mono);font-size:.76rem}
+.scroll-cue{position:absolute;right:clamp(1.25rem,5vw,4rem);bottom:1.4rem;display:flex;gap:.7rem;align-items:center;color:var(--cream);font-size:.8rem;text-decoration:none}
+.scroll-cue span{color:var(--lime);font-size:1.5rem}
+.why,.agents{background:radial-gradient(ellipse at 84% 20%,rgba(117,72,151,.19),transparent 46%),var(--soil)}
+.why-layout,.guard-layout,.secret-layout,.agents-layout,.quick-layout,.dev-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr);align-items:center;gap:clamp(2rem,7vw,7rem)}
+.plot-card,.file-node,.patch,.agent-plan,.license-card{border:1px solid var(--line);border-radius:1.35rem;background:linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.018));box-shadow:0 22px 64px rgba(6,3,16,.18)}
+.plot-card{padding:clamp(1.5rem,4vw,3rem)}
+.plot-label,.node-index,.patch-tag{font-weight:500;color:var(--lime);font-family:var(--mono);font-size:.76rem;text-transform:uppercase;letter-spacing:.09em}
+.plot-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(2.5rem,.4fr) minmax(0,.65fr);align-items:center;gap:.65rem;padding:1.1rem 0;border-bottom:1px solid var(--line)}
+.plot-row code{font-size:clamp(.7rem,1vw,.88rem);overflow-wrap:anywhere}
+.glow-line{height:2px;background:linear-gradient(90deg,var(--lime),rgba(195,255,115,.12));box-shadow:0 0 12px var(--lime)}
+.plot-foot,.section-foot{margin:1.4rem 0 0;color:var(--muted);font-size:.92rem}
+.files{background:radial-gradient(ellipse at 50% 100%,rgba(75,119,54,.15),transparent 45%),#1c1530}
+.file-garden{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.file-node{position:relative;z-index:1;min-width:0;padding:1.5rem}
+.file-node h3{margin:.55rem 0 1rem}.file-node pre{padding:.9rem;border-radius:.7rem;background:rgba(8,6,17,.56);color:var(--cream);font-size:.8rem;line-height:1.8}
+.file-node pre code{color:var(--cream)}.file-note p{color:var(--muted);font-size:.93rem}
+.file-linker{position:absolute;z-index:2;left:0;top:0}
+.files .section-foot{text-align:center}
+.guard{background:radial-gradient(ellipse at 19% 50%,rgba(195,255,115,.08),transparent 32%),var(--soil-2)}
+.guard-art{position:relative;display:grid;place-items:center;min-height:22rem}
+.guard-mascot{position:relative;z-index:2;width:clamp(170px,26vw,270px)!important;height:clamp(170px,26vw,270px)!important}
+.lock-orbit{position:absolute;width:min(78%,20rem);aspect-ratio:1;border:1px solid rgba(195,255,115,.3);border-radius:50%;box-shadow:0 0 50px rgba(195,255,115,.09),inset 0 0 50px rgba(195,255,115,.05)}
+.orbit{position:absolute;inset:12%;border:1px dashed rgba(255,245,223,.2);border-radius:50%}.orbit-two{inset:25%;border-style:solid;border-color:rgba(255,131,119,.23)}.orbit-dot{position:absolute;top:15%;right:17%;width:.65rem;height:.65rem;border-radius:50%;background:var(--lime);box-shadow:0 0 16px var(--lime)}
+.callout{padding:1rem 1.2rem;border-left:2px solid var(--lime);background:rgba(195,255,115,.06);color:var(--cream)!important}
+.secrets{background:radial-gradient(ellipse at 80% 25%,rgba(255,131,119,.09),transparent 35%),#1c142e}
+.secret-console,.quick-terminal{min-width:0;border:1px solid rgba(195,255,115,.28);border-radius:1.1rem;background:#100c1c;box-shadow:0 24px 64px rgba(0,0,0,.28);overflow:hidden}
+html[data-motion="on"] .secret-console.copied,html[data-motion="on"] .quick-terminal.copied{border-color:var(--lime);box-shadow:0 0 2rem rgba(195,255,115,.18)}
+.console-top,.terminal-top{font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.85rem 1.1rem;border-bottom:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:.72rem}
+.console-top>span:first-child{display:flex;gap:.35rem}.console-top i{width:.55rem;height:.55rem;border-radius:50%;background:var(--red)}.console-top i:nth-child(2){background:var(--lime)}.console-top i:nth-child(3){background:#b59bff}
+.secret-console pre,.quick-terminal pre{margin:0;padding:1.4rem;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--cream);line-height:2}
+.secret-console pre code,.quick-terminal pre code{color:var(--lime);font-size:.82rem}
+.copy-button{margin:0 1.2rem 1.2rem;border-color:rgba(195,255,115,.45);color:var(--lime)}.copy-button:hover{background:rgba(195,255,115,.1)}
+.secret-mascot{justify-self:end;grid-column:2;width:120px!important;height:120px!important;margin-top:-1rem}
+.profiles{background:radial-gradient(ellipse at 50% 0,rgba(112,72,137,.2),transparent 42%),var(--soil)}
+.profile-patches{display:grid;grid-template-columns:minmax(0,1fr) 5rem minmax(0,1fr);align-items:center;gap:1.2rem}
+.patch{min-width:0;padding:clamp(1.35rem,3vw,2.3rem);border-color:rgba(195,255,115,.24)}.patch-work{border-color:rgba(255,131,119,.3);background:linear-gradient(145deg,rgba(255,131,119,.07),rgba(255,255,255,.015))}
+.patch h3{font-family:var(--serif);font-size:2rem}.patch>code{display:block;padding:.7rem;border-radius:.55rem;background:rgba(8,6,17,.45);font-size:.77rem;overflow-wrap:anywhere}.patch>p:last-child{margin:.9rem 0 0;color:var(--muted)}
+.patch-work .patch-tag{color:var(--red)}.patch-path{text-align:center;color:var(--lime);font-family:var(--mono);overflow:hidden}
+.profiles .section-foot{text-align:center}
+.agent-plan{display:grid;grid-template-columns:minmax(0,1fr) 4rem minmax(8rem,.8fr);align-items:center;gap:.8rem;padding:1.5rem}
+.agent-source{display:grid;gap:.65rem}.agent-source span{color:var(--lime);font-family:var(--mono);font-size:.74rem;text-transform:uppercase}.agent-source code{padding:.55rem;border-radius:.5rem;background:rgba(8,6,17,.5);font-size:.72rem;overflow-wrap:anywhere}
+.agent-branch{height:1px;background:linear-gradient(90deg,var(--lime),rgba(195,255,115,.12));box-shadow:0 0 12px var(--lime)}.agent-targets{display:grid;gap:.65rem;padding:0;margin:0;list-style:none}.agent-targets li{padding:.55rem .65rem;border:1px solid var(--line);border-radius:.55rem;font-size:.8rem}
+.quick-start{background:radial-gradient(ellipse at 72% 50%,rgba(195,255,115,.1),transparent 40%),#201632}
+.quick-terminal pre{padding-bottom:1rem}.quick-launch{justify-self:start;margin-top:-2rem}
+.commands{background:#1a132b}.command-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem;margin-bottom:1.7rem}.command-grid article{padding:1.2rem;border:1px solid var(--line);border-radius:.9rem;background:rgba(255,255,255,.025)}.command-grid article>code{font-size:.82rem}.command-grid p{margin:.55rem 0 0;color:var(--muted);font-size:.88rem}
+.development{background:radial-gradient(ellipse at 79% 65%,rgba(195,255,115,.09),transparent 34%),var(--soil-2)}
+.dev-links{display:flex;flex-wrap:wrap;gap:.7rem 1.5rem;margin-top:1rem}.license-card{padding:2rem;text-align:center}.license-mark{display:grid;place-items:center;width:4rem;height:4rem;margin:0 auto 1.2rem;border:1px solid rgba(195,255,115,.45);border-radius:50%;color:var(--lime);font-size:2rem}.license-card p{margin-bottom:.25rem;color:var(--muted);font-family:var(--mono);font-size:.78rem;text-transform:uppercase}.license-card h3{font-family:var(--serif);font-size:2rem}.license-card a{color:var(--lime);font-size:.9rem}
+.site-footer{display:grid;grid-template-columns:1fr auto;align-items:center;gap:.8rem 2rem;padding:2.3rem clamp(1.25rem,7vw,7rem);background:#100c1c;border-top:1px solid var(--line)}
+.site-footer p{margin:0;color:var(--muted);font-size:.9rem}.site-footer nav{grid-column:2;grid-row:1 / span 2}.site-footer nav ul{flex-wrap:wrap;justify-content:flex-end}.site-footer small{color:var(--muted);font-family:var(--mono);font-size:.72rem}
+html[data-motion="on"] .glow-line{animation:line-breathe 3.8s ease-in-out infinite alternate}
+@keyframes line-breathe{to{opacity:.58;filter:brightness(.72)}}
+.prose{max-width:72rem;margin:3rem auto;color:var(--cream)}.prose h2,.prose h3,.prose h4{margin-top:2.2em}.prose h2{font-size:clamp(1.8rem,3vw,2.7rem)}.prose h3{font-family:var(--serif)}.prose a{color:var(--lime)}.prose img{height:auto}.prose pre,.prose code{overflow-wrap:anywhere}.prose table{border-collapse:collapse}.prose th,.prose td{padding:.65rem;border:1px solid var(--line);text-align:left}.prose th{color:var(--lime)}.prose blockquote{border-left:2px solid var(--lime);padding-left:1rem;color:var(--muted)}
+.doc main,.doc #main{max-width:76rem;margin-inline:auto;padding:clamp(2rem,6vw,5rem) clamp(1.25rem,5vw,4rem)}
+.home #main{position:relative}
+.doc #main>h1{font-size:clamp(2.5rem,5vw,4.5rem)}.doc #main>nav{margin:1rem 0 2rem}.doc #main>nav ul{display:flex;flex-wrap:wrap;gap:.55rem;padding:0;list-style:none}.doc #main>nav a,.pager a{display:block;padding:.45rem .8rem;border:1px solid var(--line);border-radius:999px;text-decoration:none}.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:3rem}.pager a{max-width:48%;color:var(--lime)}.pager small{display:block;color:var(--muted)}
+.sitemap #main{max-width:70rem;margin-inline:auto;padding:4rem 1.5rem}.sitemap #main li{margin:.5rem 0}.sitemap #main a{color:var(--lime)}
+@media(max-width:800px){.site-header{flex-wrap:wrap}.site-header nav{order:3;width:100%;overflow:visible}.site-header nav ul{justify-content:flex-start;flex-wrap:wrap;min-width:0}.site-header nav li{flex:0 0 auto}.motion-toggle{margin-left:auto}.why-layout,.guard-layout,.secret-layout,.agents-layout,.quick-layout,.dev-layout{grid-template-columns:1fr;gap:2.5rem}.hero{min-height:calc(100svh - 7.6rem);align-items:center}.hero-mascot{right:0;bottom:-8rem;opacity:.76}.file-garden{grid-template-columns:1fr}.file-linker{display:none}.profile-patches{grid-template-columns:1fr;gap:1rem}.patch-path{display:none}.patch-work{margin-top:.5rem}.agent-plan{grid-template-columns:minmax(0,1fr) 2rem minmax(7rem,.7fr)}.command-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.secret-mascot{grid-column:auto}.quick-launch{margin-top:0}.site-footer{grid-template-columns:1fr}.site-footer nav{grid-column:1;grid-row:auto}.site-footer nav ul{justify-content:flex-start}}
+@media(max-width:480px){.hero{padding-inline:1.25rem}.hero h1{font-size:clamp(3rem,15vw,4.4rem)}.hero-shade{background:linear-gradient(90deg,rgba(19,12,36,.94),rgba(21,13,39,.7) 70%,rgba(20,12,38,.4)),linear-gradient(0deg,rgba(19,12,36,.68),transparent 55%)}.hero-actions{align-items:flex-start;flex-direction:column;gap:.75rem}.plot-row{grid-template-columns:1fr;gap:.45rem}.glow-line{width:55%;margin:.35rem 0}.command-grid{grid-template-columns:1fr}.agent-plan{grid-template-columns:1fr}.agent-branch{width:1px;height:2rem;margin-inline:auto}.agent-targets{grid-template-columns:1fr}.part{padding-inline:1.15rem}.section-heading{text-align:left}.section-heading h2,.section-heading>p:last-child{margin-left:0}.secret-console pre,.quick-terminal pre{padding:1rem}.site-footer nav ul{gap:.4rem 1rem}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+</style>
+<script>
+try { var m = localStorage.getItem("site-motion"); } catch (e) {}
+document.documentElement.dataset.motion = m || (matchMedia("(prefers-reduced-motion: reduce)").matches ? "off" : "on");
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header" data-header>
+  <a class="brand" href="../index.html" aria-label="dot home"><img src="../assets/favicon-64.png" alt="" width="32" height="32"><span>dot<span class="brand-period">.</span></span></a>
+  <nav aria-label="Main navigation">
+    <ul>
+      <li><a href="../index.html#why">Why dot</a></li>
+      <li><a href="../index.html#profiles">Profiles</a></li>
+      <li><a href="../index.html#quick-start">Get started</a></li>
+      <li><a aria-current="page" href="../docs/">Docs</a></li>
+      <li><a href="https://github.com/fmatsos/dot">Source</a></li>
+    </ul>
+  </nav>
+  <button class="motion-toggle" type="button" data-motion-toggle aria-pressed="true" hidden>Animations</button>
+</header>
+<main id="main" tabindex="-1">
+<h1>Documentation</h1>
+<nav aria-label="Documentation pages"><ul>
+<li><a href="DESIGN.html">Design</a></li>
+<li><a href="CONTRIBUTING.html">Contributing</a></li>
+<li><a href="SECURITY.html">Security</a></li>
+</ul></nav>
+<div class="prose">
+<p class="center">
+  <img width="1600" height="533" loading="lazy" decoding="async" src="assets/banner.webp" alt="dot: a ladybug with four arms holding a magnifying glass with a padlock and a golden key, standing among young shoots in a twilight garden where glowing green lines link the shoots. Install and maintain your dotfiles profiles.">
+</p>
+<h2 id="dot">dot.</h2>
+<p class="center">
+  <strong>One tool for all your dotfiles, without leaking a thing.</strong>
+</p>
+<p class="center">
+  <a href="https://github.com/fmatsos/dot/actions/workflows/ci.yml">ci</a>
+  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/0e1c78e3166e3f146a0090a01956f390abf91e852edf9679fa17df45ecadb800/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f4c696e75782d737570706f727465642d737563636573733f6c6f676f3d6c696e7578266c6f676f436f6c6f723d7768697465">Linux: supported</a>
+  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/3993a23eb2eba46860b344cb43171b0100ae3e471779601991b3327656277c8b/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f6d61634f532d737570706f727465642d737563636573733f6c6f676f3d6170706c65266c6f676f436f6c6f723d7768697465">macOS: supported</a>
+  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/29850ca7250f567bd2487b21a169e8324f633ec706c7bbd0c15fa362b5507fc9/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f476f2d73746174696325323062696e6172792d3030414444383f6c6f676f3d676f266c6f676f436f6c6f723d7768697465">Go: static binary</a>
+  <a href="https://github.com/fmatsos/dot/blob/main/LICENSE">License: Unlicense</a>
+</p>
+<p class="center">
+  <a href="#why-dot"><b>Why dot?</b></a> ·
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#a-profile"><b>A profile</b></a> ·
+  <a href="#commands"><b>Commands</b></a> ·
+  <a href="#development"><b>Development</b></a>
+</p>
+<p><code>dot</code> installs and maintains one or more dotfiles profiles, from a single static binary for Linux
+and macOS. A profile is a data repository with a <code>dot.json</code> manifest, cloned into
+<code>~/.dot/&lt;key&gt;</code>. <code>dot</code> brings the rest: the links in <code>~</code>, a guard against leaks (forbidden terms,
+secrets), secrets read from your vault (<code>bw</code> and <code>pass-cli</code>), and the merge of MCP servers and
+settings for Claude Code, Codex and OpenCode.</p>
+<p>Several profiles can live side by side on one machine, a personal one and a work one for
+instance, each with its own git identity, and <code>dot</code> treats them all the same way.</p>
+<h2 id="why-dot">Why dot?</h2>
+<p><strong>Dotfiles</strong> are the configuration files that live in your home directory: <code>~/.zshrc</code>,
+<code>~/.gitconfig</code>, <code>~/.config/…</code>, <code>~/.claude/settings.json</code>. They make a machine yours, so people
+keep them in a git repository to rebuild a machine, or to share one setup between several.</p>
+<p>A plain repository is a good start, and for one machine, one identity and nothing secret near your
+config, it is all you need. The questions come later, and each one is usually answered with a
+script of your own. <code>dot</code> is that layer, written once and tested:</p>
+<h3 id="put-the-files-in-place-without-breaking-anything">Put the files in place, without breaking anything</h3>
+<p>A profile keeps its files under <code>home/</code> (linked into <code>~</code>) and <code>bin/</code> (linked into
+<code>~/.local/bin</code>):</p>
+<pre><code>dotfiles/                      ~ after `dot install`
+├── dot.json
+├── home/
+│   ├── .zshrc            →    ~/.zshrc       (a symbolic link to the file in ~/.dot/dotfiles)
+│   └── .gitconfig        →    ~/.gitconfig
+└── bin/
+    └── backup            →    ~/.local/bin/backup
+</code></pre>
+<p>Editing <code>~/.zshrc</code> edits the file in the repository, so <code>dot push</code> has something to commit. A file
+that was already there is moved to <code>~/.local/state/dotfiles/backup/&lt;date&gt;/</code> (kept 30 days),
+running <code>dot install</code> twice changes nothing, and <code>dot install -n</code> prints the steps it would run
+instead of running them.</p>
+<p><code>dot backups list</code> shows those backups and <code>dot backups restore [&lt;run&gt;] [&lt;path&gt;...]</code> moves files
+back. A file is restored only when its place in <code>~</code> is empty or holds a link managed by dot: a real
+file is never overwritten.</p>
+<p><code>dot adopt ~/.foo</code> goes the other way: it moves an existing file of <code>~</code> into the profile's <code>home/</code>
+and replaces it with a link. Before anything moves, the file name and content go through the
+forbidden terms and the secret scanner; a hit, a missing term list or an unavailable scanner
+refuses the file, and only its name is reported. Symlinks, files outside <code>~</code> and paths already
+provided by another profile are refused too. Nothing is committed: <code>dot push</code> does that.</p>
+<h3 id="one-setup-per-os-or-per-machine">One setup per OS or per machine</h3>
+<p>Besides <code>home/</code>, a profile may carry <code>home@linux/</code>, <code>home@darwin/</code> and <code>home@&lt;host&gt;/</code>, where
+<code>&lt;host&gt;</code> is the machine's short hostname in lower case. For a given path of <code>~</code>, <code>home@&lt;host&gt;</code>
+wins over <code>home@&lt;os&gt;</code>, which wins over <code>home/</code>; variants for another system or machine are
+ignored. There is no templating: files in <code>~</code> stay links into the clone.</p>
+<ul>
+<li>
+<code>dot install -n</code> shows the winning layer when it is not <code>home</code>.</li>
+<li>
+<code>dot adopt --os</code> or <code>--host</code> moves a file into the matching variant.</li>
+<li>A <code>deploy.sparse</code> list must name each variant it wants (<code>home@darwin</code>...).</li>
+<li>
+<code>dot settings</code>, <code>dot mcp</code> and the mise configuration still read <code>home/</code> only.</li>
+</ul>
+<h3 id="keep-a-personal-and-a-work-setup-on-the-same-machine">Keep a personal and a work setup on the same machine</h3>
+<div class="highlight highlight-source-shell"><pre>dot install https://github.com/you/dotfiles-perso.git
+dot install https://github.com/you/dotfiles-work.git -p work
+
+dot profile work <span class="pl-k">~</span>/src/github.com/acme/    <span class="pl-c"><span class="pl-c">#</span> repositories under this folder use the `work` git identity</span>
+dot whoami                                 <span class="pl-c"><span class="pl-c">#</span> run in a repository: the identity in force and the file that sets it</span>
+dot repos --problems                       <span class="pl-c"><span class="pl-c">#</span> repositories whose email differs from their profile, or a bypassed guard</span></pre></div>
+<p><code>dot profile</code> writes an <code>includeIf</code> rule into <code>~/.config/git/profiles.local</code> (never versioned). The
+identity it points to is the <code>work.gitconfig</code> that your manifest declares under <code>profiles</code>, and
+your profile ships the <code>~/.config/git/profiles.gitconfig</code> that <code>dot install</code> adds to your global
+git config, with an include of <code>profiles.local</code>. From then on <code>git commit</code> in <code>~/src/github.com/acme/app</code>
+uses the work name and email, and a repository elsewhere keeps your default one. <code>dot repos --problems</code>
+lists the repositories whose email differs from the one of their profile and exits with 1.</p>
+<p>Both profiles are updated together with <code>dot pull</code>. If they both try to link the same file
+(say <code>~/.zshrc</code>), <code>dot install</code> refuses before it writes anything, naming both sources, instead
+of silently letting one win.</p>
+<h3 id="do-not-leak-your-employer-or-a-token-into-a-personal-repository">Do not leak your employer, or a token, into a personal repository</h3>
+<p>Dotfiles and personal repositories are often public, and they are easy to pollute: a token pasted
+in a snippet, an internal hostname in a comment, a commit made with your work email. Git hooks
+that are one line each (<code>exec dot guard staged</code> in <code>pre-commit</code>, <code>exec dot guard msg "$1"</code> in
+<code>commit-msg</code>, <code>exec dot guard push "$@"</code> in <code>pre-push</code>) run <code>dot guard</code> on every commit and push.
+It reads a list of terms that lives in the profile folder and is never committed:</p>
+<pre><code># ~/.dot/&lt;key&gt;/forbidden.local     (one case-insensitive regular expression per line)
+acme
+internal\.example\.com
+</code></pre>
+<p>Then, in a repository that uses that profile:</p>
+<div class="highlight highlight-source-shell"><pre>git commit -m <span class="pl-s"><span class="pl-pds">"</span>add wiki link<span class="pl-pds">"</span></span>      <span class="pl-c"><span class="pl-c">#</span> refused: a staged file mentions internal.example.com (its name is reported)</span>
+git commit -m <span class="pl-s"><span class="pl-pds">"</span>work for acme<span class="pl-pds">"</span></span>      <span class="pl-c"><span class="pl-c">#</span> refused: the commit message matches a term</span>
+git commit -m <span class="pl-s"><span class="pl-pds">"</span>add token<span class="pl-pds">"</span></span>          <span class="pl-c"><span class="pl-c">#</span> refused: the secret scanner (betterleaks) found a token</span>
+git commit -m <span class="pl-s"><span class="pl-pds">"</span>harmless note<span class="pl-pds">"</span></span>      <span class="pl-c"><span class="pl-c">#</span> accepted</span></pre></div>
+<p>The guard reports file names, branches and commits, never the text it found, and it fails closed:
+a missing list or an unavailable scanner blocks instead of letting everything through (<code>dot push</code>
+is refused until <code>forbidden.local</code> exists). Images and fonts (<code>png</code>, <code>jpg</code>, <code>gif</code>, <code>webp</code>, <code>woff2</code>…) are not read for terms, since their bytes are
+not text (their names are checked, and the secret scan still reads them); any other binary file is. A
+commit made with a work author identity in a personal repository is refused too. A work repository that names the employer on purpose opts
+out of the terms and keeps the secret scan: <code>git config dotfiles.guard secrets</code>. Finally,
+<code>dot terms</code> copies the list to the <code>FORBIDDEN_TERMS</code> secret of the origin repository (with <code>gh</code>),
+so the same check runs in CI.</p>
+<h3 id="keep-secrets-out-of-your-config">Keep secrets out of your config</h3>
+<p>Instead of <code>export GITHUB_TOKEN=…</code> in <code>.zshrc</code>, you keep a reference to your vault
+(Bitwarden or Proton Pass), and the value is read only when a command needs it:</p>
+<div class="highlight highlight-source-shell"><pre>dot secrets add GITHUB_TOKEN bw:github-token     <span class="pl-c"><span class="pl-c">#</span> or pass:&lt;vault&gt;/&lt;item&gt;</span>
+dot secrets run GITHUB_TOKEN -- gh api user      <span class="pl-c"><span class="pl-c">#</span> the token exists for this one command only</span></pre></div>
+<p>The names live in a local file, <code>secrets.local</code> (mode 600), in the profile folder. A value is
+never passed as a process argument and never sits in your shell.</p>
+<h3 id="configure-your-coding-agents-once">Configure your coding agents once</h3>
+<p>Claude Code, Codex and OpenCode each want their own MCP servers and settings. <code>dot</code> keeps one
+shared list and applies it to all three:</p>
+<div class="highlight highlight-source-shell"><pre>dot mcp -n          <span class="pl-c"><span class="pl-c">#</span> preview the plan</span>
+dot mcp             <span class="pl-c"><span class="pl-c">#</span> the servers of your profiles → Claude Code, Codex and OpenCode</span>
+dot settings -n     <span class="pl-c"><span class="pl-c">#</span> preview the diff of ~/.claude/settings.json</span>
+dot settings        <span class="pl-c"><span class="pl-c">#</span> merge home/.claude/settings.base.json into it</span></pre></div>
+<p>For settings, the versioned base wins and the extra local keys are kept, and the old file is
+backed up. For MCP, a local <code>servers.local.json</code> can replace a server by name or remove it, and
+the secrets of a server stay names that <code>dot secrets run</code> resolves when the server starts. With
+one profile the list is <code>~/.config/mcp/servers.json</code>, a link to the profile's file; with several,
+<code>dot</code> reads the list of each profile in registry order.</p>
+<h3 id="notice-when-something-drifts-and-rebuild-a-machine">Notice when something drifts, and rebuild a machine</h3>
+<div class="highlight highlight-source-shell"><pre>dot status          <span class="pl-c"><span class="pl-c">#</span> clones: changes, ahead / behind; and files that are no longer links</span>
+dot doctor          <span class="pl-c"><span class="pl-c">#</span> read-only report of every profile</span></pre></div>
+<p>Some applications rewrite a config file instead of editing it through the link. That file is then
+"detached": its changes would never reach the repository. <code>dot status</code> lists it; once you have
+carried its content back into the profile, <code>dot install</code> puts the link back and keeps the
+detached file in the backup folder.</p>
+<p>On a new machine, <code>dot install &lt;url&gt;</code> brings the profiles back, and <code>dot repos export</code> /
+<code>dot repos clone</code> bring back the repositories you work on, under <code>~/src/&lt;host&gt;/&lt;owner&gt;/&lt;repo&gt;</code>.</p>
+<h2 id="highlights">Highlights</h2>
+<ul>
+<li>
+<strong>Several profiles, one tool.</strong> Each profile lives in its own clone (<code>~/.dot/&lt;key&gt;</code>) and is
+listed in a registry (<code>~/.dot/profiles.json</code>). <code>pull</code>, <code>push</code>, <code>status</code> and <code>doctor</code> act on all
+of them at once, or on a single one with <code>-p</code>.</li>
+<li>
+<strong>Links, not copies.</strong> <code>dot install</code> links the profile's files into <code>~</code>, and <code>dot uninstall</code>
+takes them out again. <code>-n</code> shows what would change without writing anything.</li>
+<li>
+<strong>A guard against leaks.</strong> <code>dot guard</code> checks the staged files, the commit message and the
+push for forbidden terms and secrets, from git hooks that are one line each. The secret
+scanner (betterleaks) is pinned to one version and its sha256 is compiled into the binary.</li>
+<li>
+<strong>Adopt and restore.</strong> <code>dot adopt</code> moves a file of <code>~</code> into the profile, guard first, and
+<code>dot backups restore</code> brings back what an install replaced.</li>
+<li>
+<strong>Per-OS and per-host variants.</strong> <code>home@linux/</code>, <code>home@darwin/</code> and <code>home@&lt;host&gt;/</code> override
+<code>home/</code> path by path.</li>
+<li>
+<strong>Signed releases.</strong> Binaries come with a <code>SHA256SUMS</code> file signed with Ed25519, and
+<code>dot self-update</code> verifies the signature, then the checksum, before replacing the executable.</li>
+<li>
+<strong>Secrets stay in your vault.</strong> <code>dot secrets</code> works with <code>bw</code> and <code>pass-cli</code> (<code>add</code>, <code>get</code>,
+<code>run</code>, <code>unlock</code>, <code>lock</code>, <code>status</code>), so a profile never has to hold them.</li>
+<li>
+<strong>One config for your coding agents.</strong> <code>dot settings</code> and <code>dot mcp</code> merge the settings and the
+MCP servers of a profile into Claude Code, Codex and OpenCode.</li>
+<li>
+<strong>Strict manifests.</strong> <code>dot.json</code> is validated and an unknown key is refused, so a typo is an
+error and not a silent no-op.</li>
+<li>
+<strong>Extensible.</strong> <code>dot &lt;cmd&gt;</code> runs <code>dot-&lt;cmd&gt;</code>, found in the profile's <code>bin/</code> and then on your
+<code>PATH</code>, and falls back to <code>git</code> on the clone.</li>
+<li>
+<strong>A health check.</strong> <code>dot doctor</code> reports the state of every profile without changing anything.</li>
+</ul>
+<h2 id="quick-start">Quick start</h2>
+<p>Install dot, a static binary for Linux or macOS, into <code>~/.local/bin/dot</code>. The script checks the
+download against the checksum it carries (a pinned release, a bootstrap that is not bumped at every
+release), then runs <code>dot self-update</code>, which checks the signature and the checksum of the latest
+release before replacing it; if that update fails, the pinned binary stays. It installs the profile
+when you give it a URL:</p>
+<div class="highlight highlight-source-shell"><pre>curl -fsSL https://raw.githubusercontent.com/fmatsos/dot/main/install.sh <span class="pl-k">|</span> sh -s -- https://github.com/you/dotfiles.git</pre></div>
+<p>Without the URL it only installs <code>dot</code>. Add <code>~/.local/bin</code> to your <code>PATH</code> if it is not there yet,
+then:</p>
+<div class="highlight highlight-source-shell"><pre>dot install https://github.com/you/dotfiles.git -n      <span class="pl-c"><span class="pl-c">#</span> dry run: prints the steps without running them</span>
+dot install https://github.com/you/dotfiles.git         <span class="pl-c"><span class="pl-c">#</span> clone, register and link the profile</span>
+<span class="pl-c1">printf</span> <span class="pl-s"><span class="pl-pds">'</span>my-employer\n<span class="pl-pds">'</span></span> <span class="pl-k">&gt;</span> <span class="pl-k">~</span>/.dot/dotfiles/forbidden.local  <span class="pl-c"><span class="pl-c">#</span> the guard's terms; `dot push` is refused without it</span>
+dot doctor                                              <span class="pl-c"><span class="pl-c">#</span> read-only report</span></pre></div>
+<p>To build it yourself instead, you only need <a href="https://go.dev/dl/" rel="nofollow">Go</a>: <code>git clone</code> the repository,
+then <code>make build</code> produces the static binary <code>./dot</code>.</p>
+<p>Then keep it up to date:</p>
+<div class="highlight highlight-source-shell"><pre>dot pull          <span class="pl-c"><span class="pl-c">#</span> git pull --rebase on every profile, then install</span>
+dot push <span class="pl-s"><span class="pl-pds">"</span>tidy<span class="pl-pds">"</span></span>   <span class="pl-c"><span class="pl-c">#</span> commit the tracked files that changed, then push</span>
+dot status        <span class="pl-c"><span class="pl-c">#</span> changes in the clones and detached files</span></pre></div>
+<p>Each release holds the four binaries (<code>dot-linux-x64</code>, <code>dot-linux-arm64</code>, <code>dot-macos-x64</code>,
+<code>dot-macos-arm64</code>), a <code>SHA256SUMS</code> file and its Ed25519 signature <code>SHA256SUMS.sig</code>. The
+<code>release.yml</code> workflow builds, signs and publishes them when a <code>vX.Y.Z</code> tag is pushed, and releases
+are immutable. <code>dot self-update</code> checks the signature with the public key compiled into the binary,
+then the checksum, before replacing the executable.</p>
+<h2 id="a-profile">A profile</h2>
+<p>A profile is a repository with a <code>dot.json</code> at its root. The manifest says which folders to
+deploy, which git identities the profile has, and which optional modules to enable:</p>
+<div class="highlight highlight-source-json"><pre>{
+  <span class="pl-ent">"repo"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://github.com/you/dotfiles.git<span class="pl-pds">"</span></span>,
+  <span class="pl-ent">"deploy"</span>: { <span class="pl-ent">"sparse"</span>: [<span class="pl-s"><span class="pl-pds">"</span>home<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>bin<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>.githooks<span class="pl-pds">"</span></span>] },
+  <span class="pl-ent">"profiles"</span>: { <span class="pl-ent">"perso"</span>: <span class="pl-s"><span class="pl-pds">"</span>home/.config/git/profiles/perso.gitconfig<span class="pl-pds">"</span></span> },
+  <span class="pl-ent">"deployProfile"</span>: <span class="pl-s"><span class="pl-pds">"</span>perso<span class="pl-pds">"</span></span>,
+  <span class="pl-ent">"marketplace"</span>: { <span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>acme<span class="pl-pds">"</span></span>, <span class="pl-ent">"plugins"</span>: [<span class="pl-s"><span class="pl-pds">"</span>acme<span class="pl-pds">"</span></span>] },
+  <span class="pl-ent">"nvm"</span>: { <span class="pl-ent">"node"</span>: <span class="pl-s"><span class="pl-pds">"</span>22.11.0<span class="pl-pds">"</span></span>, <span class="pl-ent">"packages"</span>: [<span class="pl-s"><span class="pl-pds">"</span>@scope/tool@1.2.3<span class="pl-pds">"</span></span>] },
+  <span class="pl-ent">"modules"</span>: [<span class="pl-s"><span class="pl-pds">"</span>settings<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>mcp<span class="pl-pds">"</span></span>]
+}</pre></div>
+<div class="table" tabindex="0" role="region" aria-label="Table: A profile"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>repo</code></td>
+<td>URL of the profile's repository.</td>
+</tr>
+<tr>
+<td><code>deploy.sparse</code></td>
+<td>The top-level folders to check out and link.</td>
+</tr>
+<tr>
+<td><code>profiles</code></td>
+<td>Named git identities, each one a <code>.gitconfig</code> under <code>home/</code>.</td>
+</tr>
+<tr>
+<td><code>deployProfile</code></td>
+<td>The identity to deploy on this machine. It must be one of <code>profiles</code>.</td>
+</tr>
+<tr>
+<td><code>marketplace</code></td>
+<td>Optional: a plugin marketplace and its plugins.</td>
+</tr>
+<tr>
+<td><code>nvm</code></td>
+<td>Optional: a pinned Node version (<code>x.y.z</code>) and the packages to install with it.</td>
+</tr>
+<tr>
+<td><code>modules</code></td>
+<td>Optional: <code>settings</code> and/or <code>mcp</code>, to merge agent settings and MCP servers.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The git hooks of the data repository stay one line each:</p>
+<div class="highlight highlight-source-shell"><pre><span class="pl-c1">exec</span> dot guard staged        <span class="pl-c"><span class="pl-c">#</span> pre-commit</span>
+<span class="pl-c1">exec</span> dot guard msg <span class="pl-s"><span class="pl-pds">"</span><span class="pl-smi">$1</span><span class="pl-pds">"</span></span>      <span class="pl-c"><span class="pl-c">#</span> commit-msg</span>
+<span class="pl-c1">exec</span> dot guard push <span class="pl-s"><span class="pl-pds">"</span><span class="pl-smi">$@</span><span class="pl-pds">"</span></span>     <span class="pl-c"><span class="pl-c">#</span> pre-push</span></pre></div>
+<h2 id="commands">Commands</h2>
+<pre><code>dot install &lt;url&gt; [-p &lt;key&gt;] [-n]   clone a profile into ~/.dot/&lt;key&gt;, register it, install it
+dot install [-n]                    reinstall every registered profile
+dot pull                            update the profiles (git pull --rebase, then install)
+dot push [message]                  commit the tracked files that changed in the profiles, then push
+dot status                          changes in the clones and detached files (alias st)
+dot uninstall -p &lt;key&gt; [--purge]    remove the links and the registry entry
+dot adopt [-p &lt;key&gt;] [-n] [--os|--host] &lt;file&gt;...
+                                    move a file of ~ into the profile, guard checks first
+dot backups list|restore [-n]       files of ~ backed up by install, and their restoration
+dot self-update [--version vX.Y.Z] [-n]   update dot from a signed release
+dot doctor                          read-only report
+dot config list|get|set|unset       read and edit the ~/.dot/profiles.json registry
+dot whoami | profile | terms | clone | repos
+dot secrets add|get|run|unlock|lock|status
+dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
+dot settings [-n] | dot mcp [-n]   merge Claude settings and MCP servers
+dot &lt;cmd&gt;                           run dot-&lt;cmd&gt; (profile bin/, then PATH), otherwise git on the clone
+</code></pre>
+<h3 id="choosing-a-profile">Choosing a profile</h3>
+<p>The target profile is chosen with <code>-p/--profile &lt;key&gt;</code>, then <code>DOT_PROFILE</code>, then the registry's
+default profile. Without <code>-p</code>, <code>pull</code>, <code>push</code>, <code>status</code>, <code>doctor</code>, <code>settings</code> and <code>mcp</code> act on
+every registered profile, and the other commands on the default profile. With several profiles
+registered, <code>dot &lt;cmd&gt;</code> searches every profile's <code>bin/</code>: a <code>dot-&lt;cmd&gt;</code> claimed by two profiles is
+refused and you must pass <code>-p</code>. Without <code>-p</code>, the key
+of a <code>dot install &lt;url&gt;</code> is the repository name in the URL.</p>
+<div class="table" tabindex="0" role="region" aria-label="Table: Choosing a profile"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DOT_PROFILE</code></td>
+<td>The profile to target when <code>-p</code> is not given.</td>
+</tr>
+<tr>
+<td><code>DOTFILES_DEPLOY</code></td>
+<td>The folder of a profile, used directly (a transition aid and the entry point of the tests).</td>
+</tr>
+<tr>
+<td><code>DOT_BETTERLEAKS</code></td>
+<td>Path of a scanner binary that replaces the pinned betterleaks, for tests only.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="exit-codes">Exit codes</h3>
+<div class="table" tabindex="0" role="region" aria-label="Table: Exit codes"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Success.</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>The command failed.</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>Wrong arguments or flags.</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>The secrets vault is locked or logged out (<code>dot secrets</code>).</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>dot secrets run</code> exits with the code of the command it wraps.</p>
+<h2 id="development">Development</h2>
+<p>Go, with <a href="https://github.com/spf13/cobra">cobra</a> for the command line. <code>make test</code> runs
+<code>go vet</code> and <code>go test -race</code>; <code>make build</code> produces the static binary <code>./dot</code>.</p>
+<p>A command lives in its own file <code>cmd/dot/cmd_&lt;name&gt;.go</code> and registers itself with
+<code>func init() { register(newXxxCmd) }</code>: no shared file is modified. The black-box tests are bash
+scripts <code>tests/&lt;name&gt;.sh</code> that <code>source tests/lib.sh</code> and call <code>dot</code> (the binary in <code>$DOT_BIN</code>,
+built if needed). They must run with GNU and BSD tools alike: <code>tests/lib.sh</code> provides portable
+helpers (<code>stat_inode_mtime</code>, <code>in_pty</code>).</p>
+<div class="table" tabindex="0" role="region" aria-label="Table: Development"><table>
+<thead>
+<tr>
+<th>Workflow</th>
+<th>Runs on</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ci.yml</code></td>
+<td>push, pull request</td>
+<td>The guard (forbidden terms in files and commit metadata, secret scan), then <code>go vet</code>, <code>go test -race</code>, the static build and the black-box tests in <code>tests/*.sh</code>, on Linux and macOS.</td>
+</tr>
+<tr>
+<td><code>release.yml</code></td>
+<td>tag <code>vX.Y.Z</code>
+</td>
+<td>Builds the four static binaries, computes and signs <code>SHA256SUMS</code>, checks the signature against the committed public key and publishes the release.</td>
+</tr>
+<tr>
+<td><code>dependabot.yml</code></td>
+<td>weekly</td>
+<td>Updates the actions and the Go modules.</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="license">License</h2>
+<p>Public domain, see <a href="https://github.com/fmatsos/dot/blob/main/LICENSE">LICENSE</a> (<a href="https://unlicense.org" rel="nofollow">Unlicense</a>). Contributions are dedicated to the public domain too, see <a href="CONTRIBUTING.html">CONTRIBUTING</a>.</p>
+
+
+</div>
+
+</main>
+<footer class="site-footer">
+  <a class="footer-brand" href="../index.html">dot<span class="brand-period">.</span></a>
+  <p>One tool for all your dotfiles profiles, without leaking a thing.</p>
+  <nav aria-label="Footer navigation">
+    <ul>
+      <li><a href="../sitemap.html">Site map</a></li>
+      <li><a aria-current="page" href="../docs/">Documentation</a></li>
+      <li><a href="https://github.com/fmatsos/dot">Source on GitHub</a></li>
+    </ul>
+  </nav>
+  <small>Public domain · Unlicense</small>
+</footer>
+<p class="sr-only" role="status" id="status" aria-live="polite"></p>
+<script>
+/* Generic behaviours, each switched on by markup; no design. Inlined first by build.py.
+   [data-motion-toggle]   the Animations button (aria-pressed); html[data-motion] = on|off
+   img[data-src]          decorative sprites: loaded after `load`, only while motion is on
+   [data-copy]            a button copying the text of its previous sibling (or of data-copy="#id");
+                          data-copy-shell drops "$ " prompts and "# comments"; fires "site:copied"
+   [data-part]            parts of a page: the one under the middle of the screen gets .active,
+                          links to it in [data-parts-nav] get aria-current="true"; html.snap when
+                          every part fits the screen (with html[data-snap]); --hh = header height
+   [data-rail]            a scroll rail: its [data-rail-thumb] follows the scroll and can be dragged
+   [data-hop="sel"]       a sprite that jumps onto the elements matching sel inside its parent,
+                          measured from their positions (any layout), while its part is active
+   html.ready             set once the above is wired: "not shown yet" styles may apply */
+(() => {
+  const html = document.documentElement, on = () => html.dataset.motion === "on";
+  const status = document.getElementById("status");
+  const say = msg => { if (!status) return; status.textContent = msg; setTimeout(() => { status.textContent = ""; }, 4000); };
+  const listeners = [];   // run when motion is switched
+  const onMotion = f => listeners.push(f);
+
+  // decorative sprites
+  let loaded = false;
+  const sprites = () => {
+    if (loaded || !on() || document.readyState !== "complete") return;
+    loaded = true;
+    document.querySelectorAll("img[data-src]").forEach(i => {
+      if (i.dataset.srcset) i.srcset = i.dataset.srcset;
+      i.src = i.dataset.src;
+    });
+  };
+  addEventListener("load", sprites);
+  onMotion(sprites);
+
+  // RGAA 13.8: every looping animation can be stopped, and the choice sticks
+  document.querySelectorAll("[data-motion-toggle]").forEach(b => {
+    b.hidden = false;
+    b.setAttribute("aria-pressed", String(on()));
+    b.addEventListener("click", () => {
+      html.dataset.motion = on() ? "off" : "on";
+      document.querySelectorAll("[data-motion-toggle]").forEach(x => x.setAttribute("aria-pressed", String(on())));
+      try { localStorage.setItem("site-motion", html.dataset.motion); } catch (e) {}
+      listeners.forEach(f => f());
+    });
+  });
+
+  // copy buttons
+  document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => {
+    const src = b.dataset.copy ? document.querySelector(b.dataset.copy) : b.previousElementSibling;
+    let t = src.innerText;
+    if ("copyShell" in b.dataset) t = t.split("\n").map(l => l.replace(/^\$ /, "").replace(/\s+# .*$/, "")).join("\n");
+    navigator.clipboard.writeText(t.trim()).then(() => {
+      say(b.dataset.copied || "Copied to the clipboard.");
+      b.dispatchEvent(new CustomEvent("site:copied", { bubbles: true, detail: { motion: on() } }));
+    }, () => say("Copy failed: select the text and copy it by hand."));
+  }));
+
+  // parts of a page
+  const parts = [...document.querySelectorAll("[data-part]")];
+  const header = document.querySelector("[data-header]");
+  const navLinks = [...document.querySelectorAll("[data-parts-nav] a[href^='#']")];
+  const max = () => html.scrollHeight - innerHeight;
+  let cur;
+  const hops = [];
+  const current = () => {
+    if (!parts.length) return;
+    const mid = innerHeight / 2;
+    const p = scrollY >= max() - 2 ? parts.at(-1) : parts.find(x => { const r = x.getBoundingClientRect(); return r.top <= mid && r.bottom > mid; });
+    if (!p || p === cur) return;
+    cur = p;
+    parts.forEach(x => x.classList.toggle("active", x === p));
+    navLinks.forEach(a => a.getAttribute("href") === "#" + p.id ? a.setAttribute("aria-current", "true") : a.removeAttribute("aria-current"));
+    hops.forEach(h => h.start());
+  };
+  const fit = () => {
+    const hh = header ? header.offsetHeight : 0;
+    html.style.setProperty("--hh", hh + "px");
+    if ("snap" in html.dataset) html.classList.toggle("snap", parts.every(s => s.offsetHeight <= innerHeight - hh + 1));
+  };
+  if (header) new ResizeObserver(fit).observe(header);
+  fit();
+
+  // the scroll rail
+  const rail = document.querySelector("[data-rail]"), thumb = rail && rail.querySelector("[data-rail-thumb]");
+  const place = () => { if (thumb) thumb.style.transform = `translateY(${(scrollY / Math.max(1, max())) * (rail.clientHeight - thumb.offsetHeight)}px)`; };
+  if (thumb) {
+    const toY = e => { const r = rail.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientY - r.top - thumb.offsetHeight / 2) / (r.height - thumb.offsetHeight))) * max(); };
+    thumb.addEventListener("pointerdown", e => {
+      e.preventDefault(); thumb.setPointerCapture(e.pointerId); html.classList.add("dragging");
+      const move = ev => scrollTo({ top: toY(ev), behavior: "instant" });
+      const up = () => { html.classList.remove("dragging"); thumb.removeEventListener("pointermove", move); thumb.removeEventListener("pointerup", up); };
+      thumb.addEventListener("pointermove", move); thumb.addEventListener("pointerup", up);
+    });
+    rail.addEventListener("click", e => { if (!e.target.closest("a, [data-rail-thumb]")) scrollTo({ top: toY(e) }); });
+    addEventListener("keydown", e => { if (e.key === "Escape") rail.classList.add("quiet"); });   // WCAG 1.4.13
+    ["pointerleave", "focusout"].forEach(ev => rail.addEventListener(ev, () => rail.classList.remove("quiet")));
+  }
+
+  // sprites that jump from element to element
+  document.querySelectorAll("[data-hop]").forEach(sprite => {
+    const box = sprite.parentElement, part = sprite.closest("[data-part]");
+    const targets = () => [...box.querySelectorAll(sprite.dataset.hop)];
+    let at = null, timer;
+    const spot = el => {
+      const r = box.getBoundingClientRect(), k = el.getBoundingClientRect();
+      const hh = parseFloat(getComputedStyle(html).getPropertyValue("--hh")) || 0;
+      const clearTop = sprite.classList.contains("global-hopper") ? hh + 8 - r.top : 0;
+      return [k.left - r.left + (k.width - sprite.offsetWidth) / 2, Math.max(clearTop, k.top - r.top - sprite.offsetHeight + 8)];
+    };
+    const stand = () => { if (at) { const [x, y] = spot(at); sprite.style.transform = `translate(${x}px, ${y}px)`; } };
+    const start = () => {
+      clearTimeout(timer);
+      const hideForFiles = sprite.classList.contains("global-hopper") && cur?.id === "files";
+      sprite.hidden = hideForFiles;
+      if (hideForFiles) {
+        sprite.getAnimations().forEach(a => a.cancel());
+        sprite.style.removeProperty("transform");
+        return;
+      }
+      if (!on() || (part && cur !== part)) return;
+      const all = targets();
+      if (!all.length) return;
+      const firstRow = all[0].getBoundingClientRect().bottom;
+      const seen = all.filter(el => {   // local hops stay on their first row; the site-wide flyer follows visible stops
+        const k = el.getBoundingClientRect();
+        return k.left >= 0 && k.right <= innerWidth && (box === document.body || box.id === "main" ? k.top < innerHeight && k.bottom > 0 : k.top < firstRow);
+      });
+      if (!seen.length) { timer = setTimeout(start, 800); return; }
+      const next = seen.find(el => all.indexOf(el) > all.indexOf(at)) || seen[0];
+      const from = at ? spot(at) : spot(next), to = spot(next);
+      const flip = to[0] < from[0] ? " scaleX(-1)" : "";
+      const r = box.getBoundingClientRect(), hh = parseFloat(getComputedStyle(html).getPropertyValue("--hh")) || 0;
+      const clearTop = sprite.classList.contains("global-hopper") ? hh + 8 - r.top : 0;
+      const peak = Math.max(clearTop, Math.min(from[1], to[1]) - 90);
+      const jump = sprite.animate([
+        { transform: `translate(${from[0]}px, ${from[1]}px)${flip}`, easing: "ease-out" },
+        { transform: `translate(${(from[0] + to[0]) / 2}px, ${peak}px)${flip}`, easing: "ease-in" },
+        { transform: `translate(${to[0]}px, ${to[1]}px)${flip}` }], { duration: 700, fill: "forwards" });
+      jump.onfinish = () => {
+        at = next; stand(); jump.cancel();
+        next.animate([{ translate: "0 0" }, { translate: "0 12px", scale: "1.02 .96" }, { translate: "0 0" }], { duration: 400, easing: "ease-out" });
+        next.dispatchEvent(new CustomEvent("site:landed", { bubbles: true }));
+        timer = setTimeout(start, 1100);
+      };
+    };
+    hops.push({ start });
+    onMotion(start);
+    addEventListener("resize", () => { sprite.getAnimations().forEach(a => a.cancel()); stand(); });
+    box.querySelectorAll("*").forEach(el => { if (el.scrollWidth > el.clientWidth) el.addEventListener("scroll", stand, { passive: true }); });
+    if (!part) start();
+  });
+
+  addEventListener("scroll", () => { current(); requestAnimationFrame(place); }, { passive: true });
+  ["load", "hashchange", "resize"].forEach(e => addEventListener(e, () => { fit(); current(); place(); }));
+  current(); place();
+  html.classList.add("ready");
+})();
+
+// Small page-specific responses to the behaviours wired by base.js.
+document.addEventListener("site:copied", event => {
+  if (!event.detail.motion) return;
+  const panel = event.target.closest(".secret-console, .quick-terminal");
+  if (!panel) return;
+  panel.classList.add("copied");
+  setTimeout(() => panel.classList.remove("copied"), 900);
+});
+
+</script>
+</body>
+</html>

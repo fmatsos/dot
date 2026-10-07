@@ -1,0 +1,21 @@
+{
+  "name": "dot",
+  "url": "https://fmatsos.github.io/dot/",
+  "repo": "https://github.com/fmatsos/dot",
+  "branch": "main",
+  "lang": "en",
+  "description": "One tool for all your dotfiles profiles, without leaking a thing.",
+  "og_image": "assets/og.jpg",
+  "og_image_alt": "dot's four-armed ladybug mascot in a twilight garden",
+  "docs": {
+    "dir": ".",
+    "index": "README.md",
+    "out": "docs",
+    "title": "Documentation",
+    "pages": [
+      {"file": "DESIGN.md", "title": "Design", "summary": "The architecture and design decisions behind dot."},
+      {"file": "CONTRIBUTING.md", "title": "Contributing", "summary": "How to work on dot and dedicate non-trivial contributions to the public domain."},
+      {"file": "SECURITY.md", "title": "Security", "summary": "How to report a vulnerability privately."}
+    ]
+  }
+}
