@@ -180,6 +180,12 @@ func TestFailuresAndWarnings(t *testing.T) {
 			t.Setenv("BW_SESSION", "")
 			write(t, filepath.Join(p.Dir, "secrets.local"), "FAKE_TOKEN=bw:fictional-item\n", 0o600)
 		}, Warn, "secrets : 0 lisibles / 1 verrouillés / 0 indisponibles (statut incomplet ou accès bloqué) : dot secrets unlock"},
+		{"secrets.local mal formé", func(t *testing.T, _ string, p Profile) {
+			write(t, filepath.Join(p.Dir, "secrets.local"), "this is not a mapping\n", 0o600)
+		}, Fail, "secrets.local invalide (ligne 1 mal formée) : corriger le fichier"},
+		{"secrets.local en double", func(t *testing.T, _ string, p Profile) {
+			write(t, filepath.Join(p.Dir, "secrets.local"), "FAKE=bw:one\nFAKE=bw:two\n", 0o600)
+		}, Fail, "secrets.local invalide (ligne 2 : NAME en double) : corriger le fichier"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home := sandbox(t)

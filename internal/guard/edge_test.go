@@ -299,3 +299,20 @@ func TestMsgNilTermsInSecretsMode(t *testing.T) {
 		t.Fatal("mode secrets : aucun terme à contrôler")
 	}
 }
+
+// A submodule replaced by a regular file is a type change (:160000 100644 ... T): only the new
+// mode counts, so the content of the file is still read.
+func TestStagedGitlinkReplacedByFileIsRead(t *testing.T) {
+	dir := repo(t)
+	sub := t.TempDir()
+	git(t, sub, "init", "-q")
+	subSha := commit(t, sub, "s.txt", "x\n", "in the submodule")
+	git(t, dir, "update-index", "--add", "--cacheinfo", "160000,"+subSha+",vendor")
+	git(t, dir, "commit", "-q", "-m", "add a gitlink")
+	git(t, dir, "rm", "-q", "--cached", "vendor")
+	if err := os.WriteFile(filepath.Join(dir, "vendor"), []byte("tenant AcmeCorp\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "add", "vendor")
+	wantFailure(t, staged(t, dir), "vendor")
+}

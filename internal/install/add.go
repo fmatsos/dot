@@ -113,7 +113,7 @@ func (in *Installer) ensureClone(dir, url string) (created bool, err error) {
 	fmt.Fprintf(in.Out, "clone partiel → %s\n", dir)
 	if in.Dry {
 		fmt.Fprintf(in.Out, "  [dry] mkdir -p %s\n", dir)
-	} else if err := os.MkdirAll(dir, 0o755); err != nil {
+	} else if err := mkPrivateDirs(dir); err != nil {
 		return false, err
 	}
 	for _, a := range [][]string{
@@ -234,4 +234,13 @@ func (in *Installer) checkPurge(dir string, force bool) error {
 		return fmt.Errorf("suppression refusée : %s a des changements non commités (--force pour passer outre)", dir)
 	}
 	return nil
+}
+
+// mkPrivateDirs creates dir and its parent (~/.dot) with mode 0700 when they are missing: the
+// clone holds secrets.local and forbidden.local, and MkdirAll leaves an existing directory alone.
+func mkPrivateDirs(dir string) error {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
+		return err
+	}
+	return os.MkdirAll(dir, 0o700)
 }

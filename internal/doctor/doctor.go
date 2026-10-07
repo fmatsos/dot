@@ -393,6 +393,9 @@ func (c *checker) secrets(s *state) {
 	msg := fmt.Sprintf("secrets : %d lisibles / %d verrouillés / %d indisponibles", readable, locked, unavailable)
 	if err == nil && locked == 0 && unavailable == 0 {
 		c.add(OK, "%s", msg)
+	} else if err != nil {
+		// Status fails only on the mapping file itself (malformed, duplicate NAME): unlocking cannot repair it.
+		c.add(Fail, "secrets.local invalide (%v) : corriger le fichier", err)
 	} else {
 		c.add(Warn, "%s (statut incomplet ou accès bloqué) : dot secrets unlock", msg)
 	}

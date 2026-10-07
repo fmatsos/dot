@@ -491,3 +491,15 @@ func TestForbiddenNamesAreNeverPrinted(t *testing.T) {
 		t.Fatalf("shown = %q", got)
 	}
 }
+
+// dotfiles.guard=secrets leaves Terms nil: a push still runs the scanner and never panics.
+func TestPushSecretsOnlyModeSkipsTerms(t *testing.T) {
+	dir := repo(t)
+	first := git(t, dir, "rev-parse", "HEAD")
+	second := commit(t, dir, "b.txt", "AcmeCorp\n", "mentions AcmeCorp")
+	s := &scans{}
+	g := &Guard{Dir: dir, Scan: s.run, Stderr: &bytes.Buffer{}}
+	if err := g.Push(strings.NewReader("refs/heads/main "+second+" refs/heads/main "+first+"\n"), ""); err != nil || len(s.calls) != 1 {
+		t.Fatalf("%v, %v", err, s.calls)
+	}
+}

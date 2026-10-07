@@ -92,6 +92,18 @@ func TestProfileRuleIsIdempotent(t *testing.T) {
 	if string(got) != want {
 		t.Fatalf("profiles.local = %q", got)
 	}
+	// Another profile on the same target must not be reported as present: the rule keeps the first.
+	if err := os.WriteFile(filepath.Join(prof, "other.local"), []byte("# fictional\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	errb.Reset()
+	out.Reset()
+	if code := execute(env, []string{"profile", "other", proj}); code != 1 || !strings.Contains(errb.String(), "une règle existe déjà") || out.String() != "" {
+		t.Fatalf("autre profil : code %d, %q, %q", code, out, errb)
+	}
+	if again, _ := os.ReadFile(filepath.Join(env.Home, ".config/git/profiles.local")); string(again) != want {
+		t.Fatalf("profiles.local modifié : %q", again)
+	}
 	errb.Reset()
 	if code := execute(env, []string{"profile", "a..b", proj}); code != 1 || !strings.Contains(errb.String(), "profil : nom invalide") {
 		t.Fatalf("nom invalide : code %d, %q", code, errb)
