@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -157,8 +158,9 @@ func inspect(home, p string) Row {
 	return r
 }
 
-// guardsPush tells whether the hook is executable and calls `dot guard` on a line that is not a comment.
-// ponytail: a text match, not a parse; a `dot guard` buried in dead code passes.
+// guardsPush tells whether the hook is executable and runs `dot guard` as the command of a line
+// (after an optional `exec` and VAR=value prefixes), comments excluded.
+// ponytail: a text match, not a parse; dead code or a branch that never runs still passes.
 func guardsPush(p string) bool {
 	fi, err := os.Stat(p)
 	if err != nil || fi.Mode()&0o111 == 0 {
@@ -169,12 +171,21 @@ func guardsPush(p string) bool {
 		return false
 	}
 	for _, l := range strings.Split(string(data), "\n") {
-		if l = strings.TrimSpace(l); !strings.HasPrefix(l, "#") && strings.Contains(l, "dot guard") {
+		if k := strings.Index(" "+l, " #"); k >= 0 {
+			l = (" " + l)[:k]
+		}
+		f := strings.Fields(l)
+		for len(f) > 0 && (f[0] == "exec" || assignment.MatchString(f[0])) {
+			f = f[1:]
+		}
+		if len(f) >= 2 && f[0] == "dot" && f[1] == "guard" {
 			return true
 		}
 	}
 	return false
 }
+
+var assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
 // Collect inspects every repository. Git sees the process environment (HOME included).
 func Collect(home, src, sandbox string, withSandbox bool) []Row {

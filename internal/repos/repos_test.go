@@ -134,9 +134,15 @@ func TestProblemsAndHooksGuard(t *testing.T) {
 	if _, ok, _ := Problems(w.home, w.src, w.sandbox); ok {
 		t.Fatal(".githooks sans pre-push exécutable toléré")
 	}
-	write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\n# dot guard push\nexit 0\n", 0o755)
-	if _, ok, _ := Problems(w.home, w.src, w.sandbox); ok {
-		t.Fatal("pre-push qui n'appelle pas dot guard toléré")
+	for _, hook := range []string{"# dot guard push\nexit 0", "exit 0 # dot guard push", "echo dot guard push", "dotguard push"} {
+		write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\n"+hook+"\n", 0o755)
+		if _, ok, _ := Problems(w.home, w.src, w.sandbox); ok {
+			t.Fatalf("pre-push %q toléré", hook)
+		}
+	}
+	write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\nMODE=x dot guard push \"$@\" || exit 1\n", 0o755)
+	if rows, ok, _ := Problems(w.home, w.src, w.sandbox); !ok {
+		t.Fatalf("appel avec variable toléré : %q", rows)
 	}
 	write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\nexec dot guard push \"$@\"\n", 0o755)
 	if rows, ok, _ := Problems(w.home, w.src, w.sandbox); !ok {
