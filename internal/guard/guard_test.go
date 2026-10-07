@@ -319,6 +319,34 @@ func TestHiddenContentIsSeen(t *testing.T) {
 	}
 }
 
+// TestMediaContentIsNotScanned: bytes of an image or a font are not text, so a term matched in
+// them is chance; their names are still checked and any other binary file is still read.
+func TestMediaContentIsNotScanned(t *testing.T) {
+	dir := repo(t)
+	base := git(t, dir, "rev-parse", "HEAD")
+	head := commit(t, dir, "logo.PNG", "\x89PNG\x00\x01 client zed \x00\n", "image")
+	commit(t, dir, "a.woff2", "wOF2\x00 client zed \x00\n", "font")
+	head = git(t, dir, "rev-parse", "HEAD")
+	g := newGuard(t, dir, &scans{})
+	if err := g.Push(strings.NewReader("refs/heads/main "+head+" refs/heads/main "+base+"\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := newGuard(t, dir, &scans{}).All(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x.webp"), []byte("RIFF\x00 client zed \x00\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "add", "x.webp")
+	s := &scans{}
+	if err := newGuard(t, dir, s).Staged(); err != nil || len(s.calls) != 1 { // the secret scan still runs
+		t.Fatalf("%v, %v", err, s.calls)
+	}
+	git(t, dir, "reset", "-q")
+	commit(t, dir, "globex-inc.png", "\x89PNG\n", "named")
+	wantFailure(t, newGuard(t, dir, &scans{}).All(), "noms de fichiers")
+}
+
 func TestOrdinaryCommitsStillPass(t *testing.T) {
 	dir := repo(t)
 	base, head := evilMerge(t, dir, "m.txt", "propre\n")

@@ -110,8 +110,9 @@ git commit -m "harmless note"      # accepted
 
 The guard reports file names, branches and commits, never the text it found, and it fails closed:
 a missing list or an unavailable scanner blocks instead of letting everything through (`dot push`
-is refused until `forbidden.local` exists). A commit made with a work author identity in a
-personal repository is refused too. A work repository that names the employer on purpose opts
+is refused until `forbidden.local` exists). Images and fonts (`png`, `jpg`, `gif`, `webp`, `woff2`…) are not read for terms, since their bytes are
+not text (their names are checked, and the secret scan still reads them); any other binary file is. A
+commit made with a work author identity in a personal repository is refused too. A work repository that names the employer on purpose opts
 out of the terms and keeps the secret scan: `git config dotfiles.guard secrets`. Finally,
 `dot terms` copies the list to the `FORBIDDEN_TERMS` secret of the origin repository (with `gh`),
 so the same check runs in CI.

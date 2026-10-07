@@ -204,6 +204,11 @@ printf '\0client zed\0\n' >"$H/f.bin"; h add f.bin; h commit -qm bin
 expect block "binaire (NUL) : push" "contenu" hrange "$base" "$(h rev-parse HEAD)"
 expect block "binaire (NUL) : all" "historique" hall
 h reset -q --hard "$base"
+# an image or a font is not text: a term matched in its bytes is chance (its name is still checked)
+printf '\0client zed\0\n' >"$H/logo.PNG"; h add logo.PNG; h commit -qm media
+expect pass "image (.PNG) : push" "" hrange "$base" "$(h rev-parse HEAD)"
+expect pass "image (.PNG) : all" "" hall
+h reset -q --hard "$base"
 echo '* -diff' >"$H/.gitattributes"; h add .gitattributes; h commit -qm attrs
 b2=$(h rev-parse HEAD); echo "client zed" >"$H/p.txt"; h add p.txt; h commit -qm nodiff
 expect block "attribut -diff : push" "contenu" hrange "$b2" "$(h rev-parse HEAD)"

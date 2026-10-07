@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/fmatsos/dot/internal/manifest"
@@ -118,6 +119,26 @@ func (g *Guard) leaks(args ...string) error {
 	}
 }
 
+// mediaExts are compressed images and fonts. Their bytes are not text: a word pattern matches them
+// by chance (a 230 KB webp tripped a three-letter term) and a term cannot hide in them. Their names
+// are still checked and the secret scan still reads them; any other binary file is still read.
+var mediaExts = []string{"png", "jpg", "jpeg", "gif", "webp", "avif", "heic", "ico", "woff", "woff2"}
+
+// isMedia reports whether a file name has one of mediaExts, whatever its case.
+func isMedia(name string) bool {
+	i := strings.LastIndexByte(name, '.')
+	return i >= 0 && slices.Contains(mediaExts, strings.ToLower(name[i+1:]))
+}
+
+// notMedia are the arguments that keep media files out of a `git log -p` content scan.
+func notMedia() []string {
+	args := []string{"--", "."}
+	for _, e := range mediaExts {
+		args = append(args, ":(exclude,glob,icase)**/*."+e)
+	}
+	return args
+}
+
 // history checks identity, messages, file names and added contents of a revision range, then secrets.
 func (g *Guard) history(revs ...string) error {
 	raw := strings.Join(revs, " ")
@@ -128,8 +149,8 @@ func (g *Guard) history(revs ...string) error {
 	} else if hit {
 		return fail("référence interdite dans les métadonnées ou noms de fichiers de : %s", r)
 	}
-	// --text: binary and -diff files are scanned too; first-parent: a merge shows what it adds.
-	added := append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format="}, revs...)
+	// --text: binary and -diff files are scanned too (media files excepted); first-parent: a merge shows what it adds.
+	added := append(append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format="}, revs...), notMedia()...)
 	if hit, err := g.hits('+', added...); err != nil {
 		return err
 	} else if hit {
@@ -172,6 +193,9 @@ func (g *Guard) Staged() error {
 		n++
 		if g.Terms.Match(f) { // the name itself is forbidden text: never printed
 			fmt.Fprintf(&bad, "  <nom masqué> (fichier %d)\n", n)
+			continue
+		}
+		if isMedia(f) {
 			continue
 		}
 		hit, err := g.hits(0, "show", ":0:"+f)
@@ -319,7 +343,7 @@ func (g *Guard) All() error {
 	} else if hit {
 		return fail("référence interdite dans les métadonnées ou noms de fichiers de l'historique.")
 	}
-	if hit, err := g.hits('+', "log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format=", "--all"); err != nil {
+	if hit, err := g.hits('+', append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format=", "--all"}, notMedia()...)...); err != nil {
 		return err
 	} else if hit {
 		return fail("référence interdite dans le contenu de l'historique.")
