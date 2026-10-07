@@ -4,7 +4,7 @@ set -Eeuo pipefail
 trap 'echo "FAIL multiprofile line $LINENO" >&2' ERR
 root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/tests/lib.sh" # builds DOT_BIN before HOME is redirected
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home GIT_CONFIG_GLOBAL=$S/gitconfig GIT_CONFIG_NOSYSTEM=1
 export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share XDG_CACHE_HOME=$HOME/.cache
 export XDG_STATE_HOME=$HOME/.local/state CODEX_HOME=$HOME/.codex DOTFILES_TOOLS=0
@@ -72,7 +72,7 @@ dot pull >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 grep -qx '==> a' "$S/out"; grep -qx '==> b' "$S/out"; [ "$(tail -n1 "$S/out")" = ok ]
 printf 'again\n' >"$A/home/.a-two"; commit "$A"; printf 'again\n' >"$B/home/.b-two"; commit "$B"
 dot pull -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-[ -L "$HOME/.a-two" ]; [ ! -e "$HOME/.b-two" ]; ! grep -q '^==> ' "$S/out"
+[ -L "$HOME/.a-two" ]; [ ! -e "$HOME/.b-two" ]; not grep -q '^==> ' "$S/out"
 echo 'OK   pull updates every profile, or only the targeted one'
 
 # A failing profile does not stop the others; the exit code is 1 and the name is reported.
@@ -126,12 +126,12 @@ rm "$HOME/.a-rc" "$HOME/.b-rc"; printf 'tool\n' >"$HOME/.a-rc"; printf 'tool\n' 
 dot status >"$S/out" 2>"$S/err"
 grep -qx '==> a' "$S/out"; grep -qx '==> b' "$S/out"
 section() { awk -v k="==> $1" '/^==> /{on = ($0 == k); next} on' "$S/out"; } # lines under one profile header
-section a | grep -q 'M home/.a-new'; ! section a | grep -q 'home/.b-new'
-section b | grep -q 'M home/.b-new'; ! section b | grep -q 'home/.a-new'
+section a | grep -q 'M home/.a-new'; section a | not grep -q 'home/.b-new'
+section b | grep -q 'M home/.b-new'; section b | not grep -q 'home/.a-new'
 grep -qF '~/.a-rc' "$S/err"; grep -qF '~/.b-rc' "$S/err"
 [ "$(dot st 2>/dev/null)" = "$(cat "$S/out")" ]
-dot status -p a >"$S/out" 2>"$S/err"; ! grep -q '^==> ' "$S/out"; grep -q 'M home/.a-new' "$S/out"; ! grep -q 'home/.b-new' "$S/out"
-DOT_PROFILE=b dot status >"$S/out" 2>&1; ! grep -q '^==> ' "$S/out"; grep -q 'M home/.b-new' "$S/out"
+dot status -p a >"$S/out" 2>"$S/err"; not grep -q '^==> ' "$S/out"; grep -q 'M home/.a-new' "$S/out"; not grep -q 'home/.b-new' "$S/out"
+DOT_PROFILE=b dot status >"$S/out" 2>&1; not grep -q '^==> ' "$S/out"; grep -q 'M home/.b-new' "$S/out"
 for p in a b; do ln -sf "$HOME/.dot/$p/home/.$p-rc" "$HOME/.$p-rc"; done
 echo 'OK   status lists every profile under its name with its changes and detached files, or only the targeted one'
 
@@ -143,7 +143,7 @@ echo 'OK   push without -p commits and pushes every profile with the same messag
 
 for p in a b; do printf 'edit\n' >>"$HOME/.dot/$p/home/.$p-new"; done
 dot push -p a "only a" >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-! grep -q '^==> ' "$S/out"; [ "$(subject a)" = "only a" ]; [ "$(subject b)" = "msg all" ]
+not grep -q '^==> ' "$S/out"; [ "$(subject a)" = "only a" ]; [ "$(subject b)" = "msg all" ]
 [ -n "$(git -C "$HOME/.dot/b" status --porcelain)" ]
 echo 'OK   push -p a pushes that profile only'
 
@@ -151,13 +151,29 @@ echo 'OK   push -p a pushes that profile only'
 mv "$S/remotes/push-b.git" "$S/remotes/push-b.away"
 printf 'edit\n' >>"$HOME/.dot/a/home/.a-new"
 fails 1 dot push "late"
-[ "$(subject a)" = "late" ]; grep -qx 'échec : b' "$S/err"; ! grep -q 'échec : a' "$S/err"
+[ "$(subject a)" = "late" ]; grep -qx 'échec : b' "$S/err"; not grep -q 'échec : a' "$S/err"
 mv "$S/remotes/push-b.away" "$S/remotes/push-b.git"
 echo 'OK   push goes on after a failing profile and exits 1 naming it'
 
 # send is gone: it falls back to git like any unknown word.
 fails 1 dot send; grep -q "'send' is not a git command" "$S/err"
 echo 'OK   dot send is no dot command any more (git fallback)'
+
+# Multi-profile extensions: search all profiles when no -p, fail if claimed by two, run if by one.
+mkdir -p "$HOME/.dot/a/bin" "$HOME/.dot/b/bin"
+printf '#!/bin/sh\necho "a-only from profile a"\nexit 0\n' >"$HOME/.dot/a/bin/dot-a-only"; chmod +x "$HOME/.dot/a/bin/dot-a-only"
+printf '#!/bin/sh\necho "both from a"\nexit 0\n' >"$HOME/.dot/a/bin/dot-shared"; chmod +x "$HOME/.dot/a/bin/dot-shared"
+printf '#!/bin/sh\necho "both from b"\nexit 0\n' >"$HOME/.dot/b/bin/dot-shared"; chmod +x "$HOME/.dot/b/bin/dot-shared"
+[ "$(dot a-only)" = "a-only from profile a" ] || { echo "FAIL: a-only extension"; exit 1; }
+echo 'OK   extension only in profile a is run'
+fails 1 dot shared
+grep -q 'plusieurs profils' "$S/err" && grep -q '\ba\b' "$S/err" && grep -q '\bb\b' "$S/err" || { echo "FAIL: multi-profile error"; cat "$S/err"; exit 1; }
+echo 'OK   extension claimed by two profiles is refused with profile names'
+dot -p a shared >"$S/out" 2>&1; [ "$(cat "$S/out")" = "both from a" ] || { echo "FAIL: -p a should run a version"; exit 1; }
+echo 'OK   with -p, extension is run from that profile even if others have it'
+printf '#!/bin/sh\necho "from path"\nexit 0\n' >"$S/bin/dot-pathonly"; chmod +x "$S/bin/dot-pathonly"
+[ "$(dot pathonly)" = "from path" ] || { echo "FAIL: path-only extension"; exit 1; }
+echo 'OK   extension only in PATH is run when no profile has it'
 
 # Both profiles provide the module sources (settings.base.json, servers.json): the install must
 # work, nothing links them, and `dot settings` / `dot mcp` merge the two. Separate HOME and PATH.
@@ -188,10 +204,10 @@ echo 'OK   dot send is no dot command any more (git fallback)'
   grep -Fxq 'claude : ajout p1-srv' "$S/out"; grep -Fxq 'claude : ajout p2-srv' "$S/out"
   # -p narrows the targets, not the fact that servers.json is no longer linked: apply must still find its source.
   dot mcp -p p1 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-  ! grep -q 'invalide ou absent' "$S/out"
+  not grep -q 'invalide ou absent' "$S/out"
   dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-  [ ! -e "$HOME/.claude/settings.base.json" ]; ! grep -q 'lien retiré' "$S/out"
-  dot status >"$S/out" 2>"$S/err"; ! grep -q 'settings.base.json' "$S/err"
+  [ ! -e "$HOME/.claude/settings.base.json" ]; not grep -q 'lien retiré' "$S/out"
+  dot status >"$S/out" 2>"$S/err"; not grep -q 'settings.base.json' "$S/err"
   echo 'OK   two profiles with the same module sources install, link neither and are merged by dot settings and dot mcp'
 
   dot config set default p1

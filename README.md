@@ -63,6 +63,28 @@ that was already there is moved to `~/.local/state/dotfiles/backup/<date>/` (kep
 running `dot install` twice changes nothing, and `dot install -n` prints the steps it would run
 instead of running them.
 
+`dot backups list` shows those backups and `dot backups restore [<run>] [<path>...]` moves files
+back. A file is restored only when its place in `~` is empty or holds a link managed by dot: a real
+file is never overwritten.
+
+`dot adopt ~/.foo` goes the other way: it moves an existing file of `~` into the profile's `home/`
+and replaces it with a link. Before anything moves, the file name and content go through the
+forbidden terms and the secret scanner; a hit, a missing term list or an unavailable scanner
+refuses the file, and only its name is reported. Symlinks, files outside `~` and paths already
+provided by another profile are refused too. Nothing is committed: `dot push` does that.
+
+### One setup per OS or per machine
+
+Besides `home/`, a profile may carry `home@linux/`, `home@darwin/` and `home@<host>/`, where
+`<host>` is the machine's short hostname in lower case. For a given path of `~`, `home@<host>`
+wins over `home@<os>`, which wins over `home/`; variants for another system or machine are
+ignored. There is no templating: files in `~` stay links into the clone.
+
+- `dot install -n` shows the winning layer when it is not `home`.
+- `dot adopt --os` or `--host` moves a file into the matching variant.
+- A `deploy.sparse` list must name each variant it wants (`home@darwin`...).
+- `dot settings`, `dot mcp` and the mise configuration still read `home/` only.
+
 ### Keep a personal and a work setup on the same machine
 
 ```sh
@@ -173,6 +195,12 @@ On a new machine, `dot install <url>` brings the profiles back, and `dot repos e
 - **A guard against leaks.** `dot guard` checks the staged files, the commit message and the
   push for forbidden terms and secrets, from git hooks that are one line each. The secret
   scanner (betterleaks) is pinned to one version and its sha256 is compiled into the binary.
+- **Adopt and restore.** `dot adopt` moves a file of `~` into the profile, guard first, and
+  `dot backups restore` brings back what an install replaced.
+- **Per-OS and per-host variants.** `home@linux/`, `home@darwin/` and `home@<host>/` override
+  `home/` path by path.
+- **Signed releases.** Binaries come with a `SHA256SUMS` file signed with Ed25519, and
+  `dot self-update` verifies the signature, then the checksum, before replacing the executable.
 - **Secrets stay in your vault.** `dot secrets` works with `bw` and `pass-cli` (`add`, `get`,
   `run`, `unlock`, `lock`, `status`), so a profile never has to hold them.
 - **One config for your coding agents.** `dot settings` and `dot mcp` merge the settings and the
@@ -207,8 +235,12 @@ dot status        # changes in the clones and detached files
 ```
 
 Release binaries (`dot-linux-x64`, `dot-linux-arm64`, `dot-macos-x64`, `dot-macos-arm64`, with a
-`SHA256SUMS` file) are built and published by the `release.yml` workflow when a `vX.Y.Z` tag is
-pushed.
+`SHA256SUMS` file and its Ed25519 signature `SHA256SUMS.sig`) are built, signed and published by
+the `release.yml` workflow when a `vX.Y.Z` tag is pushed. Once a release exists, the `install.sh`
+bootstrap downloads the version pinned in the script, checks its checksum, installs it into
+`~/.local/bin/dot` and can run `dot install <url>` for you; `dot self-update` then keeps it
+current. The signing key is not generated yet (`scripts/gen-release-key.sh`), so until the first
+release the workflow fails and `dot self-update` refuses, on purpose.
 
 ## A profile
 
@@ -254,6 +286,10 @@ dot pull                            update the profiles (git pull --rebase, then
 dot push [message]                  commit the tracked files that changed in the profiles, then push
 dot status                          changes in the clones and detached files (alias st)
 dot uninstall -p <key> [--purge]    remove the links and the registry entry
+dot adopt [-p <key>] [-n] [--os|--host] <file>...
+                                    move a file of ~ into the profile, guard checks first
+dot backups list|restore [-n]       files of ~ backed up by install, and their restoration
+dot self-update [--version vX.Y.Z] [-n]   update dot from a signed release
 dot doctor                          read-only report
 dot config list|get|set|unset       read and edit the ~/.dot/profiles.json registry
 dot whoami | profile | terms | clone | repos
@@ -267,7 +303,9 @@ dot <cmd>                           run dot-<cmd> (profile bin/, then PATH), oth
 
 The target profile is chosen with `-p/--profile <key>`, then `DOT_PROFILE`, then the registry's
 default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `settings` and `mcp` act on
-every registered profile, and the other commands on the default profile. Without `-p`, the key
+every registered profile, and the other commands on the default profile. With several profiles
+registered, `dot <cmd>` searches every profile's `bin/`: a `dot-<cmd>` claimed by two profiles is
+refused and you must pass `-p`. Without `-p`, the key
 of a `dot install <url>` is the repository name in the URL.
 
 | Variable | Effect |
@@ -295,12 +333,13 @@ Go, with [cobra](https://github.com/spf13/cobra) for the command line. `make tes
 A command lives in its own file `cmd/dot/cmd_<name>.go` and registers itself with
 `func init() { register(newXxxCmd) }`: no shared file is modified. The black-box tests are bash
 scripts `tests/<name>.sh` that `source tests/lib.sh` and call `dot` (the binary in `$DOT_BIN`,
-built if needed).
+built if needed). They must run with GNU and BSD tools alike: `tests/lib.sh` provides portable
+helpers (`stat_inode_mtime`, `in_pty`).
 
 | Workflow | Runs on | What it does |
 | --- | --- | --- |
-| `ci.yml` | push, pull request | The guard (forbidden terms in files and commit metadata, secret scan), then `go vet`, `go test -race`, the static build and the black-box tests in `tests/*.sh`. |
-| `release.yml` | tag `vX.Y.Z` | Builds the four static binaries, computes `SHA256SUMS` and publishes the release. |
+| `ci.yml` | push, pull request | The guard (forbidden terms in files and commit metadata, secret scan), then `go vet`, `go test -race`, the static build and the black-box tests in `tests/*.sh`, on Linux and macOS. |
+| `release.yml` | tag `vX.Y.Z` | Builds the four static binaries, computes and signs `SHA256SUMS`, checks the signature against the committed public key and publishes the release. |
 | `dependabot.yml` | weekly | Updates the actions and the Go modules. |
 
 ## License

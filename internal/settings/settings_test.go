@@ -57,8 +57,9 @@ func TestParseRejects(t *testing.T) {
 }
 
 func TestDiffMatchesSystemDiff(t *testing.T) {
-	if _, err := exec.LookPath("diff"); err != nil {
-		t.Skip("diff absent")
+	// Diff follows GNU diff's hunk headers; BSD diff (macOS) writes +1,0 where GNU writes +0,0.
+	if v, err := exec.Command("diff", "--version").Output(); err != nil || !strings.Contains(string(v), "GNU") {
+		t.Skip("GNU diff absent")
 	}
 	cases := [][2]string{
 		{"{}\n", "{\n  \"a\": 1\n}\n"},

@@ -19,7 +19,10 @@ import (
 )
 
 // Link is one symlink to create: Dst (absolute, under home) points to Src (absolute, in a profile).
-type Link struct{ Src, Dst string }
+type Link struct {
+	Src, Dst string
+	Layer    string // home layer providing Src ("home", "home@darwin"…); empty for bin/
+}
 
 // NoHomeError reports a profile without a home/ directory (dry run without clone).
 type NoHomeError struct{ Dir string }
@@ -59,19 +62,9 @@ func files(root string, keep func(fs.DirEntry) bool) ([]string, error) {
 	return out, err
 }
 
-// homeLinks lists the home/ links of a profile; multi leaves out the ModuleSources.
+// homeLinks lists the home links of a profile from the layers active here; multi leaves out the ModuleSources.
 func homeLinks(dir, home string, multi bool) ([]Link, error) {
-	root := filepath.Join(dir, "home")
-	fl, err := files(root, func(fs.DirEntry) bool { return true })
-	links := make([]Link, 0, len(fl))
-	for _, f := range fl {
-		rel, _ := filepath.Rel(root, f)
-		if multi && slices.Contains(ModuleSources, filepath.ToSlash(rel)) {
-			continue
-		}
-		links = append(links, Link{f, filepath.Join(home, rel)})
-	}
-	return links, err
+	return layerLinks(dir, home, activeLayers(), multi)
 }
 
 // binLinks: executable files directly in dir/bin, linked into ~/.local/bin.
@@ -84,7 +77,7 @@ func binLinks(dir, home string) ([]Link, error) {
 	var links []Link
 	for _, e := range entries {
 		if i, ierr := e.Info(); ierr == nil && i.Mode().IsRegular() && i.Mode().Perm()&0o100 != 0 {
-			links = append(links, Link{filepath.Join(root, e.Name()), filepath.Join(home, ".local", "bin", e.Name())})
+			links = append(links, Link{Src: filepath.Join(root, e.Name()), Dst: filepath.Join(home, ".local", "bin", e.Name())})
 		}
 	}
 	return links, err
@@ -174,15 +167,18 @@ func (l *Linker) Apply(dir string) error {
 		}
 	}
 	for _, k := range hl {
-		if err := l.one(k); err != nil {
+		if err := l.one(dir, k); err != nil {
 			return err
 		}
+	}
+	if err := l.orphanLinks(dir, append(hl[:len(hl):len(hl)], bl...)); err != nil {
+		return err
 	}
 	if err := l.deadLinks(dir); err != nil {
 		return err
 	}
 	for _, k := range bl {
-		if err := l.one(k); err != nil {
+		if err := l.one(dir, k); err != nil {
 			return err
 		}
 	}
@@ -199,7 +195,7 @@ func (l *Linker) dropModuleLinks() error {
 			continue
 		}
 		for _, d := range l.Registered {
-			if abs, _ := filepath.Abs(d); t != filepath.Join(abs, "home", rel) {
+			if abs, _ := filepath.Abs(d); !inLayerAt(t, abs, rel) {
 				continue
 			}
 			fmt.Fprintf(l.Out, "  lien retiré : %s\n", Tilde(l.Home, dst))
@@ -236,9 +232,18 @@ func (l *Linker) deadLinks(dir string) error {
 }
 
 // one links a single file, moving whatever sits at the target into the run's backup.
-func (l *Linker) one(k Link) error {
-	if t, err := os.Readlink(k.Dst); err == nil && t == k.Src {
+func (l *Linker) one(dir string, k Link) error {
+	t, rerr := os.Readlink(k.Dst)
+	if rerr == nil && t == k.Src {
 		return nil
+	}
+	if rerr == nil && inProfile(t, dir) {
+		// A dot link to another layer or a moved file: re-point it, there is nothing to back up.
+		fmt.Fprintf(l.Out, "  lien : %s%s\n", Tilde(l.Home, k.Dst), layerNote(k))
+		if err := l.run("rm -f "+k.Dst, func() error { return os.Remove(k.Dst) }); err != nil {
+			return err
+		}
+		return l.run("ln -s "+k.Src+" "+k.Dst, func() error { return os.Symlink(k.Src, k.Dst) })
 	}
 	fi, err := os.Lstat(k.Dst)
 	if err == nil && fi.IsDir() {
@@ -264,11 +269,19 @@ func (l *Linker) one(k Link) error {
 			return err
 		}
 	}
-	fmt.Fprintf(l.Out, "  lien : %s\n", Tilde(l.Home, k.Dst))
+	fmt.Fprintf(l.Out, "  lien : %s%s\n", Tilde(l.Home, k.Dst), layerNote(k))
 	if err := l.mkdirAll(filepath.Dir(k.Dst)); err != nil {
 		return err
 	}
 	return l.run("ln -s "+k.Src+" "+k.Dst, func() error { return os.Symlink(k.Src, k.Dst) })
+}
+
+// layerNote names the winning layer of a link when it is not home/.
+func layerNote(k Link) string {
+	if k.Layer == "" || k.Layer == "home" {
+		return ""
+	}
+	return " (" + k.Layer + ")"
 }
 
 // sameContent is `cmp -s`. ponytail: reads both files whole; fine for dotfiles, not for large blobs.
@@ -330,21 +343,23 @@ func removeEmptyDir(d string) bool {
 	return err == nil && fi.IsDir() && os.Remove(d) == nil
 }
 
-// Unlink removes the links of home that point into dir/home/ or dir/bin/ (nothing else, backups
-// stay) and the parent directories they leave empty, home excluded. Besides the planned
-// destinations it looks at the symlinks directly in ~ and ~/.local/bin and, recursively without
-// ever entering a symlink, in every top-level directory of ~ the plan touches, so a link to a
-// file deleted from the profile since the install goes too, even from a folder the plan lost.
-// ponytail: an orphan link outside the root directories the profile manages is not found.
-func Unlink(dir, home string, out io.Writer) error {
-	if out == nil {
-		out = io.Discard
-	}
-	dir, _ = filepath.Abs(dir)
-	plan, err := Plan(dir, home)
+// target reads the symlink p as a clean absolute path.
+func target(p string) (string, bool) {
+	t, err := os.Readlink(p)
 	if err != nil {
-		return err
+		return "", false
 	}
+	if !filepath.IsAbs(t) {
+		t = filepath.Join(filepath.Dir(p), t)
+	}
+	return filepath.Clean(t), true
+}
+
+// symlinkCandidates lists the symlinks that may be dot links: the planned destinations, the
+// symlinks directly in ~ and ~/.local/bin and, recursively without ever entering a symlink, in
+// every top-level directory of ~ the plan touches. ponytail: an orphan link outside the root
+// directories the profile manages is not found.
+func symlinkCandidates(plan []Link, home string) []string {
 	var cands, roots []string
 	for _, k := range plan {
 		cands = append(cands, k.Dst)
@@ -374,16 +389,62 @@ func Unlink(dir, home string, out io.Writer) error {
 		})
 	}
 	slices.Sort(cands)
-	cands = slices.Compact(cands)
-	for _, p := range cands {
-		t, err := os.Readlink(p)
-		if err != nil {
+	return slices.Compact(cands)
+}
+
+// orphanLinks removes the links into a home layer of dir that the plan no longer wants: broken
+// ones (a file deleted from the last layer providing it) and those into a layer that is not
+// active here (a host name that changed). A path still provided by an active layer is re-pointed by one().
+func (l *Linker) orphanLinks(dir string, plan []Link) error {
+	planned := map[string]bool{}
+	for _, k := range plan {
+		planned[k.Dst] = true
+	}
+	// Scan the roots of every layer too: a root only an inactive layer gave is no longer planned.
+	every, _ := layerLinks(dir, l.Home, allLayers(dir), false)
+	for _, p := range symlinkCandidates(append(plan[:len(plan):len(plan)], every...), l.Home) {
+		t, ok := target(p)
+		if !ok || planned[p] || !inProfile(t, dir) || strings.HasPrefix(t, dir+"/bin/") {
 			continue
 		}
-		if !filepath.IsAbs(t) {
-			t = filepath.Join(filepath.Dir(p), t)
+		_, serr := os.Stat(p)
+		rel, _ := filepath.Rel(dir, t)
+		top, _, _ := strings.Cut(rel, string(filepath.Separator))
+		if serr == nil && slices.Contains(activeLayers(), top) {
+			continue // still provided here (a module source in multi mode is dropped elsewhere)
 		}
-		if t = filepath.Clean(t); !(strings.HasPrefix(t, dir+"/home/") || strings.HasPrefix(t, dir+"/bin/")) {
+		msg := "lien retiré"
+		if serr != nil {
+			msg = "lien mort retiré"
+		}
+		fmt.Fprintf(l.Out, "  %s : %s\n", msg, Tilde(l.Home, p))
+		if err := l.run("rm -f "+p, func() error { return os.Remove(p) }); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Unlink removes the links of home that point into a home layer (active or not) or bin/ of dir
+// (nothing else, backups stay) and the parent directories they leave empty, home excluded.
+// Besides the planned destinations it looks at the symlinks directly in ~ and ~/.local/bin and in
+// the top-level directories of ~ the plan touches, so a link to a file deleted from the profile
+// since the install goes too, even from a folder the plan lost.
+func Unlink(dir, home string, out io.Writer) error {
+	if out == nil {
+		out = io.Discard
+	}
+	dir, _ = filepath.Abs(dir)
+	plan, err := layerLinks(dir, home, allLayers(dir), false)
+	if err != nil {
+		return err
+	}
+	b, err := binLinks(dir, home)
+	if err != nil {
+		return err
+	}
+	for _, p := range symlinkCandidates(append(plan, b...), home) {
+		if t, ok := target(p); !ok || !inProfile(t, dir) {
 			continue
 		}
 		if err := os.Remove(p); err != nil {

@@ -59,6 +59,7 @@ func newRoot(env *Env) *cobra.Command {
 	root.SetVersionTemplate("dot {{.Version}}\n")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err.Error()} })
 	root.PersistentFlags().StringVarP(&env.Profile, "profile", "p", "", "profil visé (sinon $DOT_PROFILE, puis le profil par défaut)")
+	root.RegisterFlagCompletionFunc("profile", completeProfileKeys(env))
 	root.InitDefaultHelpFlag()
 	root.Flags().Lookup("help").Usage = "affiche l'aide"
 	root.InitDefaultVersionFlag()

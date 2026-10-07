@@ -33,6 +33,7 @@ get)
   case $3 in
   'Chat login') printf 'fake-xoxc-123\n'; echo fake-xoxc-123 >&2 ;;
   Newlines) printf 'fake-newlines\n\n\n' ;;
+  Multiline) printf 'fake-line1\r\nfake-line2\n' ;;
   Empty) ;;
   Fail) echo fake-xoxc-123; echo fake-xoxc-123 >&2; exit 1 ;;
   *) exit 1 ;;
@@ -99,6 +100,7 @@ EMPTY_PASS=pass:Développement/Empty
 FAIL_BW=bw:Fail
 FAIL_PASS=pass:Développement/Fail
 NEWLINE_TOKEN=bw:Newlines
+MULTI_TOKEN=bw:Multiline
 MAP
 printf '%s' fake-session-123 >"$DOTFILES_DEPLOY/bw-session.local"
 secret() { "$DOT_BIN" secrets "$@"; }
@@ -131,13 +133,13 @@ if command -v script >/dev/null; then
   printf -v unlock_cmd '%q secrets unlock' "$DOT_BIN"
   # The master password is typed into the terminal, as a user would.
   unlock_terminal() { { sleep 1; printf 'fake-master-789\n'; sleep 1; } |
-    SHELL=/bin/bash script -q -e -c "$unlock_cmd" "$S/tty" >"$S/out" 2>"$S/err"; }
+    in_pty "$S/tty" "$unlock_cmd" >"$S/out" 2>"$S/err"; }
   chmod 644 "$DOTFILES_DEPLOY/bw-session.local"
   check 'unlock from terminal succeeds' unlock_terminal
   cat "$S/err" >>"$S/stderr"
   printf '%s' fake-session-123 >"$S/expected"
   check 'unlock caches only the session' cmp -s "$S/expected" "$DOTFILES_DEPLOY/bw-session.local"
-  check 'unlock replaces old cache with private permissions' test "$(stat -c '%a' "$DOTFILES_DEPLOY/bw-session.local")" = 600
+  check 'unlock replaces old cache with private permissions' test "$(stat -c '%a' "$DOTFILES_DEPLOY/bw-session.local" 2>/dev/null || stat -f %Lp "$DOTFILES_DEPLOY/bw-session.local")" = 600
   check 'unlock never prints the session' no_values "$S/tty"
   check 'unlock prompts for the master password' grep -q 'Mot de passe maître Bitwarden' "$S/tty"
   check 'unlock never echoes the master password' no_master "$S/tty"
@@ -168,6 +170,14 @@ cmp -s "$FAKE_STDIN/newlines.expected" "$FAKE_STDIN/newlines.actual"
 BASH
 invoke run NEWLINE_TOKEN -- bash "$S/newlines"
 check 'F9: run preserves both secret trailing newlines' test "$rc" -eq 0
+cat >"$S/multi" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'fake-line1\r\nfake-line2' | cmp -s - <(printf '%s' "$MULTI_TOKEN")
+BASH
+invoke run MULTI_TOKEN -- bash "$S/multi"
+check 'run keeps inner newlines and CR of a multi-line value, strips one final newline' test "$rc" -eq 0
+check 'multi-line value never in argv' no_values "$FAKE_LOG"
 invoke get UNKNOWN
 check 'unknown NAME fails clearly' unknown_fails
 
@@ -206,6 +216,14 @@ for line in 'BAD=bw:' 'BAD=pass:/Title' 'BAD=pass:Vault/' 'BAD=other:Title' 'not
   check 'malformed/duplicate mapping fails' test "$rc" -ne 0
   check 'malformed mapping does not echo contents' grep -q '^secret : ligne [0-9]' "$S/err"
 done
+for bad in $'CRLF_TOKEN=bw:Chat login\r' $'\xef\xbb\xbfBOM_TOKEN=bw:Chat login' 'BAD-NAME=bw:Chat login' '1BAD=bw:Chat login' 'SECRET_IN_REF=bw:' 'CHAT_TOKEN=pass:Vault/Dup'; do
+  cp "$S/mapping" "$DOTFILES_DEPLOY/secrets.local"
+  printf '%s\n' "$bad" >>"$DOTFILES_DEPLOY/secrets.local"
+  invoke get CHAT_TOKEN
+  check 'CRLF/BOM/invalid name/duplicate: refused, line number only' grep -Eq '^secret : ligne [0-9]+ ' "$S/err"
+  check 'edge mapping: no value or item name echoed' test "$(grep -c 'Chat login\|Vault/Dup' "$S/err")" -eq 0
+done
+cp "$S/mapping" "$DOTFILES_DEPLOY/secrets.local"
 rm "$DOTFILES_DEPLOY/secrets.local"
 invoke get CHAT_TOKEN
 check 'missing mapping file fails' test "$rc" -ne 0
@@ -221,7 +239,7 @@ printf '%s\n' "$fixture" >"$S/value"
 no_fixture() { ! grep -Fq -f "$S/value" "$@"; }
 invoke add ACME_TOKEN 'bw:Created BW' <"$S/value"
 check 'add bw from non-tty stdin succeeds without an existing mapping file' test "$rc" -eq 0
-check 'add bw creates a private mapping' test "$(stat -c '%a' "$DOTFILES_DEPLOY/secrets.local")" = 600
+check 'add bw creates a private mapping' test "$(stat -c '%a' "$DOTFILES_DEPLOY/secrets.local" 2>/dev/null || stat -f %Lp "$DOTFILES_DEPLOY/secrets.local")" = 600
 check 'add bw registers the reference' grep -Fxq 'ACME_TOKEN=bw:Created BW' "$DOTFILES_DEPLOY/secrets.local"
 check 'bw password goes in JSON before encoding, not argv' cmp -s "$S/value" "$FAKE_STORE/bw-Created BW"
 check 'bw create receives the encoded JSON on stdin' test -s "$FAKE_STDIN/bw.create"
@@ -299,13 +317,13 @@ check 'only one stdin newline stripped' cmp -s "$S/multiline" "$FAKE_STORE/bw-Mu
 if command -v script >/dev/null; then
   printf -v add_cmd '%q secrets add TERMINAL_TOKEN %q' "$DOT_BIN" 'bw:Terminal BW'
   add_terminal() { { sleep 1; printf '%s\n' "$fixture"; sleep 1; printf '%s\n' "$fixture"; } |
-    SHELL=/bin/bash script -q -e -c "$add_cmd" "$S/tty-add" >"$S/out" 2>"$S/err"; }
+    in_pty "$S/tty-add" "$add_cmd" >"$S/out" 2>"$S/err"; }
   check 'add terminal hidden double prompt succeeds' add_terminal
   check 'terminal never echoes value' no_fixture "$S/tty-add"
   cp "$DOTFILES_DEPLOY/secrets.local" "$S/before-add"
   printf -v add_cmd '%q secrets add MISMATCH_TOKEN %q' "$DOT_BIN" 'bw:Terminal mismatch'
   if { sleep 1; printf '%s\n' "$fixture"; sleep 1; printf 'different\n'; } |
-    SHELL=/bin/bash script -q -e -c "$add_cmd" "$S/tty-mismatch" >"$S/out" 2>"$S/err"; then rc=0; else rc=$?; fi
+    in_pty "$S/tty-mismatch" "$add_cmd" >"$S/out" 2>"$S/err"; then rc=0; else rc=$?; fi
   check 'terminal mismatching confirmation refused' test "$rc" -eq 1
   check 'terminal mismatch never registers a mapping' cmp -s "$S/before-add" "$DOTFILES_DEPLOY/secrets.local"
   check 'terminal mismatch never echoes value' no_fixture "$S/tty-mismatch"

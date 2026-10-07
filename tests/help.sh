@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/lib.sh"
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home CODEX_HOME=$S/home/.codex XDG_CONFIG_HOME=$S/home/.config
 export DOTFILES_DEPLOY=$S/deploy FAKE_ARGV=$S/argv FAKE_INPUT=$S/stdin
 mkdir -p "$S/bin" "$HOME" "$DOTFILES_DEPLOY"

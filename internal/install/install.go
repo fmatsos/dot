@@ -142,8 +142,8 @@ func (in *Installer) Reinstall(batch []Profile) error {
 	return err
 }
 
-// install is the common sequence. Reads and conflict checks come first, so a refusal writes
-// nothing; commit (optional) runs right after them, then per profile identity and links; then the shared steps once. With lenient, a
+// install is the common sequence. Reads, the sparse checkout of each clone and conflict checks
+// come first, so a refusal writes nothing to ~ nor to the registry; commit (optional) runs right after them, then per profile identity and links; then the shared steps once. With lenient, a
 // profile failing before the conflict check or in its own steps is reported and skipped.
 func (in *Installer) install(batch, all []Profile, lenient bool, commit func() error) (failed []string, err error) {
 	fail := func(p Profile, e error) error {
@@ -157,6 +157,11 @@ func (in *Installer) install(batch, all []Profile, lenient bool, commit func() e
 	var ls []loaded
 	for _, p := range batch {
 		l, e := in.load(p)
+		if e == nil {
+			// The sparse set comes first: folders a pull added to it (a home@<host> layer)
+			// must be on disk for the conflict check to see their files.
+			e = in.syncSparse(l)
+		}
 		if e == nil {
 			ls = append(ls, l)
 		} else if e = fail(p, e); e != nil {
@@ -207,9 +212,6 @@ func (in *Installer) install(batch, all []Profile, lenient bool, commit func() e
 
 // profileSteps: git identity of the clone, hooks path, links. A profile without home/ only warns.
 func (in *Installer) profileSteps(lk *link.Linker, l loaded) error {
-	if err := in.syncSparse(l); err != nil {
-		return err
-	}
 	for _, kv := range [][2]string{{"user.name", l.Name}, {"user.email", l.Email}, {"core.hooksPath", ".githooks"}} {
 		if err := in.run(l.Dir, "config", kv[0], kv[1]); err != nil {
 			return err

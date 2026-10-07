@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/lib.sh"
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home DOT_SRC="$S/source repos" GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL=$S/gitconfig
 mkdir -p "$HOME"

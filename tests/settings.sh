@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/tests/lib.sh" # builds DOT_BIN before HOME is redirected
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home DOTFILES_DEPLOY=$S/deploy
 mkdir -p "$DOTFILES_DEPLOY/home/.claude"
 cat >"$DOTFILES_DEPLOY/home/.claude/settings.base.json" <<'JSON'

@@ -8,7 +8,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=tests/lib.sh
 . "$root/tests/lib.sh"
 fx=$root/tests/fixtures/guard
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 # The repo hooks call `dot` through the PATH.
 mkdir "$S/pathbin"; ln -s "$DOT_BIN" "$S/pathbin/dot"; PATH=$S/pathbin:$PATH
 printf '%s\n' '# fictional terms' acmecorp 'globex-?inc' '(^|[^a-z0-9])zed([^a-z0-9]|$)' >"$S/terms"
@@ -245,5 +245,78 @@ git -C "$G" branch -q -D globex-inc
 printf 'GITHUB_TOKEN=%s\n' "$(faketoken)" >"$G/t.txt"; git -C "$G" add t.txt; git -C "$G" commit -qm tok
 expect block "all : secret dans l'historique" "betterleaks" git -C "$G" -c alias.check='!dot guard all' check
 expect block "usage invalide" "usage" dot guard msg
+
+# Edge cases: awkward names, repository states, term-list oddities, submodules.
+U=$S/u; git init -q "$U"; cp -r "$fx/githooks" "$U/.githooks"; git -C "$U" config core.hooksPath .githooks
+u() { git -C "$U" "$@"; }
+echo ok >"$U/ok.txt"; u add .githooks ok.txt
+expect pass  "dépôt sans commit : index propre" "" u commit -qm first
+git init -q "$S/u2"; echo "client zed" >"$S/u2/n.txt"; git -C "$S/u2" add n.txt
+expect block "dépôt sans commit : contenu interdit" "n.txt" git -C "$S/u2" -c alias.check='!dot guard staged' check
+git -C "$S/u2" rm -q --cached -f n.txt
+expect pass  "dépôt sans commit : index vide" "" git -C "$S/u2" -c alias.check='!dot guard staged' check
+for n in 'sp ace.txt' '-dash.txt' 'qu"ote.txt' 'back\slash.txt' $'new\nline.txt'; do
+  echo "client zed" >"$U/$n"; u add -f -- "$n"
+  expect block "nom étrange avec contenu interdit : $(printf %q "$n")" "référence interdite" git -C "$U" -c alias.check='!dot guard staged' check
+  ! grep -qi 'zed' "$S/out" || ko=$((ko+1))
+  u reset -q; rm -f -- "$U/$n"
+done
+printf 'propre\n' >"$U/café.txt"; u add café.txt
+expect pass  "nom NFC propre" "" git -C "$U" -c alias.check='!dot guard staged' check
+nfd=$(printf 'cafe\xcc\x81-nfd.txt'); printf 'propre\n' >"$U/$nfd"; u add -- "$nfd"
+expect pass  "nom NFD propre" "" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q; rm -f -- "$U/$nfd" "$U/café.txt"
+echo "acme" >"$U/split.txt"; echo "corp" >>"$U/split.txt"; u add split.txt
+expect pass  "terme coupé sur deux lignes : non détecté (documenté)" "" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q
+printf '\0\1client AcmeCorp\0\n' >"$U/blob.bin"; u add blob.bin
+expect block "binaire indexé : contenu scanné" "blob.bin" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q; rm -f "$U/blob.bin"
+{ head -c 4000000 /dev/zero | tr '\0' 'x'; echo; echo "fin AcmeCorp"; } >"$U/big.txt"; u add big.txt
+expect block "gros fichier : terme à la fin" "big.txt" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q; rm -f "$U/big.txt" "$U/split.txt"
+# Deleting a file that holds a term, and renaming a clean file, are allowed.
+echo "client zed" >"$U/old.txt"; u add old.txt; u commit -q --no-verify -m old
+u rm -q old.txt
+expect pass  "suppression indexée d'un fichier interdit" "" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q --hard; u mv ok.txt renamed.txt
+expect pass  "renommage indexé propre" "" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q --hard
+# A gitlink (submodule): never opened, never blocks; its name is checked.
+sub=$S/sub; git init -q "$sub"; echo "client zed" >"$sub/s.txt"; git -C "$sub" add s.txt; git -C "$sub" commit -q --no-verify -m s
+u update-index --add --cacheinfo "160000,$(git -C "$sub" rev-parse HEAD),vendor/lib"
+expect pass  "gitlink : ni ouvert ni bloquant" "" git -C "$U" -c alias.check='!dot guard staged' check
+u update-index --add --cacheinfo "160000,$(git -C "$sub" rev-parse HEAD),zed"
+expect block "gitlink : le nom est contrôlé" "nom masqué" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q --hard
+# Detached HEAD.
+u checkout -q --detach; echo "client zed" >"$U/d.txt"; u add d.txt
+expect block "HEAD détachée : contenu interdit" "d.txt" git -C "$U" -c alias.check='!dot guard staged' check
+u reset -q --hard; rm -f "$U/d.txt"
+# Push contract: new branch (zero remote sha) and deletion (zero local sha).
+printf 'refs/heads/new %s refs/heads/new %040d\n' "$(u rev-list --max-parents=0 HEAD)" 0 >"$S/refs"
+expect pass  "push d'une nouvelle branche propre" "" git -C "$U" -c alias.check='!dot guard push <'"$S/refs" check
+printf '(delete) %040d refs/heads/zed-old %s\n' 0 "$(u rev-parse HEAD)" >"$S/refs"
+expect pass  "push de suppression : rien n'est envoyé" "" git -C "$U" -c alias.check='!dot guard push <'"$S/refs" check
+printf '(delete) %040d refs/heads/old not-a-sha\n' 0 >"$S/refs"
+expect pass  "push de suppression : sha distant ignoré" "" git -C "$U" -c alias.check='!dot guard push <'"$S/refs" check
+printf 'refs/heads/new %s refs/heads/new %040d extra\n' "$(u rev-parse HEAD)" 0 >"$S/refs"
+expect block "push : cinq champs refusés" "invalide" git -C "$U" -c alias.check='!dot guard push <'"$S/refs" check
+# Commit messages: body, trailer, CRLF.
+printf 'fix\n\nReviewed-by: Globex-Inc <x@example.org>\n' >"$S/msg"
+expect block "message : terme dans un trailer" "message de commit" dot guard msg "$S/msg"
+printf 'fix\r\n\r\nbody globex-inc\r\n' >"$S/msg"
+expect block "message : CRLF, terme dans le corps" "message de commit" dot guard msg "$S/msg"
+! grep -qi 'globex' "$S/out" || ko=$((ko+1))
+# Term lists: BOM, CRLF, empty-matching pattern.
+printf '\xef\xbb\xbfacmecorp\r\n# note\r\nglobex\r\n' >"$S/bomlist"
+echo AcmeCorp >"$U/bom.txt"; u add bom.txt
+expect block "liste avec BOM et CRLF : le premier terme s'applique" "bom.txt" env DOTFILES_FORBIDDEN="$S/bomlist" git -C "$U" -c alias.check='!dot guard staged' check
+for p in 'a*' '^' 'x?' '(|a)'; do
+  printf '%s\n' acmecorp "$p" >"$S/emptylist"
+  expect block "terme vide-compatible refusé ($p)" "chaîne vide" env DOTFILES_FORBIDDEN="$S/emptylist" git -C "$U" -c alias.check='!dot guard staged' check
+  expect block "terme vide-compatible refusé ($p) : msg" "chaîne vide" env DOTFILES_FORBIDDEN="$S/emptylist" git -C "$U" -c alias.check='!dot guard msg /dev/null' check
+done
+u reset -q --hard
 
 echo "== $ok OK, $ko FAIL"; [ "$ko" = 0 ]

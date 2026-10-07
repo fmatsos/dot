@@ -4,7 +4,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/lib.sh"
-S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+S=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$S"' EXIT
 export HOME=$S/home DOT_SRC="$S/home/source repos" DOT_SANDBOX=$S/home/sandbox
 export DOTFILES_DEPLOY=$S/deploy GIT_CONFIG_GLOBAL=$S/gitconfig GIT_CONFIG_NOSYSTEM=1
 mkdir -p "$HOME/.config/git/profiles" "$DOTFILES_DEPLOY" "$S/remotes/team"
@@ -84,7 +84,7 @@ echo 'OK   F12: profile without hooksPath leaves local hooks unflagged'
 # Export replaces an existing non-private file atomically.
 printf 'old\n' >"$DOTFILES_DEPLOY/repos.local"; chmod 644 "$DOTFILES_DEPLOY/repos.local"
 out=$(repos export)
-[ "$(stat -c '%a' "$DOTFILES_DEPLOY/repos.local")" = 600 ]
+[ "$(stat -c '%a' "$DOTFILES_DEPLOY/repos.local" 2>/dev/null || stat -f %Lp "$DOTFILES_DEPLOY/repos.local")" = 600 ]
 for name in ahead clean dirty; do printf 'https://git.example.com/team/%s.git\n' "$name"; done >"$S/expected"
 cmp -s "$S/expected" "$DOTFILES_DEPLOY/repos.local"
 ! grep -qE 'https://|file://' <<<"$out" || exit 1

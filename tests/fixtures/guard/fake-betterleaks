@@ -3,8 +3,15 @@
 # scanned content holds a token-looking fixture. Logs its arguments to $FAKE_BETTERLEAKS_LOG.
 set -euo pipefail
 [ -z "${FAKE_BETTERLEAKS_LOG:-}" ] || printf '%s\n' "$*" >>"$FAKE_BETTERLEAKS_LOG"
-[ "$1 $2 $3" = "--no-banner --redact git" ] || { echo "fake-betterleaks: arguments inattendus" >&2; exit 2; }
-shift 3
+[ "$1 $2" = "--no-banner --redact" ] || { echo "fake-betterleaks: arguments inattendus" >&2; exit 2; }
+shift 2
+if [ "$1" = dir ]; then # dot adopt: one file, not a repository
+  [ -f "${2:-}" ] || { echo "fake-betterleaks: arguments inattendus" >&2; exit 2; }
+  if grep -qE 'ghp_[A-Za-z0-9]{20,}' "$2"; then echo "fake-betterleaks: 1 leak found (redacted)" >&2; exit 1; fi
+  exit 0
+fi
+[ "$1" = git ] || { echo "fake-betterleaks: arguments inattendus" >&2; exit 2; }
+shift
 case $1 in
 --staged) content=$(git diff --cached) ;;
 --log-opts=*) read -ra revs <<<"${1#--log-opts=}"; content=$(git log -p "${revs[@]}") ;;

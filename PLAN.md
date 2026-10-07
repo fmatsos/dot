@@ -138,7 +138,7 @@ Un profil est un dépôt de données cloné dans `~/.dot/<clé>` ; le registre n
 3. l'installer dans `~/.local/bin/dot` ;
 4. lancer `dot install <url du premier profil>`.
 
-Une nouvelle version de `dot` se publie en changeant la version et la somme dans l'amorce, puis `dot self-update` (même téléchargement vérifié) sur les machines.
+Une nouvelle version de `dot` se publie en changeant la version et la somme dans l'amorce (`scripts/pin-install.sh`), puis `dot self-update` sur les machines. Une somme publiée avec la release ne prouve rien contre une release compromise, et un binaire installé ne peut pas connaître la somme d'une version future : `SHA256SUMS` est donc signé en Ed25519 (OpenSSL 3 en CI, secret `RELEASE_SIGNING_KEY`), et `self-update` vérifie cette signature avec la clé publique compilée dans le binaire (`crypto/ed25519`, sans dépendance) avant de vérifier la somme du binaire.
 
 **Outils annexes** : `dot guard` télécharge lui-même la version figée de betterleaks (sha256 compilé dans le binaire) dans `~/.cache/dot/`, ce qui rend le garde-fou indépendant du `PATH` des clients git graphiques. Ensuite, `dot install` installe mise (version et sha256 figés, comme aujourd'hui) seulement si un profil déclare un `config.toml`.
 
@@ -254,4 +254,6 @@ Chaque phase passe par le cycle déjà rodé : consigne numérotée à Codex, re
 - Écarts assumés par rapport au bash : le garde-fou et les secrets n'ont plus besoin de `jq` ; l'aide est générée par cobra (plus de `help.awk`) ; les erreurs d'usage sortent en code 2 ; les termes interdits sont des regex RE2 insensibles à la casse (les extensions POSIX/GNU comme les rétro-références sont refusées, en échec fermé).
 - `dot send` est remplacé par `dot push [message]`, et `dot status` (alias `st`) devient une commande à part ; sans `-p`, `pull`, `push`, `status`, `doctor`, `settings` et `mcp` agissent sur tous les profils inscrits, avec `==> <clé>` devant chacun et un échec qui n'arrête pas les autres.
 - Sommes betterleaks figées pour la v1.9.0 (recalculées sur les archives, identiques au `checksums.txt` de la release).
-- À faire : écrire l'amorce `install.sh`, `dot self-update`, refus d'un nom `dot-<cmd>` revendiqué par deux profils, bascule de la machine.
+- Faits depuis : releases signées, amorce `install.sh` (non figée), `dot self-update`, refus d'un nom `dot-<cmd>` revendiqué par deux profils, CI sur macOS, complétion des clés de profil et de `dot config`, `dot backups list|restore`, `dot adopt` (garde-fou du profil cible avant tout déplacement), variantes `home@<os>` et `home@<machine>` résolues avant les liens et les conflits (`settings`, `mcp` et mise lisent encore `home/` seul).
+- Garde-fou durci : un sous-module indexé ne bloque plus le commit (son nom reste contrôlé), un BOM en tête de liste est retiré, un terme qui correspond à la chaîne vide (`a*`, `^`…) est refusé en échec fermé. Angle mort connu : pas de normalisation Unicode, un terme en NFC ne trouve pas un nom en NFD (macOS sans `core.precomposeunicode`).
+- À faire : générer la clé de signature, publier `v0.1.0` puis figer l'amorce, bascule de la machine (phase 4), profil travail (phase 5).

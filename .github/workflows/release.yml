@@ -1,4 +1,4 @@
-# Static binaries and SHA256SUMS published on a vX.Y.Z tag.
+# Static binaries, SHA256SUMS and its Ed25519 signature published on a vX.Y.Z tag.
 name: release
 on:
   push:
@@ -31,7 +31,25 @@ jobs:
               -o "dist/dot-$name" ./cmd/dot
           done
           (cd dist && sha256sum dot-* > SHA256SUMS && cat SHA256SUMS)
+      - name: Sign SHA256SUMS
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          pubkey=$(tr -d '[:space:]' < internal/selfupdate/release.pub)
+          [ -n "$pubkey" ] || { echo "::error::internal/selfupdate/release.pub est vide : lance scripts/gen-release-key.sh."; exit 1; }
+          [ -n "$RELEASE_SIGNING_KEY" ] || { echo "::error::le secret RELEASE_SIGNING_KEY est vide ou absent."; exit 1; }
+          key="$RUNNER_TEMP/release-key.pem"
+          trap 'rm -f "$key" "$RUNNER_TEMP/release-pub.der" "$RUNNER_TEMP/release-pub.pem"' EXIT
+          (umask 077; printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key")
+          openssl pkeyutl -sign -rawin -inkey "$key" -in dist/SHA256SUMS -out dist/SHA256SUMS.sig
+          # Check against the key committed in the repo (the one compiled into the binary).
+          { printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00'; printf %s "$pubkey" | base64 -d; } > "$RUNNER_TEMP/release-pub.der"
+          [ "$(wc -c < "$RUNNER_TEMP/release-pub.der")" -eq 44 ] || { echo "::error::release.pub invalide (32 octets attendus)."; exit 1; }
+          openssl pkey -pubin -inform DER -in "$RUNNER_TEMP/release-pub.der" -out "$RUNNER_TEMP/release-pub.pem"
+          openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/release-pub.pem" -rawin -in dist/SHA256SUMS -sigfile dist/SHA256SUMS.sig \
+            || { echo "::error::la signature ne correspond pas à release.pub : secret et clé publique divergent."; exit 1; }
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes dist/dot-* dist/SHA256SUMS
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes dist/dot-* dist/SHA256SUMS dist/SHA256SUMS.sig
