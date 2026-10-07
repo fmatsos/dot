@@ -147,7 +147,7 @@ func inspect(home, p string) Row {
 	}
 	if want, _ := git(p, "config", "-f", pf, "--path", "core.hooksPath"); want != "" {
 		hooks, _ := git(p, "config", "--path", "core.hooksPath")
-		if hooks != want && (hooks != ".githooks" || !executable(filepath.Join(p, ".githooks", "pre-push"))) {
+		if hooks != want && (hooks != ".githooks" || !guardsPush(filepath.Join(p, ".githooks", "pre-push"))) {
 			if r.Reason != "" {
 				r.Reason += " ; "
 			}
@@ -157,9 +157,23 @@ func inspect(home, p string) Row {
 	return r
 }
 
-func executable(p string) bool {
+// guardsPush tells whether the hook is executable and calls `dot guard` on a line that is not a comment.
+// ponytail: a text match, not a parse; a `dot guard` buried in dead code passes.
+func guardsPush(p string) bool {
 	fi, err := os.Stat(p)
-	return err == nil && fi.Mode()&0o111 != 0
+	if err != nil || fi.Mode()&0o111 == 0 {
+		return false
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return false
+	}
+	for _, l := range strings.Split(string(data), "\n") {
+		if l = strings.TrimSpace(l); !strings.HasPrefix(l, "#") && strings.Contains(l, "dot guard") {
+			return true
+		}
+	}
+	return false
 }
 
 // Collect inspects every repository. Git sees the process environment (HOME included).
