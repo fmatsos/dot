@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="#why-dot"><b>Why dot?</b></a> ·
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="#a-profile"><b>A profile</b></a> ·
   <a href="#commands"><b>Commands</b></a> ·
@@ -30,6 +31,110 @@ settings for Claude Code, Codex and OpenCode.
 
 Several profiles can live side by side on one machine, a personal one and a work one for
 instance, each with its own git identity, and `dot` treats them all the same way.
+
+## Why dot?
+
+**Dotfiles** are the configuration files that live in your home directory: `~/.zshrc`,
+`~/.gitconfig`, `~/.config/…`, `~/.claude/settings.json`. They make a machine yours, so people
+keep them in a git repository to rebuild a machine, or to share one setup between several.
+
+A plain repository is a good start, and for one machine, one identity and nothing secret near your
+config, it is all you need. The questions come later, and each one is usually answered with a
+script of your own. `dot` is that layer, written once and tested:
+
+### Put the files in place, without breaking anything
+
+A profile keeps its files under `home/` (linked into `~`) and `bin/` (linked into
+`~/.local/bin`):
+
+```text
+dotfiles/                      ~ after `dot install`
+├── dot.json
+├── home/
+│   ├── .zshrc            →    ~/.zshrc       (a symbolic link to the file in ~/.dot/dotfiles)
+│   └── .gitconfig        →    ~/.gitconfig
+└── bin/
+    └── backup            →    ~/.local/bin/backup
+```
+
+Editing `~/.zshrc` edits the file in the repository, so `dot push` has something to commit. A file
+that was already there is moved to `~/.local/state/dotfiles/backup/<date>/` (kept 30 days),
+running `dot install` twice changes nothing, and `dot install -n` shows what would happen first.
+
+### Keep a personal and a work setup on the same machine
+
+```sh
+dot install https://github.com/you/dotfiles-perso.git
+dot install https://github.com/you/dotfiles-work.git -p work
+
+dot profile work ~/src/github.com/acme/    # applies the manifest's `work` git identity to this folder
+dot whoami                                 # which git identity applies here, and the file that sets it
+dot repos --problems                       # repositories with the wrong identity, or a bypassed guard
+```
+
+Both profiles are updated together with `dot pull`. If they both try to link the same file
+(say `~/.zshrc`), `dot install` refuses before it writes anything, instead of silently letting
+one win.
+
+### Do not leak your employer, or a token, into a public repository
+
+Dotfiles repositories are often public, and they are easy to pollute: a token pasted in a
+snippet, an internal hostname in a comment. Git hooks that are one line each run `dot guard` on
+every commit and push:
+
+```text
+# ~/.dot/work/forbidden.local     (one case-insensitive regular expression per line, never committed)
+acme
+internal\.example\.com
+```
+
+A commit that stages a secret, or a file that matches one of those terms, is refused. The guard
+reports file names, branches and commits, never the text it found, and it fails closed: a missing
+list or an unavailable scanner blocks instead of letting everything through. `dot terms` copies
+the list to a CI secret, so the same check runs on the server.
+
+### Keep secrets out of your config
+
+Instead of `export GITHUB_TOKEN=…` in `.zshrc`, you keep a reference to your vault
+(Bitwarden or Proton Pass), and the value is read only when a command needs it:
+
+```sh
+dot secrets add GITHUB_TOKEN bw:github-token     # or pass:<vault>/<item>
+dot secrets run GITHUB_TOKEN -- gh api user      # the token exists for this one command only
+```
+
+The names live in a local file, `secrets.local` (mode 600), in the profile folder. A value is
+never passed as a process argument and never sits in your shell.
+
+### Configure your coding agents once
+
+Claude Code, Codex and OpenCode each want their own MCP servers and settings. `dot` keeps one
+shared list and applies it to all three:
+
+```sh
+dot mcp -n          # preview the plan
+dot mcp             # ~/.config/mcp/servers.json → Claude Code, Codex and OpenCode
+dot settings -n     # preview the diff of ~/.claude/settings.json
+dot settings        # merge home/.claude/settings.base.json into it
+```
+
+For settings, the versioned base wins and the extra local keys are kept, and the old file is
+backed up. For MCP, a local `servers.local.json` can replace a server by name or remove it, and
+the secrets of a server stay names that `dot secrets run` resolves when the server starts.
+
+### Notice when something drifts, and rebuild a machine
+
+```sh
+dot status          # clones: changes, ahead / behind; and files that are no longer links
+dot doctor          # read-only report of every profile
+```
+
+Some applications rewrite a config file instead of editing it through the link. That file is then
+"detached": its changes would never reach the repository. `dot status` lists it; once you have
+carried its content back into the profile, `dot install` puts the link back.
+
+On a new machine, `dot install <url>` brings the profiles back, and `dot repos export` /
+`dot repos clone` bring back the repositories you work on, under `~/src/<host>/<owner>/<repo>`.
 
 ## Highlights
 
