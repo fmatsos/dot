@@ -15,10 +15,13 @@ jobs:
       contents: read
       pull-requests: read # gitleaks-action lists PR commits
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+      # A pull request from a fork gets no secret: the terms cannot be read, so the maintainer
+      # runs `dot guard all` before merging. The check stays on pushes and internal pull requests.
       - name: Check forbidden terms (files and commit metadata)
+        if: github.event.pull_request.head.repo.fork != true
         env:
           FORBIDDEN_TERMS: ${{ secrets.FORBIDDEN_TERMS }}
         shell: bash
@@ -50,18 +53,18 @@ jobs:
           exit "$bad"
       # gitleaks-action: simplest robust option, free for a personal account, scans the full history.
       - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ github.token }}
   go:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Detect Go code
         id: mod
         run: |
           if [ -f go.mod ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "Pas de go.mod : job Go ignoré."; fi
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         if: steps.mod.outputs.present == 'true'
         with:
           go-version-file: go.mod
