@@ -495,3 +495,17 @@ func TestAddWithoutDefaultBranchCleansUp(t *testing.T) {
 		}
 	})
 }
+
+// The clone holds secrets.local and forbidden.local: ~/.dot and the clone are born private.
+func TestAddCreatesPrivateDirectories(t *testing.T) {
+	home := sandbox(t)
+	in, _, _ := newInstaller(home, false)
+	if err := in.Add(remote(t, "a", nil), "a"); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{filepath.Join(home, ".dot"), filepath.Join(home, ".dot", "a")} {
+		if fi, err := os.Stat(d); err != nil || fi.Mode().Perm() != 0o700 {
+			t.Errorf("%s : %v, %v ; want 0700", d, fi, err)
+		}
+	}
+}

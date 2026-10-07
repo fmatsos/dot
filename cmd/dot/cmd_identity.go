@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
@@ -76,7 +77,11 @@ func newProfileCmd(env *Env) *cobra.Command {
 			}
 			rules := filepath.Join(env.Home, ".config", "git", "profiles.local")
 			header := `[includeIf "` + cond + `"]`
-			if hasLine(rules, header) {
+			want := shortHome(env.Home, file)
+			if path, found := rulePath(rules, header); found {
+				if path != want {
+					return fmt.Errorf("profile : une règle existe déjà pour %s vers %s : la retirer de ~/.config/git/profiles.local", cond, cmp.Or(path, "(sans path)"))
+				}
 				_, err := fmt.Fprintf(env.Stdout, "règle déjà présente : %s → %s\n", cond, name)
 				return err
 			}
@@ -84,7 +89,7 @@ func newProfileCmd(env *Env) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, werr := fmt.Fprintf(f, "%s\n\tpath = %s\n", header, shortHome(env.Home, file))
+			_, werr := fmt.Fprintf(f, "%s\n\tpath = %s\n", header, want)
 			if err := f.Close(); werr == nil {
 				werr = err
 			}
@@ -97,18 +102,29 @@ func newProfileCmd(env *Env) *cobra.Command {
 	}
 }
 
-// hasLine tells whether file holds line as a whole line.
-func hasLine(file, line string) bool {
+// rulePath finds the includeIf block starting with header in file and returns its path value;
+// found is false when no such block exists.
+func rulePath(file, header string) (path string, found bool) {
 	f, err := os.Open(file)
 	if err != nil {
-		return false
+		return "", false
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		if sc.Text() == line {
-			return true
+		line := strings.TrimSpace(sc.Text())
+		switch {
+		case line == header:
+			found = true
+		case strings.HasPrefix(line, "["):
+			if found {
+				return path, true
+			}
+		case found:
+			if k, v, ok := strings.Cut(line, "="); ok && strings.TrimSpace(k) == "path" {
+				path = strings.TrimSpace(v)
+			}
 		}
 	}
-	return false
+	return path, found
 }

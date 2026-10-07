@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -576,5 +577,62 @@ func TestDetachedIgnoresModuleSourcesWithSeveralProfiles(t *testing.T) {
 	d := Detached(a.Dir, home)
 	if len(d) != 1 || d[0] != "~/.arc" {
 		t.Fatalf("several profiles: %v", d)
+	}
+}
+
+// A profile gives ~/.config as a file (a variant), another a file below it: neither order can link both.
+func TestConflictsAncestorAndDescendantAcrossProfiles(t *testing.T) {
+	home := t.TempDir()
+	mk := func(name, rel string) Profile {
+		d := filepath.Join(t.TempDir(), name)
+		write(t, filepath.Join(d, rel), "x", 0o644)
+		return Profile{name, d}
+	}
+	a, b := mk("a", "home/.config"), mk("b", "home/.config/app/rc")
+	cs, err := Conflicts(home, []Profile{a, b})
+	if err == nil || len(cs) != 1 || cs[0].Dst != filepath.Join(home, ".config") || strings.Join(cs[0].Keys, ",") != "a,b" {
+		t.Fatalf("ancestor/descendant not refused: %v, %v", cs, err)
+	}
+	if cs, err := Conflicts(home, []Profile{a, mk("c", "home/.config-other")}); err != nil || cs != nil {
+		t.Fatalf("a sibling sharing a name prefix conflicts: %v, %v", cs, err)
+	}
+	if cs, err := Conflicts(home, []Profile{mk("d", "home/.config/app/rc"), mk("e", "home/.config/app/other")}); err != nil || cs != nil {
+		t.Fatalf("files in one directory conflict: %v, %v", cs, err)
+	}
+}
+
+// The last source under a root of ~ is deleted: the plan no longer names the root, the roots
+// remembered by the last install still lead to the old link, on install and on uninstall.
+func TestOrphanLinkUnderRootTheLastSourceLeft(t *testing.T) {
+	for _, uninstall := range []bool{false, true} {
+		home, dir := fixture(t)
+		write(t, dir+"/home/.tool/cfg", "c\n", 0o644)
+		must(t, New(home, false, nil, nil, clock).Apply(dir))
+		must(t, os.RemoveAll(dir+"/home/.tool"))
+		if uninstall {
+			must(t, Unlink(dir, home, nil))
+		} else {
+			must(t, New(home, false, nil, nil, clock).Apply(dir))
+		}
+		if _, err := os.Lstat(home + "/.tool/cfg"); err == nil {
+			t.Errorf("uninstall=%v: dead link under ~/.tool kept", uninstall)
+		}
+	}
+}
+
+func TestRootsStateFollowsTheLifeOfTheProfile(t *testing.T) {
+	home, dir := fixture(t)
+	write(t, dir+"/home/.tool/cfg", "c\n", 0o644)
+	must(t, New(home, true, nil, nil, clock).Apply(dir))
+	if _, err := os.Stat(rootsFile(home, dir)); err == nil {
+		t.Error("a dry run wrote the roots")
+	}
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	if got := savedRoots(home, dir); !slices.Contains(got, home+"/.tool") {
+		t.Errorf("roots = %v", got)
+	}
+	must(t, Unlink(dir, home, nil))
+	if _, err := os.Stat(rootsFile(home, dir)); err == nil {
+		t.Error("roots kept after the uninstall")
 	}
 }

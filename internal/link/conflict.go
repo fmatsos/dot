@@ -34,7 +34,8 @@ func (e *ConflictError) Error() string {
 	return b.String()
 }
 
-// Conflicts finds targets (home/ files and bin/ names) linked by more than one profile. With two
+// Conflicts finds targets (home/ files and bin/ names) linked by more than one profile, or by one
+// profile under a path another links as a file. With two
 // profiles or more the ModuleSources are not linked, so they never conflict.
 // It returns the conflicts sorted by Dst and, when there are any, a *ConflictError.
 func Conflicts(home string, profiles []Profile) ([]Conflict, error) {
@@ -55,9 +56,31 @@ func Conflicts(home string, profiles []Profile) ([]Conflict, error) {
 		}
 	}
 	var out []Conflict
-	for _, c := range byDst {
+	dsts := make([]string, 0, len(byDst))
+	for dst, c := range byDst {
+		dsts = append(dsts, dst)
 		if len(c.Keys) > 1 {
 			out = append(out, *c)
+		}
+	}
+	// A destination under another profile's destination (a file where the other one needs a
+	// directory) cannot be linked by both: report the pair at the ancestor.
+	slices.Sort(dsts)
+	for i, anc := range dsts {
+		for _, dst := range dsts[i+1:] {
+			if !strings.HasPrefix(dst, anc) {
+				break
+			}
+			if !strings.HasPrefix(dst, anc+"/") {
+				continue
+			}
+			for ia, ka := range byDst[anc].Keys {
+				for id, kd := range byDst[dst].Keys {
+					if ka != kd {
+						out = append(out, Conflict{Dst: anc, Keys: []string{ka, kd}, Srcs: []string{byDst[anc].Srcs[ia], byDst[dst].Srcs[id]}})
+					}
+				}
+			}
 		}
 	}
 	if out == nil {

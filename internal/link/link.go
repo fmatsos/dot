@@ -357,18 +357,12 @@ func target(p string) (string, bool) {
 
 // symlinkCandidates lists the symlinks that may be dot links: the planned destinations, the
 // symlinks directly in ~ and ~/.local/bin and, recursively without ever entering a symlink, in
-// every top-level directory of ~ the plan touches. ponytail: an orphan link outside the root
-// directories the profile manages is not found.
-func symlinkCandidates(plan []Link, home string) []string {
-	var cands, roots []string
+// every top-level directory of ~ the plan touches or the last install did (saved).
+// ponytail: an orphan link under a root neither the plan nor the last install knew is not found.
+func symlinkCandidates(plan []Link, home string, saved []string) []string {
+	var cands []string
 	for _, k := range plan {
 		cands = append(cands, k.Dst)
-		rel, err := filepath.Rel(home, k.Dst)
-		if top, _, nested := strings.Cut(rel, string(filepath.Separator)); err == nil && nested {
-			if fi, err := os.Lstat(filepath.Join(home, top)); err == nil && fi.IsDir() {
-				roots = append(roots, filepath.Join(home, top))
-			}
-		}
 	}
 	for _, d := range []string{home, filepath.Join(home, ".local", "bin")} {
 		entries, _ := os.ReadDir(d)
@@ -378,8 +372,12 @@ func symlinkCandidates(plan []Link, home string) []string {
 			}
 		}
 	}
+	roots := append(planRoots(plan, home), saved...)
 	slices.Sort(roots)
 	for _, r := range slices.Compact(roots) {
+		if fi, err := os.Lstat(r); err != nil || !fi.IsDir() {
+			continue
+		}
 		// WalkDir never follows symlinks; an unreadable subdirectory is skipped, not fatal.
 		_ = filepath.WalkDir(r, func(p string, d fs.DirEntry, err error) error {
 			if err == nil && d.Type()&fs.ModeSymlink != 0 {
@@ -402,7 +400,8 @@ func (l *Linker) orphanLinks(dir string, plan []Link) error {
 	}
 	// Scan the roots of every layer too: a root only an inactive layer gave is no longer planned.
 	every, _ := layerLinks(dir, l.Home, allLayers(dir), false)
-	for _, p := range symlinkCandidates(append(plan[:len(plan):len(plan)], every...), l.Home) {
+	all := append(plan[:len(plan):len(plan)], every...)
+	for _, p := range symlinkCandidates(all, l.Home, savedRoots(l.Home, dir)) {
 		t, ok := target(p)
 		if !ok || planned[p] || !inProfile(t, dir) || strings.HasPrefix(t, dir+"/bin/") {
 			continue
@@ -422,7 +421,7 @@ func (l *Linker) orphanLinks(dir string, plan []Link) error {
 			return err
 		}
 	}
-	return nil
+	return l.saveRoots(dir, all)
 }
 
 // Unlink removes the links of home that point into a home layer (active or not) or bin/ of dir
@@ -443,7 +442,7 @@ func Unlink(dir, home string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range symlinkCandidates(append(plan, b...), home) {
+	for _, p := range symlinkCandidates(append(plan, b...), home, savedRoots(home, dir)) {
 		if t, ok := target(p); !ok || !inProfile(t, dir) {
 			continue
 		}
@@ -453,6 +452,12 @@ func Unlink(dir, home string, out io.Writer) error {
 		fmt.Fprintf(out, "  lien retiré : %s\n", Tilde(home, p))
 		for d := filepath.Dir(p); strings.HasPrefix(d, home+"/") && removeEmptyDir(d); d = filepath.Dir(d) {
 		}
+	}
+	// nothing remembered once unlinked
+	if err := os.Remove(rootsFile(home, dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	for d := filepath.Dir(rootsFile(home, dir)); strings.HasPrefix(d, home+"/") && removeEmptyDir(d); d = filepath.Dir(d) {
 	}
 	return nil
 }
