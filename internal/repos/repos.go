@@ -158,7 +158,7 @@ func inspect(home, p string) Row {
 	return r
 }
 
-// guardsPush tells whether the hook is executable and runs `dot guard` as the command of a line
+// guardsPush tells whether the hook is executable and runs `dot guard push` as the command of a line
 // (after an optional `exec` and VAR=value prefixes), comments excluded.
 // ponytail: a text match, not a parse; dead code or a branch that never runs still passes.
 func guardsPush(p string) bool {
@@ -178,7 +178,7 @@ func guardsPush(p string) bool {
 		for len(f) > 0 && (f[0] == "exec" || assignment.MatchString(f[0])) {
 			f = f[1:]
 		}
-		if len(f) >= 2 && f[0] == "dot" && f[1] == "guard" {
+		if len(f) >= 3 && f[0] == "dot" && f[1] == "guard" && f[2] == "push" {
 			return true
 		}
 	}
