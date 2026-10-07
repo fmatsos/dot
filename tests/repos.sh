@@ -66,11 +66,13 @@ code=0; repos --problems >"$S/out" || code=$?
 git -C "$base/clean" config user.email tester@example.com
 git -C "$base/clean" config core.hooksPath .githooks
 mkdir -p "$base/clean/.githooks"
-printf '#!/bin/bash\nexit 0\n' >"$base/clean/.githooks/guard"
-chmod +x "$base/clean/.githooks/guard"
+code=0; repos --problems >"$S/out" || code=$?
+[ "$code" -eq 1 ]   # .githooks without an executable pre-push
+printf '#!/bin/sh\nexec dot guard push "$@"\n' >"$base/clean/.githooks/pre-push"
+chmod +x "$base/clean/.githooks/pre-push"
 [ -z "$(repos --problems)" ]
 git -C "$base/clean" config --unset core.hooksPath
-echo 'OK   F12: local hooks bypass flagged, reasons combined, executable guard excepted'
+echo 'OK   F12: local hooks bypass flagged, reasons combined, executable pre-push excepted'
 cat >"$HOME/.config/git/profiles/demo.gitconfig" <<'PROFILE'
 [user]
   email = tester@example.com
