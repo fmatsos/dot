@@ -13,12 +13,15 @@ out=$(HOME=$S/h0 sh "$root/install.sh" 2>&1) && fail "placeholder accepted"
 case $out in *"non figé"*) ;; *) fail "placeholder message: $out" ;; esac
 [ ! -e "$S/h0" ] || fail "placeholder wrote files"
 
-# Self-update without a compiled-in key is refused, dry run included.
-for args in "" "-n --version v9.9.9"; do
-  # shellcheck disable=SC2086
-  out=$(HOME=$S/h0 dot self-update $args 2>&1) && fail "self-update without key succeeded"
-  case $out in *"clé de signature"*) ;; *) fail "self-update message: $out" ;; esac
-done
+# Self-update without a compiled-in key is refused, dry run included. Once the real public key is
+# committed the binary has one and would go to the network: the Go tests cover that path.
+if [ ! -s "$root/internal/selfupdate/release.pub" ]; then
+  for args in "" "-n --version v9.9.9"; do
+    # shellcheck disable=SC2086
+    out=$(HOME=$S/h0 dot self-update $args 2>&1) && fail "self-update without key succeeded"
+    case $out in *"clé de signature"*) ;; *) fail "self-update message: $out" ;; esac
+  done
+fi
 
 command -v openssl >/dev/null && openssl genpkey -algorithm ed25519 -out "$S/k.pem" 2>/dev/null || { echo "install-sh: openssl 3 absent, partie pin ignorée"; exit 0; }
 

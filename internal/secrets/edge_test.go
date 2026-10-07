@@ -136,7 +136,7 @@ func TestFailingManagerNeverLeaksItsOutput(t *testing.T) {
 
 func TestMappingFileSecretNeverInParseError(t *testing.T) {
 	// A line that looks like "NAME=value" (someone pasted a secret in place of a reference).
-	_, err := Parse([]byte("API_KEY=sk-live-0123456789\n"))
+	_, err := Parse([]byte("API_KEY=sk-live-0123456789\n")) // gitleaks:allow (fake value)
 	if err == nil || strings.Contains(err.Error(), "sk-live") {
 		t.Fatalf("%v", err)
 	}
