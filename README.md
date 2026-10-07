@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/Linux-supported-success?logo=linux&logoColor=white" alt="Linux: supported">
   <img src="https://img.shields.io/badge/macOS-supported-success?logo=apple&logoColor=white" alt="macOS: supported">
   <img src="https://img.shields.io/badge/Go-static%20binary-00ADD8?logo=go&logoColor=white" alt="Go: static binary">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Unlicense-blue" alt="License: Unlicense"></a>
 </p>
 
 <p align="center">
@@ -300,3 +301,7 @@ built if needed).
 | `ci.yml` | push, pull request | The guard (forbidden terms in files and commit metadata, secret scan), then `go vet`, `go test -race`, the static build and the black-box tests in `tests/*.sh`. |
 | `release.yml` | tag `vX.Y.Z` | Builds the four static binaries, computes `SHA256SUMS` and publishes the release. |
 | `dependabot.yml` | weekly | Updates the actions and the Go modules. |
+
+## License
+
+Public domain, see [LICENSE](LICENSE) ([Unlicense](https://unlicense.org)).
