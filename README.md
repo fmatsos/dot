@@ -1,76 +1,126 @@
-# dot
+<p align="center">
+  <img src=".github/assets/banner.webp" alt="dot, a ladybug with four arms holding a magnifying glass with a padlock and a golden key, in a twilight garden where glowing green lines link young shoots" width="100%">
+</p>
 
-[![ci](https://github.com/fmatsos/dot/actions/workflows/ci.yml/badge.svg)](https://github.com/fmatsos/dot/actions/workflows/ci.yml)
+<h1 align="center">dot</h1>
 
-`dot` installe et entretient un ou plusieurs profils de dotfiles. Un profil est un dépôt de
-données avec un manifeste `dot.json`, cloné dans `~/.dot/<clé>`. `dot` apporte le reste : les
-liens dans `~`, un garde-fou contre les fuites (termes interdits, secrets), les secrets via
-`bw` et `pass-cli`, et la fusion des serveurs MCP et des réglages pour Claude Code, Codex et
-OpenCode.
+<p align="center">
+  <strong>Install and maintain your dotfiles profiles.</strong>
+</p>
 
-## État
+<p align="center">
+  <a href="https://github.com/fmatsos/dot/actions/workflows/ci.yml"><img src="https://github.com/fmatsos/dot/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <img src="https://img.shields.io/badge/Linux-supported-success?logo=linux&logoColor=white" alt="Linux: supported">
+  <img src="https://img.shields.io/badge/macOS-supported-success?logo=apple&logoColor=white" alt="macOS: supported">
+  <img src="https://img.shields.io/badge/Go-static%20binary-00ADD8?logo=go&logoColor=white" alt="Go: static binary">
+</p>
 
-**Phases 1 à 3 du plan implémentées ; phases 4 (bascule de la machine) et 5 (profil travail)
-non commencées, et pas encore de release.** Le binaire Go couvre toutes les commandes du CLI bash,
-plus le multi-profil, et passe les tests boîte noire portés (`tests/*.sh`) et les tests Go.
+<p align="center">
+  <a href="PLAN.md"><b>Plan</b></a> ·
+  <a href="#commands"><b>Commands</b></a> ·
+  <a href="#status"><b>Status</b></a> ·
+  <a href="#development"><b>Development</b></a>
+</p>
 
-Reste avant une première release `v0.1.0` (le scanner betterleaks est épinglé en 1.9.0, sha256 compilé
-dans le binaire ; `DOT_BETTERLEAKS=<chemin>` le remplace, pour les tests uniquement) :
+`dot` installs and maintains one or more dotfiles profiles. A profile is a data repository with
+a `dot.json` manifest, cloned into `~/.dot/<key>`. `dot` brings the rest: the links in `~`, a
+guard against leaks (forbidden terms, secrets), secrets through `bw` and `pass-cli`, and the
+merge of MCP servers and settings for Claude Code, Codex and OpenCode.
 
-- **L'amorce `install.sh`** (téléchargement vérifié de la release) n'est pas écrite : elle
-  suppose une release publiée dont on connaît la somme.
-- **Bascule de la machine** (phase 4) : déplacer `~/.config/dotfiles` vers `~/.dot/perso`, retirer
-  le bash du dépôt de données. Elle touche la machine réelle et se fait à blanc d'abord.
-- Les hooks du dépôt de données deviennent `exec dot guard staged`, `exec dot guard msg "$1"` et
-  `exec dot guard push "$@"`.
+## Highlights
 
-Le détail des décisions, de l'architecture et des phases est dans [PLAN.md](PLAN.md).
+- **Several profiles, one tool.** Each profile lives in its own clone (`~/.dot/<key>`) and is
+  listed in a registry (`~/.dot/profiles.json`). Personal and work setups stay apart, and
+  `pull`, `push`, `status` and `doctor` act on all of them at once.
+- **Links, not copies.** `dot install` links the profile's files into `~`, and `dot uninstall`
+  takes them out again. `-n` shows what would change without writing anything.
+- **A guard against leaks.** `dot guard` checks the staged files, the commit message and the
+  push for forbidden terms and secrets, from git hooks that are one line each.
+- **Secrets stay in your vault.** `dot secrets` works with `bw` and `pass-cli` (`add`, `get`,
+  `run`, `unlock`, `lock`, `status`), so a profile never has to hold them.
+- **One config for your coding agents.** `dot settings` and `dot mcp` merge the settings and
+  the MCP servers of a profile into Claude Code, Codex and OpenCode.
+- **Extensible.** `dot <cmd>` runs `dot-<cmd>`, found in the profile's `bin/` and then on your
+  `PATH`, and falls back to `git` on the clone.
+- **A static binary.** Linux and macOS, x64 and arm64, no runtime to install.
 
-## Commandes
+## Commands
 
 ```text
-dot install <url> [-p <clé>] [-n]   clone un profil dans ~/.dot/<clé>, l'inscrit, l'installe
-dot install [-n]                    réinstalle tous les profils inscrits
-dot pull                            met à jour les profils (git pull --rebase, puis installation)
-dot push [message]                  commite les fichiers suivis modifiés des profils, puis pousse
-dot status                          changements des clones et fichiers détachés (alias st)
-dot uninstall -p <clé> [--purge]    retire les liens et l'entrée du registre
-dot doctor                          bilan en lecture seule
-dot config list|get|set|unset       lit et modifie le registre ~/.dot/profiles.json
+dot install <url> [-p <key>] [-n]   clone a profile into ~/.dot/<key>, register it, install it
+dot install [-n]                    reinstall every registered profile
+dot pull                            update the profiles (git pull --rebase, then install)
+dot push [message]                  commit the tracked files that changed in the profiles, then push
+dot status                          changes in the clones and detached files (alias st)
+dot uninstall -p <key> [--purge]    remove the links and the registry entry
+dot doctor                          read-only report
+dot config list|get|set|unset       read and edit the ~/.dot/profiles.json registry
 dot whoami | profile | terms | clone | repos
 dot secrets add|get|run|unlock|lock|status
-dot guard staged|msg|push|all       garde-fou des hooks git (termes interdits, secrets)
-dot settings [-n] | dot mcp [-n]   fusion des réglages Claude et des serveurs MCP
-dot <cmd>                           lance dot-<cmd> (bin/ du profil, puis PATH), sinon git sur le clone
+dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
+dot settings [-n] | dot mcp [-n]   merge Claude settings and MCP servers
+dot <cmd>                           run dot-<cmd> (profile bin/, then PATH), otherwise git on the clone
 ```
 
-Le profil visé se choisit avec `-p/--profile <clé>`, puis `DOT_PROFILE`, puis le profil par
-défaut du registre. Sans `-p`, `pull`, `push`, `status`, `doctor`, `settings` et `mcp` agissent sur tous les
-profils inscrits, les autres commandes sur le profil par défaut. `DOTFILES_DEPLOY=<dossier>` désigne
-directement le dossier d'un profil (compatibilité de transition et point d'entrée des tests).
-La clé d'un `dot install <url>` sans `-p` est le nom du dépôt de l'URL.
+The target profile is chosen with `-p/--profile <key>`, then `DOT_PROFILE`, then the registry's
+default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `settings` and `mcp` act on
+every registered profile, and the other commands on the default profile. `DOTFILES_DEPLOY=<folder>`
+points straight at a profile's folder (a transition aid and the entry point of the tests).
+Without `-p`, the key of a `dot install <url>` is the repository name in the URL.
 
-## Installation prévue
+## Quick start
 
-Un petit script d'amorce téléchargera la release GitHub figée dans le script, vérifiera son
-sha256 contre la somme qu'il contient, l'installera dans `~/.local/bin/dot`, puis lancera
-`dot install <url du premier profil>`. Binaires statiques pour Linux et macOS, en x64 et arm64
-(`dot-linux-x64`, `dot-linux-arm64`, `dot-macos-x64`, `dot-macos-arm64`), avec un fichier
-`SHA256SUMS` joint à chaque release.
+There is no release yet, so build it from source ([Go](https://go.dev/dl/) is the only
+requirement):
 
-## Développement
+```sh
+git clone https://github.com/fmatsos/dot.git
+cd dot
+make build                                    # static binary ./dot
+./dot install https://github.com/you/dotfiles.git -n   # dry run: shows what would be linked
+./dot install https://github.com/you/dotfiles.git      # clone, register and link the profile
+```
 
-Go, avec [cobra](https://github.com/spf13/cobra) pour la ligne de commande. `make test` lance
-`go vet` et `go test -race` ; `make build` produit le binaire statique `./dot`.
+### Planned installation
 
-Une commande vit dans son propre fichier `cmd/dot/cmd_<nom>.go` et s'enregistre avec
-`func init() { register(newXxxCmd) }` : aucun fichier partagé n'est modifié. Les tests boîte
-noire sont des scripts bash `tests/<nom>.sh` qui font `source tests/lib.sh` et appellent
-`dot` (le binaire de `$DOT_BIN`, construit au besoin).
+A small bootstrap script will download the GitHub release pinned inside the script, check its
+sha256 against the sum it contains, install it in `~/.local/bin/dot`, then run
+`dot install <url of the first profile>`. Static binaries for Linux and macOS, x64 and arm64
+(`dot-linux-x64`, `dot-linux-arm64`, `dot-macos-x64`, `dot-macos-arm64`), with a `SHA256SUMS`
+file attached to each release.
 
-- `ci.yml` (push, pull request) : garde-fou (termes interdits dans les fichiers et les
-  métadonnées de commit, scan de secrets), puis `go vet`, `go test -race`, le build statique et
-  les tests boîte noire de `tests/*.sh`, dès qu'un `go.mod` existe.
-- `release.yml` (tag `vX.Y.Z`) : construit les quatre binaires statiques, calcule `SHA256SUMS`
-  et publie la release.
-- `dependabot.yml` : mises à jour hebdomadaires des actions et des modules Go.
+## Status
+
+**Phases 1 to 3 of the plan are implemented; phases 4 (switching the machine over) and 5 (work
+profile) have not started, and there is no release yet.** The Go binary covers every command of
+the bash CLI, plus multi-profile support, and passes the ported black-box tests (`tests/*.sh`)
+and the Go tests.
+
+What is left before a first `v0.1.0` release (the betterleaks scanner is pinned to 1.9.0, its
+sha256 compiled into the binary; `DOT_BETTERLEAKS=<path>` replaces it, for tests only):
+
+- [ ] **The `install.sh` bootstrap** (verified download of the release) is not written: it needs
+  a published release whose sum is known.
+- [ ] **Switching the machine** (phase 4): move `~/.config/dotfiles` to `~/.dot/perso` and
+  remove the bash from the data repository. It touches the real machine, so it is rehearsed
+  with a dry run first.
+- [ ] The data repository's hooks become `exec dot guard staged`, `exec dot guard msg "$1"` and
+  `exec dot guard push "$@"`.
+
+The details of the decisions, the architecture and the phases are in [PLAN.md](PLAN.md).
+
+## Development
+
+Go, with [cobra](https://github.com/spf13/cobra) for the command line. `make test` runs
+`go vet` and `go test -race`; `make build` produces the static binary `./dot`.
+
+A command lives in its own file `cmd/dot/cmd_<name>.go` and registers itself with
+`func init() { register(newXxxCmd) }`: no shared file is modified. The black-box tests are bash
+scripts `tests/<name>.sh` that `source tests/lib.sh` and call `dot` (the binary in `$DOT_BIN`,
+built if needed).
+
+| Workflow | Runs on | What it does |
+| --- | --- | --- |
+| `ci.yml` | push, pull request | The guard (forbidden terms in files and commit metadata, secret scan), then `go vet`, `go test -race`, the static build and the black-box tests in `tests/*.sh`, as soon as a `go.mod` exists. |
+| `release.yml` | tag `vX.Y.Z` | Builds the four static binaries, computes `SHA256SUMS` and publishes the release. |
+| `dependabot.yml` | weekly | Updates the actions and the Go modules. |
