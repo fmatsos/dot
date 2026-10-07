@@ -24,9 +24,11 @@ func (g *Guard) File(path, name string) error {
 	if err != nil {
 		return fail("fichier illisible, refus.")
 	}
-	for _, l := range bytes.Split(data, []byte{'\n'}) {
-		if g.Terms.MatchLine(l) {
-			return fail("référence interdite dans le contenu.")
+	if !isMedia(path) { // as for staged files and history: names and secrets only for media
+		for _, l := range bytes.Split(data, []byte{'\n'}) {
+			if g.Terms.MatchLine(l) {
+				return fail("référence interdite dans le contenu.")
+			}
 		}
 	}
 	return g.leaks("dir", path)

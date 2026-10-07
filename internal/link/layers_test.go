@@ -279,3 +279,20 @@ func TestFileAndDescendantAcrossLayers(t *testing.T) {
 		t.Errorf("~/.tool/conf = %q", got)
 	}
 }
+
+func TestThreeLayerChainKeepsTheHighest(t *testing.T) {
+	root := t.TempDir()
+	home, dir := filepath.Join(root, "home"), filepath.Join(root, "p")
+	must(t, os.MkdirAll(home, 0o755))
+	write(t, dir+"/home/.config", "base", 0o644)
+	write(t, dir+"/home@linux/.config/app", "os", 0o644)
+	write(t, dir+"/home@work/.config/app/rc", "host", 0o644)
+	machine(t, "linux", "work")
+	for range 50 { // map order is random: the result must not depend on it
+		links, err := layerLinks(dir, home, activeLayers(), false)
+		must(t, err)
+		if len(links) != 1 || links[0].Dst != filepath.Join(home, ".config/app/rc") {
+			t.Fatalf("plan = %v", links)
+		}
+	}
+}

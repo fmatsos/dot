@@ -88,18 +88,31 @@ func layerLinks(dir, home string, layers []string, multi bool) ([]Link, error) {
 		}
 	}
 	// A file in one layer and a path below it in another cannot both exist in ~: the higher
-	// layer wins, as for identical paths.
+	// layer wins, as for identical paths. Entries are taken highest layer first (then by path,
+	// for a stable result) and one under or above an entry already taken is dropped.
+	order := make([]string, 0, len(byRel))
 	for rel := range byRel {
+		order = append(order, rel)
+	}
+	slices.SortFunc(order, func(x, y string) int {
+		if rank[x] != rank[y] {
+			return rank[y] - rank[x]
+		}
+		return strings.Compare(x, y)
+	})
+	taken, above := map[string]bool{}, map[string]bool{} // files kept, and their parent folders
+	for _, rel := range order {
+		clash := above[rel]
+		for a := filepath.Dir(rel); !clash && a != "." && a != string(filepath.Separator); a = filepath.Dir(a) {
+			clash = taken[a]
+		}
+		if clash {
+			delete(byRel, rel)
+			continue
+		}
+		taken[rel] = true
 		for a := filepath.Dir(rel); a != "." && a != string(filepath.Separator); a = filepath.Dir(a) {
-			if _, ok := byRel[a]; !ok {
-				continue
-			}
-			if rank[a] > rank[rel] {
-				delete(byRel, rel)
-			} else {
-				delete(byRel, a)
-			}
-			break
+			above[a] = true
 		}
 	}
 	links := make([]Link, 0, len(byRel))
