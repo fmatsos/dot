@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://fmatsos.github.io/dot/"><b>Website</b></a> ·
   <a href="#why-dot"><b>Why dot?</b></a> ·
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="#a-profile"><b>A profile</b></a> ·
