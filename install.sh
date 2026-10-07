@@ -43,6 +43,9 @@ curl -fsSL --proto '=https,file' -o "$tmp/dot" "$base/$VERSION/dot-$platform" ||
 
 # Copy next to the destination, then rename: dot is never half written.
 mkdir -p "$dest"
+# An executable already there is kept aside: if the update below fails, it comes back instead of
+# a pinned bootstrap that may be older than it.
+if [ -e "$dest/dot" ]; then cp -p "$dest/dot" "$dest/.dot.prev.$$" || die "sauvegarde de $dest/dot impossible"; fi
 cp "$tmp/dot" "$dest/.dot.$$"
 chmod 755 "$dest/.dot.$$"
 mv -f "$dest/.dot.$$" "$dest/dot"
@@ -50,10 +53,19 @@ echo "dot $VERSION installé dans $dest/dot"
 case ":$PATH:" in *":$dest:"*) ;; *) echo "ajoute $dest à ton PATH" ;; esac
 
 # The pinned release is only the bootstrap: dot checks the Ed25519 signature of the latest release
-# (public key compiled in) and its checksum before replacing itself. If that fails, the pinned
-# binary, already verified above, stays. DOT_INSTALL_NO_UPDATE=1 skips it, for tests.
+# (public key compiled in) and its checksum before replacing itself. If that fails, the previous
+# executable comes back, or the pinned binary (already verified above) stays on a first install.
+# DOT_INSTALL_NO_UPDATE=1 skips it, for tests.
 if [ "${DOT_INSTALL_NO_UPDATE:-}" != 1 ]; then
-  "$dest/dot" self-update || echo "mise à jour de dot impossible : $VERSION reste installé (dot self-update pour réessayer)" >&2
+  if ! "$dest/dot" self-update; then
+    if [ -e "$dest/.dot.prev.$$" ]; then
+      mv -f "$dest/.dot.prev.$$" "$dest/dot"
+      echo "mise à jour de dot impossible : la version précédente est conservée (dot self-update pour réessayer)" >&2
+    else
+      echo "mise à jour de dot impossible : $VERSION reste installé (dot self-update pour réessayer)" >&2
+    fi
+  fi
 fi
+rm -f "$dest/.dot.prev.$$"
 
 if [ $# -gt 0 ]; then exec "$dest/dot" install "$@"; fi
