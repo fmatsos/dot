@@ -2,7 +2,7 @@
   <img src=".github/assets/banner.webp" alt="dot: a ladybug with four arms holding a magnifying glass with a padlock and a golden key, standing among young shoots in a twilight garden where glowing green lines link the shoots. Install and maintain your dotfiles profiles." width="100%">
 </p>
 
-<h1 align="center">dot</h1>
+<h1 align="center">dot.</h1>
 
 <p align="center">
   <strong>One tool for all your dotfiles, without leaking a thing.</strong>
@@ -59,7 +59,8 @@ dotfiles/                      ~ after `dot install`
 
 Editing `~/.zshrc` edits the file in the repository, so `dot push` has something to commit. A file
 that was already there is moved to `~/.local/state/dotfiles/backup/<date>/` (kept 30 days),
-running `dot install` twice changes nothing, and `dot install -n` shows what would happen first.
+running `dot install` twice changes nothing, and `dot install -n` prints the steps it would run
+instead of running them.
 
 ### Keep a personal and a work setup on the same machine
 
@@ -67,31 +68,52 @@ running `dot install` twice changes nothing, and `dot install -n` shows what wou
 dot install https://github.com/you/dotfiles-perso.git
 dot install https://github.com/you/dotfiles-work.git -p work
 
-dot profile work ~/src/github.com/acme/    # applies the manifest's `work` git identity to this folder
-dot whoami                                 # which git identity applies here, and the file that sets it
-dot repos --problems                       # repositories with the wrong identity, or a bypassed guard
+dot profile work ~/src/github.com/acme/    # repositories under this folder use the `work` git identity
+dot whoami                                 # run in a repository: the identity in force and the file that sets it
+dot repos --problems                       # repositories whose email differs from their profile, or a bypassed guard
 ```
 
+`dot profile` writes an `includeIf` rule into `~/.config/git/profiles.local` (never versioned). The
+identity it points to is the `work.gitconfig` that your manifest declares under `profiles`, and
+your profile ships the `~/.config/git/profiles.gitconfig` that `dot install` adds to your global
+git config, with an include of `profiles.local`. From then on `git commit` in `~/src/github.com/acme/app`
+uses the work name and email, and a repository elsewhere keeps your default one. `dot repos --problems`
+lists the repositories whose email differs from the one of their profile and exits with 1.
+
 Both profiles are updated together with `dot pull`. If they both try to link the same file
-(say `~/.zshrc`), `dot install` refuses before it writes anything, instead of silently letting
-one win.
+(say `~/.zshrc`), `dot install` refuses before it writes anything, naming both sources, instead
+of silently letting one win.
 
-### Do not leak your employer, or a token, into a public repository
+### Do not leak your employer, or a token, into a personal repository
 
-Dotfiles repositories are often public, and they are easy to pollute: a token pasted in a
-snippet, an internal hostname in a comment. Git hooks that are one line each run `dot guard` on
-every commit and push:
+Dotfiles and personal repositories are often public, and they are easy to pollute: a token pasted
+in a snippet, an internal hostname in a comment, a commit made with your work email. Git hooks
+that are one line each (`exec dot guard staged` in `pre-commit`, `exec dot guard msg "$1"` in
+`commit-msg`, `exec dot guard push "$@"` in `pre-push`) run `dot guard` on every commit and push.
+It reads a list of terms that lives in the profile folder and is never committed:
 
 ```text
-# ~/.dot/work/forbidden.local     (one case-insensitive regular expression per line, never committed)
+# ~/.dot/<key>/forbidden.local     (one case-insensitive regular expression per line)
 acme
 internal\.example\.com
 ```
 
-A commit that stages a secret, or a file that matches one of those terms, is refused. The guard
-reports file names, branches and commits, never the text it found, and it fails closed: a missing
-list or an unavailable scanner blocks instead of letting everything through. `dot terms` copies
-the list to a CI secret, so the same check runs on the server.
+Then, in a repository that uses that profile:
+
+```sh
+git commit -m "add wiki link"      # refused: a staged file mentions internal.example.com (its name is reported)
+git commit -m "work for acme"      # refused: the commit message matches a term
+git commit -m "add token"          # refused: the secret scanner (betterleaks) found a token
+git commit -m "harmless note"      # accepted
+```
+
+The guard reports file names, branches and commits, never the text it found, and it fails closed:
+a missing list or an unavailable scanner blocks instead of letting everything through (`dot push`
+is refused until `forbidden.local` exists). A commit made with a work author identity in a
+personal repository is refused too. A work repository that names the employer on purpose opts
+out of the terms and keeps the secret scan: `git config dotfiles.guard secrets`. Finally,
+`dot terms` copies the list to the `FORBIDDEN_TERMS` secret of the origin repository (with `gh`),
+so the same check runs in CI.
 
 ### Keep secrets out of your config
 
@@ -113,14 +135,16 @@ shared list and applies it to all three:
 
 ```sh
 dot mcp -n          # preview the plan
-dot mcp             # ~/.config/mcp/servers.json → Claude Code, Codex and OpenCode
+dot mcp             # the servers of your profiles → Claude Code, Codex and OpenCode
 dot settings -n     # preview the diff of ~/.claude/settings.json
 dot settings        # merge home/.claude/settings.base.json into it
 ```
 
 For settings, the versioned base wins and the extra local keys are kept, and the old file is
 backed up. For MCP, a local `servers.local.json` can replace a server by name or remove it, and
-the secrets of a server stay names that `dot secrets run` resolves when the server starts.
+the secrets of a server stay names that `dot secrets run` resolves when the server starts. With
+one profile the list is `~/.config/mcp/servers.json`, a link to the profile's file; with several,
+`dot` reads the list of each profile in registry order.
 
 ### Notice when something drifts, and rebuild a machine
 
@@ -131,7 +155,8 @@ dot doctor          # read-only report of every profile
 
 Some applications rewrite a config file instead of editing it through the link. That file is then
 "detached": its changes would never reach the repository. `dot status` lists it; once you have
-carried its content back into the profile, `dot install` puts the link back.
+carried its content back into the profile, `dot install` puts the link back and keeps the
+detached file in the backup folder.
 
 On a new machine, `dot install <url>` brings the profiles back, and `dot repos export` /
 `dot repos clone` bring back the repositories you work on, under `~/src/<host>/<owner>/<repo>`.
@@ -165,8 +190,9 @@ only requirement:
 git clone https://github.com/fmatsos/dot.git
 cd dot
 make build                                              # static binary ./dot
-./dot install https://github.com/you/dotfiles.git -n    # dry run: shows what would be linked
+./dot install https://github.com/you/dotfiles.git -n    # dry run: prints the steps without running them
 ./dot install https://github.com/you/dotfiles.git       # clone, register and link the profile
+printf 'my-employer\n' > ~/.dot/dotfiles/forbidden.local  # the guard's terms; `dot push` is refused without it
 ./dot doctor                                            # read-only report
 ```
 
