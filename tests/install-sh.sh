@@ -34,7 +34,7 @@ tag=v9.9.9
 rel=$S/rel/$tag; mkdir -p "$rel" "$S/repo/scripts" "$S/repo/internal/selfupdate"
 cp "$S/install.unpinned.sh" "$S/repo/install.sh"; cp "$root/scripts/pin-install.sh" "$S/repo/scripts/"
 openssl pkey -in "$S/k.pem" -pubout -outform DER | tail -c 32 | base64 | tr -d '\n' >"$S/repo/internal/selfupdate/release.pub"
-for p in linux-x64 linux-arm64 macos-x64 macos-arm64; do printf '#!/bin/sh\necho fake-dot "$@" >"$HOME/ran"\n' >"$rel/dot-$p"; done
+for p in linux-x64 linux-arm64 macos-x64 macos-arm64; do printf '#!/bin/sh\necho fake-dot "$@" >>"$HOME/ran"\n[ "$1" = self-update ] && [ -e "$HOME/update-fails" ] && exit 1\nexit 0\n' >"$rel/dot-$p"; done
 (cd "$rel" && sha256sum dot-* >SHA256SUMS 2>/dev/null || shasum -a 256 dot-* >SHA256SUMS)
 openssl pkeyutl -sign -rawin -inkey "$S/k.pem" -in "$rel/SHA256SUMS" -out "$rel/SHA256SUMS.sig"
 
@@ -46,7 +46,19 @@ grep -q "^VERSION=$tag$" "$S/repo/install.sh" || fail "VERSION not pinned"
 mkdir "$S/h1"
 HOME=$S/h1 DOT_INSTALL_BASE=file://$S/rel sh "$S/repo/install.sh" https://example.invalid/p.git >/dev/null || fail "install.sh run"
 [ -x "$S/h1/.local/bin/dot" ] || fail "dot not installed"
-[ "$(cat "$S/h1/ran")" = "fake-dot install https://example.invalid/p.git" ] || fail "profile url not forwarded"
+[ "$(cat "$S/h1/ran")" = "fake-dot self-update
+fake-dot install https://example.invalid/p.git" ] || fail "self-update then profile url not run: $(cat "$S/h1/ran")"
+
+# A failing self-update keeps the verified pinned binary and the install goes on.
+mkdir "$S/h3"; touch "$S/h3/update-fails"
+HOME=$S/h3 DOT_INSTALL_BASE=file://$S/rel sh "$S/repo/install.sh" https://example.invalid/p.git >/dev/null 2>"$S/err3" || fail "failing self-update stopped the install"
+grep -q "mise à jour de dot impossible" "$S/err3" || fail "failed update not reported"
+[ "$(tail -n 1 "$S/h3/ran")" = "fake-dot install https://example.invalid/p.git" ] || fail "profile not installed after a failed update"
+
+# DOT_INSTALL_NO_UPDATE=1 skips the update.
+mkdir "$S/h4"
+HOME=$S/h4 DOT_INSTALL_NO_UPDATE=1 DOT_INSTALL_BASE=file://$S/rel sh "$S/repo/install.sh" https://example.invalid/p.git >/dev/null || fail "no-update run"
+[ "$(cat "$S/h4/ran")" = "fake-dot install https://example.invalid/p.git" ] || fail "update not skipped"
 
 # A tampered binary is refused and nothing is installed.
 echo evil >>"$rel/dot-linux-x64"; echo evil >>"$rel/dot-linux-arm64"; echo evil >>"$rel/dot-macos-x64"; echo evil >>"$rel/dot-macos-arm64"

@@ -1,7 +1,9 @@
 #!/bin/sh
-# Bootstrap dot: download the pinned release, check its sha256, install it, then install a profile.
+# Bootstrap dot: download the pinned release, check its sha256, install it, update it to the latest
+# signed release, then install a profile.
 #   sh install.sh [<profile url> [dot install options]]
-# VERSION and the sums are rewritten by scripts/pin-install.sh after each release.
+# VERSION and the sums are rewritten by scripts/pin-install.sh; they only need a bump when the
+# bootstrap itself must change (self-update broken, signing key rotated), not at every release.
 set -eu
 
 VERSION=v0.1.1
@@ -46,5 +48,12 @@ chmod 755 "$dest/.dot.$$"
 mv -f "$dest/.dot.$$" "$dest/dot"
 echo "dot $VERSION installé dans $dest/dot"
 case ":$PATH:" in *":$dest:"*) ;; *) echo "ajoute $dest à ton PATH" ;; esac
+
+# The pinned release is only the bootstrap: dot checks the Ed25519 signature of the latest release
+# (public key compiled in) and its checksum before replacing itself. If that fails, the pinned
+# binary, already verified above, stays. DOT_INSTALL_NO_UPDATE=1 skips it, for tests.
+if [ "${DOT_INSTALL_NO_UPDATE:-}" != 1 ]; then
+  "$dest/dot" self-update || echo "mise à jour de dot impossible : $VERSION reste installé (dot self-update pour réessayer)" >&2
+fi
 
 if [ $# -gt 0 ]; then exec "$dest/dot" install "$@"; fi

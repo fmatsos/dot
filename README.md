@@ -213,9 +213,11 @@ On a new machine, `dot install <url>` brings the profiles back, and `dot repos e
 
 ## Quick start
 
-Install the latest release, a static binary for Linux or macOS, into `~/.local/bin/dot`. The
-script checks the download against the checksum it carries, and installs the profile when you give
-it a URL:
+Install dot, a static binary for Linux or macOS, into `~/.local/bin/dot`. The script checks the
+download against the checksum it carries (a pinned release, a bootstrap that is not bumped at every
+release), then runs `dot self-update`, which checks the signature and the checksum of the latest
+release before replacing it; if that update fails, the pinned binary stays. It installs the profile
+when you give it a URL:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fmatsos/dot/main/install.sh | sh -s -- https://github.com/you/dotfiles.git
