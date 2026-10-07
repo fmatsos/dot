@@ -147,6 +147,8 @@ func newGuardCmd(env *Env) *cobra.Command {
 			"(termes d'une liste locale, jamais versionnée). Échoue fermé : liste absente, vide ou invalide,\n" +
 			"commande git en échec ou scanner indisponible bloquent. Ne rapporte que des noms de fichiers,\n" +
 			"de branches, de tags ou des commits, jamais le texte trouvé.\n\n" +
+			"Les images et polices (png, jpg, gif, webp, avif, heic, ico, woff, woff2) ne sont pas lues pour les termes : leurs\n" +
+			"octets ne sont pas du texte. Leurs noms le sont, et betterleaks les lit. Tout autre binaire est lu.\n\n" +
 			"Liste des termes : des expressions étendues insensibles à la casse (syntaxe RE2), une par ligne ;\n" +
 			"les lignes vides et celles qui commencent par # sont ignorées. Les opérateurs GNU échappés\n" +
 			"(\\| \\+ \\? \\{ \\( \\)) et les drapeaux coupant la casse ((?-i)) sont refusés. Ordre de résolution :\n" +

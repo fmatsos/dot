@@ -1,0 +1,25 @@
+# Every pull request description must carry the public domain dedication of CONTRIBUTING.md.
+# The template pre-fills it on the web; this check covers the pull requests opened with
+# `gh pr create --body`, the API or any other tool. Bots and the repository owner are exempt.
+name: dedication
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+permissions: {}
+jobs:
+  dedication:
+    if: github.event.pull_request.user.type != 'Bot' && github.event.pull_request.user.login != github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - name: The description carries the dedication
+        env:
+          BODY: ${{ github.event.pull_request.body }}   # an env var, never interpolated in the script
+        run: |
+          want='I dedicate any and all copyright interest in this software to the public domain. I make this dedication for the benefit of the public at large and to the detriment of my heirs and successors. I intend this dedication to be an overt act of relinquishment in perpetuity of all present and future rights to this software under copyright law.'
+          squash() { tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//'; }   # line wrapping and CRLF do not matter
+          if printf '%s' "$BODY" | squash | grep -qF -- "$(printf '%s' "$want" | squash)"; then
+            echo "The public domain dedication is in the description."
+            exit 0
+          fi
+          echo "::error title=Public domain dedication missing::Add the statement of CONTRIBUTING.md (section Unlicensing contributions) to the description of this pull request."
+          exit 1
