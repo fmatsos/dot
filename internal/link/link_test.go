@@ -636,3 +636,18 @@ func TestRootsStateFollowsTheLifeOfTheProfile(t *testing.T) {
 		t.Error("roots kept after the uninstall")
 	}
 }
+
+// A root of ~ whose name holds a space is remembered whole.
+func TestOrphanLinkUnderRootWithASpace(t *testing.T) {
+	home, dir := fixture(t)
+	write(t, dir+"/home/.my tool/cfg", "c\n", 0o644)
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	if got := savedRoots(home, dir); !slices.Contains(got, home+"/.my tool") {
+		t.Fatalf("roots = %q", got)
+	}
+	must(t, os.RemoveAll(dir+"/home/.my tool"))
+	must(t, New(home, false, nil, nil, clock).Apply(dir))
+	if _, err := os.Lstat(home + "/.my tool/cfg"); err == nil {
+		t.Error("dead link under a root with a space kept")
+	}
+}

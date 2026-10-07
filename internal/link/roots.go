@@ -33,7 +33,7 @@ func rootsFile(home, dir string) string {
 func savedRoots(home, dir string) []string {
 	data, _ := os.ReadFile(rootsFile(home, dir))
 	var roots []string
-	for _, r := range strings.Fields(string(data)) {
+	for _, r := range strings.Split(string(data), "\n") { // one path per line: a path may hold spaces
 		if filepath.Dir(r) == home { // never a path outside the top level of home
 			roots = append(roots, r)
 		}
