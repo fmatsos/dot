@@ -1,0 +1,38 @@
+name: pages
+on:
+  push:
+    branches: [main]
+    paths: ['README.md', 'DESIGN.md', 'CONTRIBUTING.md', 'SECURITY.md']
+  workflow_dispatch:
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: main
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+      - name: Build documentation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 site/build.py main
+      - name: Publish documentation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd site
+          git add -A
+          if git diff --cached --quiet; then echo "docs unchanged"; exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "docs: rebuild from ${GITHUB_REF_NAME}@${GITHUB_SHA::7}"
+          git push origin HEAD:gh-pages
+          gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" --silent
