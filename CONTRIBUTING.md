@@ -37,7 +37,9 @@ this statement, taken from the [Unlicense website](https://unlicense.org/#unlice
 
 You do not have to type it: the pull request template pre-fills it in the description of every
 pull request, and **leaving it there is how you make the dedication**. If you open a pull request
-another way (`gh pr create --body`, the API), paste the statement into its description yourself.
+another way (`gh pr create --body`, the API), paste the statement into its description yourself: the `dedication` workflow fails
+the pull request while the statement is missing from its description (pull requests from bots and from
+the repository owner are exempt).
 If you made the change as an employee of an organization, the statement may not be enough: your
 employer has to disclaim its copyright too (see
 [how SQLite handles it](https://www.sqlite.org/copyright.html)), so say so in the pull request.
