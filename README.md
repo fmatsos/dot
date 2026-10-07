@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/banner.webp" alt="dot, a ladybug with four arms holding a magnifying glass with a padlock and a golden key, in a twilight garden where glowing green lines link young shoots" width="100%">
+  <img src=".github/assets/banner.webp" alt="dot: a ladybug with four arms holding a magnifying glass with a padlock and a golden key, in a twilight garden where glowing green lines link young shoots. Install and maintain your dotfiles profiles." width="100%">
 </p>
 
 <h1 align="center">dot</h1>

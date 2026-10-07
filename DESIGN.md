@@ -74,7 +74,7 @@ A garden at twilight seen from ground level: tall grass and large leaves, violet
 | `avatar` | The master cut out, transparent background, 1024 px square. |
 | `logo` | Flat, no text: the shell seen from above with its 7 dots, each with its lime halo (red disc, center line, black pronotum). Must hold at 32 and 16 px; if the 7 dots blur, a 3-dot variant. |
 | `hero` | The twilight garden, no character (or very small). |
-| `banner` | README banner (`.github/assets/banner.webp`, 1600 x 900): the avatar on the hero scene, no text (the title and tagline are in the README). The only generated asset kept in the repository for now. |
+| `banner` | README banner (`.github/assets/banner.webp`, 1200 x 630): the `og` card, the avatar on the hero scene with the title and the tagline composed as text. The only generated asset kept in the repository for now. |
 | `project-card` / `og` | The character on the hero scene; the title and tagline are composed afterwards as text, never generated. |
 | `sprites` | Animation sheets, 6 frames of 256 px in a row (1536 x 256), transparent, one scale for all sheets, see below. |
 | `icons` | Favicon 32 and 64 px and a 180 px touch icon, cut from the logo. The 7 dots stay readable down to 32 px; at 16 px the icon reads as a red ladybug dot. |
