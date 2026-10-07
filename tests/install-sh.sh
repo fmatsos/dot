@@ -55,6 +55,15 @@ HOME=$S/h3 DOT_INSTALL_BASE=file://$S/rel sh "$S/repo/install.sh" https://exampl
 grep -q "mise à jour de dot impossible" "$S/err3" || fail "failed update not reported"
 [ "$(tail -n 1 "$S/h3/ran")" = "fake-dot install https://example.invalid/p.git" ] || fail "profile not installed after a failed update"
 
+# A failing self-update puts back the executable that was already there: no downgrade.
+mkdir -p "$S/h5/.local/bin"; touch "$S/h5/update-fails"
+printf '#!/bin/sh\necho old-dot "$@" >>"$HOME/ran"\nexit 0\n' >"$S/h5/.local/bin/dot"; chmod 755 "$S/h5/.local/bin/dot"
+HOME=$S/h5 DOT_INSTALL_BASE=file://$S/rel sh "$S/repo/install.sh" https://example.invalid/p.git >/dev/null 2>"$S/err5" || fail "previous binary run"
+grep -q "version précédente est conservée" "$S/err5" || fail "restore not reported: $(cat "$S/err5")"
+grep -q old-dot "$S/h5/.local/bin/dot" || fail "previous executable not restored"
+[ "$(tail -n 1 "$S/h5/ran")" = "old-dot install https://example.invalid/p.git" ] || fail "install not run by the previous binary"
+[ "$(ls -A "$S/h5/.local/bin")" = dot ] || fail "temporary copies left"
+
 # DOT_INSTALL_NO_UPDATE=1 skips the update.
 mkdir "$S/h4"
 HOME=$S/h4 DOT_INSTALL_NO_UPDATE=1 DOT_INSTALL_BASE=file://$S/rel sh "$S/repo/install.sh" https://example.invalid/p.git >/dev/null || fail "no-update run"
