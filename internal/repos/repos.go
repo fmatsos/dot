@@ -147,7 +147,7 @@ func inspect(home, p string) Row {
 	}
 	if want, _ := git(p, "config", "-f", pf, "--path", "core.hooksPath"); want != "" {
 		hooks, _ := git(p, "config", "--path", "core.hooksPath")
-		if hooks != want && (hooks != ".githooks" || !executable(filepath.Join(p, ".githooks", "guard"))) {
+		if hooks != want && (hooks != ".githooks" || !executable(filepath.Join(p, ".githooks", "pre-push"))) {
 			if r.Reason != "" {
 				r.Reason += " ; "
 			}

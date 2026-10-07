@@ -131,9 +131,12 @@ func TestProblemsAndHooksGuard(t *testing.T) {
 	}
 	w.git("-C", w.base+"/clean", "config", "user.email", "tester@example.com")
 	w.git("-C", w.base+"/clean", "config", "core.hooksPath", ".githooks")
-	write(t, w.base+"/clean/.githooks/guard", "#!/bin/bash\nexit 0\n", 0o755)
+	if _, ok, _ := Problems(w.home, w.src, w.sandbox); ok {
+		t.Fatal(".githooks sans pre-push exécutable toléré")
+	}
+	write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\nexec dot guard push \"$@\"\n", 0o755)
 	if rows, ok, _ := Problems(w.home, w.src, w.sandbox); !ok {
-		t.Fatalf("garde exécutable tolérée : %q", rows)
+		t.Fatalf("pre-push exécutable toléré : %q", rows)
 	}
 	w.git("-C", w.base+"/clean", "config", "--unset", "core.hooksPath")
 }
