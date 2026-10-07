@@ -213,18 +213,26 @@ On a new machine, `dot install <url>` brings the profiles back, and `dot repos e
 
 ## Quick start
 
-There is no release to download yet, so build it from source. [Go](https://go.dev/dl/) is the
-only requirement:
+Install the latest release, a static binary for Linux or macOS, into `~/.local/bin/dot`. The
+script checks the download against the checksum it carries, and installs the profile when you give
+it a URL:
 
 ```sh
-git clone https://github.com/fmatsos/dot.git
-cd dot
-make build                                              # static binary ./dot
-./dot install https://github.com/you/dotfiles.git -n    # dry run: prints the steps without running them
-./dot install https://github.com/you/dotfiles.git       # clone, register and link the profile
-printf 'my-employer\n' > ~/.dot/dotfiles/forbidden.local  # the guard's terms; `dot push` is refused without it
-./dot doctor                                            # read-only report
+curl -fsSL https://raw.githubusercontent.com/fmatsos/dot/main/install.sh | sh -s -- https://github.com/you/dotfiles.git
 ```
+
+Without the URL it only installs `dot`. Add `~/.local/bin` to your `PATH` if it is not there yet,
+then:
+
+```sh
+dot install https://github.com/you/dotfiles.git -n      # dry run: prints the steps without running them
+dot install https://github.com/you/dotfiles.git         # clone, register and link the profile
+printf 'my-employer\n' > ~/.dot/dotfiles/forbidden.local  # the guard's terms; `dot push` is refused without it
+dot doctor                                              # read-only report
+```
+
+To build it yourself instead, you only need [Go](https://go.dev/dl/): `git clone` the repository,
+then `make build` produces the static binary `./dot`.
 
 Then keep it up to date:
 
@@ -234,13 +242,11 @@ dot push "tidy"   # commit the tracked files that changed, then push
 dot status        # changes in the clones and detached files
 ```
 
-Release binaries (`dot-linux-x64`, `dot-linux-arm64`, `dot-macos-x64`, `dot-macos-arm64`, with a
-`SHA256SUMS` file and its Ed25519 signature `SHA256SUMS.sig`) are built, signed and published by
-the `release.yml` workflow when a `vX.Y.Z` tag is pushed. Once a release exists, the `install.sh`
-bootstrap downloads the version pinned in the script, checks its checksum, installs it into
-`~/.local/bin/dot` and can run `dot install <url>` for you; `dot self-update` then keeps it
-current. The signing key is not generated yet (`scripts/gen-release-key.sh`), so until the first
-release the workflow fails and `dot self-update` refuses, on purpose.
+Each release holds the four binaries (`dot-linux-x64`, `dot-linux-arm64`, `dot-macos-x64`,
+`dot-macos-arm64`), a `SHA256SUMS` file and its Ed25519 signature `SHA256SUMS.sig`. The
+`release.yml` workflow builds, signs and publishes them when a `vX.Y.Z` tag is pushed, and releases
+are immutable. `dot self-update` checks the signature with the public key compiled into the binary,
+then the checksum, before replacing the executable.
 
 ## A profile
 

@@ -8,8 +8,12 @@ fail() { echo "FAIL install-sh: $*" >&2; exit 1; }
 
 sh -n "$root/install.sh" || fail "syntax"
 
+# The committed script is pinned to a release: the tests start from an unpinned copy of it.
+sed -E 's/^(VERSION|SHA256_[A-Z0-9_]+)=.*/\1=PLACEHOLDER/' "$root/install.sh" >"$S/install.unpinned.sh"
+grep -q PLACEHOLDER "$S/install.unpinned.sh" || fail "unpinned copy"
+
 # An unpinned script refuses to install anything.
-out=$(HOME=$S/h0 sh "$root/install.sh" 2>&1) && fail "placeholder accepted"
+out=$(HOME=$S/h0 sh "$S/install.unpinned.sh" 2>&1) && fail "placeholder accepted"
 case $out in *"non figé"*) ;; *) fail "placeholder message: $out" ;; esac
 [ ! -e "$S/h0" ] || fail "placeholder wrote files"
 
@@ -28,7 +32,7 @@ command -v openssl >/dev/null && openssl genpkey -algorithm ed25519 -out "$S/k.p
 # A fake release signed with a throwaway key, in a copy of the repo scripts.
 tag=v9.9.9
 rel=$S/rel/$tag; mkdir -p "$rel" "$S/repo/scripts" "$S/repo/internal/selfupdate"
-cp "$root/install.sh" "$S/repo/"; cp "$root/scripts/pin-install.sh" "$S/repo/scripts/"
+cp "$S/install.unpinned.sh" "$S/repo/install.sh"; cp "$root/scripts/pin-install.sh" "$S/repo/scripts/"
 openssl pkey -in "$S/k.pem" -pubout -outform DER | tail -c 32 | base64 | tr -d '\n' >"$S/repo/internal/selfupdate/release.pub"
 for p in linux-x64 linux-arm64 macos-x64 macos-arm64; do printf '#!/bin/sh\necho fake-dot "$@" >"$HOME/ran"\n' >"$rel/dot-$p"; done
 (cd "$rel" && sha256sum dot-* >SHA256SUMS 2>/dev/null || shasum -a 256 dot-* >SHA256SUMS)
@@ -52,7 +56,7 @@ HOME=$S/h2 DOT_INSTALL_BASE=file://$S/rel sh "$S/repo/install.sh" >/dev/null 2>&
 
 # A forged SHA256SUMS fails the signature check in pin-install.
 echo "$(printf '0%.0s' {1..64})  dot-linux-x64" >>"$rel/SHA256SUMS"
-cp "$root/install.sh" "$S/repo/install.sh"
+cp "$S/install.unpinned.sh" "$S/repo/install.sh"
 "$S/repo/scripts/pin-install.sh" "$tag" >/dev/null 2>&1 && fail "forged sums accepted"
 grep -q PLACEHOLDER "$S/repo/install.sh" || fail "install.sh modified after failed verification"
 echo "ok install-sh"
