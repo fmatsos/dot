@@ -35,7 +35,7 @@ func (s *Store) Add(ctx context.Context, name, ref string, input func() (string,
 		return false, err
 	}
 	if !exists {
-		if m.Field() != "password" {
+		if m.HasField() {
 			return false, errors.New("élément ou champ introuvable : un champ #nom se lit, il ne se crée pas")
 		}
 		value, err := input()
