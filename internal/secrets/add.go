@@ -35,6 +35,9 @@ func (s *Store) Add(ctx context.Context, name, ref string, input func() (string,
 		return false, err
 	}
 	if !exists {
+		if m.Field() != "password" {
+			return false, errors.New("élément ou champ introuvable : un champ #nom se lit, il ne se crée pas")
+		}
 		value, err := input()
 		if err != nil {
 			return false, err
@@ -82,7 +85,7 @@ func (s *Store) exists(ctx context.Context, m Mapping) (bool, error) {
 	if _, err := s.run(ctx, nil, nil, "pass-cli", "info"); err != nil {
 		return false, ErrPassLoggedOut
 	}
-	_, err := s.run(ctx, nil, nil, "pass-cli", "item", "view", "--vault-name", m.Vault(), "--item-title", m.Title(), "--field", "password")
+	_, err := s.run(ctx, nil, nil, "pass-cli", "item", "view", "--vault-name", m.Vault(), "--item-title", m.Title(), "--field", m.Field())
 	return err == nil, nil
 }
 
@@ -157,5 +160,5 @@ func (s *Store) register(m Mapping) error {
 	if n := len(data); n > 0 && data[n-1] != '\n' {
 		data = append(data, '\n')
 	}
-	return writeAtomic(s.Dir, File, append(data, m.Name+"="+m.Ref+"\n"...))
+	return writeAtomic(s.Dir, File, append(data, m.Line()+"\n"...))
 }

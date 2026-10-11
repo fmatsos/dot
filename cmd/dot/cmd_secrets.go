@@ -50,7 +50,8 @@ func newSecretsCmd(env *Env) *cobra.Command {
 		Short: "Lit les secrets au moment où une commande en a besoin",
 		Long: "dot secrets — lit les secrets au moment où une commande en a besoin, jamais dans le shell.\n\n" +
 			"Les noms viennent de secrets.local, dans le dossier du profil : NOM=bw:<élément> ou\n" +
-			"NOM=pass:<coffre>/<élément>. Les valeurs ne passent jamais en argument de processus.",
+			"NOM=pass:<coffre>/<élément>[#champ] (#champ : champ personnalisé, ex. une clé API ;\n" +
+			"sinon le mot de passe). Les valeurs ne passent jamais en argument de processus.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 || args[0] == "help" && len(args) == 1 {
 				return nil
@@ -59,32 +60,42 @@ func newSecretsCmd(env *Env) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(
-		&cobra.Command{
-			Use:   "add NOM <réf>",
-			Short: "Crée un secret ou réutilise un élément existant",
-			Long: "Crée un secret ou réutilise un élément existant.\n\n" +
-				"Référence : bw:<élément> ou pass:<coffre>/<élément>. Saisie cachée deux fois au terminal,\n" +
-				"sinon stdin (un retour à la ligne final retiré). La valeur est vérifiée avant l'ajout à\n" +
-				"secrets.local (600) ; un élément existant ne demande aucune saisie.",
-			Args: exactArgs(2, "dot secrets add NOM <réf>"),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				st, err := store()
-				if err != nil {
-					return err
+	var field string
+	addCmd := &cobra.Command{
+		Use:   "add NOM <réf>",
+		Short: "Crée un secret ou réutilise un élément existant",
+		Long: "Crée un secret ou réutilise un élément existant.\n\n" +
+			"Référence : bw:<élément> ou pass:<coffre>/<élément>[#champ]. Saisie cachée deux fois au terminal,\n" +
+			"sinon stdin (un retour à la ligne final retiré). La valeur est vérifiée avant l'ajout à\n" +
+			"secrets.local (600) ; un élément existant ne demande aucune saisie.",
+		Args: exactArgs(2, "dot secrets add NOM <réf>"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ref := args[1]
+			if field != "" {
+				if !strings.HasPrefix(ref, "pass:") || strings.Contains(ref, "#") {
+					return usagef("--field : seulement avec pass:<coffre>/<élément>, sans # dans la référence")
 				}
-				created, err := st.Add(cmd.Context(), args[0], args[1], func() (string, error) { return readNewValue(env) })
-				if err != nil {
-					return secretFail(env, err)
-				}
-				if created {
-					fmt.Fprintf(env.Stdout, "%s : élément créé et référence enregistrée\n", args[0])
-				} else {
-					fmt.Fprintf(env.Stdout, "%s : élément existant réutilisé, référence enregistrée\n", args[0])
-				}
-				return nil
-			},
+				ref += "#" + field
+			}
+			st, err := store()
+			if err != nil {
+				return err
+			}
+			created, err := st.Add(cmd.Context(), args[0], ref, func() (string, error) { return readNewValue(env) })
+			if err != nil {
+				return secretFail(env, err)
+			}
+			if created {
+				fmt.Fprintf(env.Stdout, "%s : élément créé et référence enregistrée\n", args[0])
+			} else {
+				fmt.Fprintf(env.Stdout, "%s : élément existant réutilisé, référence enregistrée\n", args[0])
+			}
+			return nil
 		},
+	}
+	addCmd.Flags().StringVar(&field, "field", "", "champ personnalisé à lire (pass), équivalent à #champ dans la référence")
+	cmd.AddCommand(
+		addCmd,
 		&cobra.Command{
 			Use:   "get NOM",
 			Short: "Affiche la valeur, sans retour à la ligne final",

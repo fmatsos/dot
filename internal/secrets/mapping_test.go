@@ -22,6 +22,9 @@ func TestValid(t *testing.T) {
 		{"A", "bw:", false},
 		{"A", "pass:/Title", false},
 		{"A", "pass:Vault/", false},
+		{"A", "pass:Vault/Item#Clé API", true},
+		{"A", "pass:Vault/Item#", false},
+		{"A", "pass:Vault/#f", false},
 		{"A", "pass:NoSlash", false},
 		{"A", "other:x", false},
 		{"A", "bw:x\ny", false},
@@ -29,6 +32,39 @@ func TestValid(t *testing.T) {
 	} {
 		if got := Valid(tc.name, tc.ref); got != tc.want {
 			t.Errorf("Valid(%q, %q) = %v", tc.name, tc.ref, got)
+		}
+	}
+}
+
+func TestPassField(t *testing.T) {
+	m := Mapping{"A", "pass:Vault/Item#Clé API"}
+	if m.Title() != "Item" || m.Field() != "Clé API" {
+		t.Errorf("title %q field %q", m.Title(), m.Field())
+	}
+	if m := (Mapping{"A", "pass:Vault/Item"}); m.Title() != "Item" || m.Field() != "password" {
+		t.Errorf("title %q field %q", m.Title(), m.Field())
+	}
+}
+
+func TestQuotedRefs(t *testing.T) {
+	ms, err := Parse([]byte("A=\"pass:V/I#Clé API\"\nB='bw:Chat login'\nC=pass:V/I#Clé API\nD=\"bw:x"))
+	if err == nil || !strings.Contains(err.Error(), "ligne 4") {
+		t.Fatalf("unbalanced quote must be malformed, got %v", err)
+	}
+	ms, err = Parse([]byte("A=\"pass:V/I#Clé API\"\nB='bw:Chat login'\nC=pass:V/I#Clé API\n"))
+	if err != nil || len(ms) != 3 || ms[0].Ref != "pass:V/I#Clé API" || ms[1].Ref != "bw:Chat login" || ms[2].Ref != ms[0].Ref {
+		t.Fatalf("%v %v", ms, err)
+	}
+	for _, tc := range []struct {
+		m    Mapping
+		want string
+	}{
+		{Mapping{"A", "pass:V/I#Clé API"}, `A="pass:V/I#Clé API"`},
+		{Mapping{"A", "bw:Chat login"}, `A="bw:Chat login"`},
+		{Mapping{"A", "bw:token"}, "A=bw:token"},
+	} {
+		if got := tc.m.Line(); got != tc.want {
+			t.Errorf("Line() = %s", got)
 		}
 	}
 }
