@@ -72,8 +72,8 @@ func newSecretsCmd(env *Env) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref := args[1]
 			if field != "" {
-				if !strings.HasPrefix(ref, "pass:") || strings.Contains(ref, "#") {
-					return usagef("--field : seulement avec pass:<coffre>/<élément>, sans # dans la référence")
+				if !strings.HasPrefix(ref, "pass:") || strings.Contains(ref, "#") || strings.Contains(field, "#") {
+					return usagef("--field : seulement avec pass:<coffre>/<élément>, sans # dans la référence ni dans le champ")
 				}
 				ref += "#" + field
 			}
