@@ -153,6 +153,11 @@ dot secrets run GITHUB_TOKEN -- gh api user      # the token exists for this one
 The names live in a local file, `secrets.local` (mode 600), in the profile folder. A value is
 never passed as a process argument and never sits in your shell.
 
+A Proton Pass item that keeps its value in a custom field (an API key, say) takes a `#field`
+suffix, or `--field` on `add`: `dot secrets add TOKEN pass:Dev/Item --field "API key"`. A reference
+may be quoted in `secrets.local` (`TOKEN="pass:Dev/Item#API key"`); `add` quotes it when it holds a
+space or a `#`.
+
 ### Configure your coding agents once
 
 Claude Code, Codex and OpenCode each want their own MCP servers and settings. `dot` keeps one

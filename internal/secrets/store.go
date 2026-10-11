@@ -123,7 +123,7 @@ func (s *Store) Read(ctx context.Context, m Mapping) (string, error) {
 		}
 		out, err = s.run(ctx, []string{"BW_SESSION=" + sess}, nil, "bw", "get", "password", m.Item())
 	case "pass":
-		out, err = s.run(ctx, nil, nil, "pass-cli", "item", "view", "--vault-name", m.Vault(), "--item-title", m.Title(), "--field", "password")
+		out, err = s.run(ctx, nil, nil, "pass-cli", "item", "view", "--vault-name", m.Vault(), "--item-title", m.Title(), "--field", m.Field())
 	default:
 		err = errors.New("backend inconnu")
 	}

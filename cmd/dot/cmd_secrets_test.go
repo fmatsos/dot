@@ -50,6 +50,8 @@ func TestSecretsHelpAndUsage(t *testing.T) {
 		{[]string{"secrets", "add", "A"}, "usage : dot secrets add NOM <réf>\n"},
 		{[]string{"secrets", "run", "A"}, "usage : dot secrets run NOM... -- CMD...\n"},
 		{[]string{"secrets", "run", "--", "true"}, "usage : dot secrets run NOM... -- CMD...\n"},
+		{[]string{"secrets", "add", "A", "bw:x", "--field", "f"}, "dot : --field : seulement avec pass:<coffre>/<élément>, sans # dans la référence\n"},
+		{[]string{"secrets", "add", "A", "pass:V/I#f", "--field", "g"}, "dot : --field : seulement avec pass:<coffre>/<élément>, sans # dans la référence\n"},
 		{[]string{"secrets", "run", "A", "--"}, "usage : dot secrets run NOM... -- CMD...\n"},
 		{[]string{"secrets", "status", "x"}, "usage : dot secrets status\n"},
 		{[]string{"secrets", "nope"}, "dot : commande inconnue : secrets nope\n"},
