@@ -240,7 +240,7 @@ no_fixture() { ! grep -Fq -f "$S/value" "$@"; }
 invoke add ACME_TOKEN 'bw:Created BW' <"$S/value"
 check 'add bw from non-tty stdin succeeds without an existing mapping file' test "$rc" -eq 0
 check 'add bw creates a private mapping' test "$(stat -c '%a' "$DOTFILES_DEPLOY/secrets.local" 2>/dev/null || stat -f %Lp "$DOTFILES_DEPLOY/secrets.local")" = 600
-check 'add bw registers the reference' grep -Fxq 'ACME_TOKEN=bw:Created BW' "$DOTFILES_DEPLOY/secrets.local"
+check 'add bw registers the reference' grep -Fxq 'ACME_TOKEN="bw:Created BW"' "$DOTFILES_DEPLOY/secrets.local"
 check 'bw password goes in JSON before encoding, not argv' cmp -s "$S/value" "$FAKE_STORE/bw-Created BW"
 check 'bw create receives the encoded JSON on stdin' test -s "$FAKE_STDIN/bw.create"
 notes_null() { jq -e 'has("notes") and .notes == null' "$FAKE_STDIN/bw.json" >/dev/null; }
