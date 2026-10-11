@@ -156,7 +156,8 @@ never passed as a process argument and never sits in your shell.
 A Proton Pass item that keeps its value in a custom field (an API key, say) takes a `#field`
 suffix, or `--field` on `add`: `dot secrets add TOKEN pass:Dev/Item --field "API key"`. A reference
 may be quoted in `secrets.local` (`TOKEN="pass:Dev/Item#API key"`); `add` quotes it when it holds a
-space or a `#`.
+space or a `#`. The reference is split at its last `#`, so a Proton Pass item title holding a `#`
+(`Issue#123`) cannot be used in a `pass:` reference.
 
 ### Configure your coding agents once
 
