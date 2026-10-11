@@ -40,11 +40,19 @@ func (m Mapping) Title() string {
 // Field is the pass field to read: the #field suffix of the reference (an API key item keeps its
 // key in a custom field), else "password".
 func (m Mapping) Field() string {
-	_, t, _ := strings.Cut(m.Item(), "/")
-	if _, f, ok := cutLast(t, "#"); ok {
+	if f, ok := m.suffix(); ok {
 		return f
 	}
 	return "password"
+}
+
+// HasField tells a reference with a #field suffix from one without, even when the field is "password".
+func (m Mapping) HasField() bool { _, ok := m.suffix(); return ok }
+
+func (m Mapping) suffix() (string, bool) {
+	_, t, _ := strings.Cut(m.Item(), "/")
+	_, f, ok := cutLast(t, "#")
+	return f, ok
 }
 
 func cutLast(s, sep string) (before, after string, found bool) {

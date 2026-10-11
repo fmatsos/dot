@@ -275,6 +275,7 @@ func TestAddRefusals(t *testing.T) {
 		{"FAKE_LIST=not json", "N", "bw:ACME", "Bitwarden : recherche impossible"},
 		{"FAKE_STATE=locked", "N", "bw:ACME", ErrLocked.Error()},
 		{"FAKE_PASS_OUT=1", "N", "pass:Personal/X", ErrPassLoggedOut.Error()},
+		{"X=1", "N", "pass:V/I#password", "élément ou champ introuvable : un champ #nom se lit, il ne se crée pas"},
 		{"X=1", "1BAD", "bw:ACME", ErrMalformed.Error()},
 		{"X=1", "N", "bw:", ErrMalformed.Error()},
 		{"X=1", "DUP", "bw:ACME", "DUP : NAME déjà enregistré"},
