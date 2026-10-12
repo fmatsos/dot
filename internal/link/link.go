@@ -31,10 +31,10 @@ func (e *NoHomeError) Error() string {
 	return fmt.Sprintf("rien à lier : %s/home absent (dry run sans clone ?)", e.Dir)
 }
 
-// ModuleSources are the home/ files that `dot settings` and `dot mcp` merge across profiles. With
-// two or more registered profiles they are per-profile inputs and are not linked into ~; with one,
-// they are linked like any other file.
-var ModuleSources = []string{".claude/settings.base.json", ".config/mcp/servers.json"}
+// ModuleSources are the home/ files merged across profiles by `dot settings`, `dot mcp`
+// and the crontab module. With two or more registered profiles they are per-profile inputs
+// and are not linked into ~; with one, they are linked like any other file.
+var ModuleSources = []string{".claude/settings.base.json", ".config/mcp/servers.json", ".config/crontab"}
 
 // Tilde shortens a path under home to ~/…, like the bash `${p/#$HOME/~}`.
 func Tilde(home, p string) string {

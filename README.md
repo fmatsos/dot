@@ -28,8 +28,8 @@
 `dot` installs and maintains one or more dotfiles profiles, from a single static binary for Linux
 and macOS. A profile is a data repository with a `dot.json` manifest, cloned into
 `~/.dot/<key>`. `dot` brings the rest: the links in `~`, a guard against leaks (forbidden terms,
-secrets), secrets read from your vault (`bw` and `pass-cli`), and the merge of MCP servers and
-settings for Claude Code, Codex and OpenCode.
+secrets), secrets read from your vault (`bw` and `pass-cli`), the merge of MCP servers and
+settings for Claude Code, Codex and OpenCode, and your cron jobs.
 
 Several profiles can live side by side on one machine, a personal one and a work one for
 instance, each with its own git identity, and `dot` treats them all the same way.
@@ -177,6 +177,24 @@ the secrets of a server stay names that `dot secrets run` resolves when the serv
 one profile the list is `~/.config/mcp/servers.json`, a link to the profile's file; with several,
 `dot` reads the list of each profile in registry order.
 
+### Keep your cron jobs with your profile
+
+A profile can ship its cron jobs in `home/.config/crontab`, in plain crontab syntax. With
+`"crontab"` in the manifest's `modules`, `dot install` and `dot pull` write them into your user
+crontab, inside a managed block:
+
+```text
+# >>> dot >>>
+0 9 * * 1 $HOME/bin/acme-report
+# <<< dot <<<
+```
+
+Lines outside the block are yours and are never touched; the block is replaced as a whole, so
+there is no `crontab -e` step after a change. With several profiles, their files are joined in
+registry order. An emptied file removes the block, `dot install -n` previews it, and a machine
+without cron and without crontab files is left alone. Cron runs jobs with a minimal environment:
+set `PATH` and any variable your jobs need at the top of the file.
+
 ### Notice when something drifts, and rebuild a machine
 
 ```sh
@@ -212,6 +230,8 @@ On a new machine, `dot install <url>` brings the profiles back, and `dot repos e
   `run`, `unlock`, `lock`, `status`), so a profile never has to hold them.
 - **One config for your coding agents.** `dot settings` and `dot mcp` merge the settings and the
   MCP servers of a profile into Claude Code, Codex and OpenCode.
+- **Cron jobs in the profile.** The `crontab` module installs `home/.config/crontab` into a
+  managed block of your user crontab, and keeps the lines you added by hand.
 - **Strict manifests.** `dot.json` is validated and an unknown key is refused, so a typo is an
   error and not a silent no-op.
 - **Extensible.** `dot <cmd>` runs `dot-<cmd>`, found in the profile's `bin/` and then on your
@@ -282,7 +302,7 @@ deploy, which git identities the profile has, and which optional modules to enab
 | `deployProfile` | The identity to deploy on this machine. It must be one of `profiles`. |
 | `marketplace` | Optional: a plugin marketplace and its plugins. |
 | `nvm` | Optional: a pinned Node version (`x.y.z`) and the packages to install with it. |
-| `modules` | Optional: `settings` and/or `mcp`, to merge agent settings and MCP servers. |
+| `modules` | Optional: `settings`, `mcp` and/or `crontab`, to merge agent settings, MCP servers and cron jobs. |
 
 The git hooks of the data repository stay one line each:
 

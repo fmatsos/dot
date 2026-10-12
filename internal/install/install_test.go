@@ -371,22 +371,23 @@ func TestUninstall(t *testing.T) {
 	}
 }
 
-var moduleFiles = map[string]string{
-	"home/.claude/settings.base.json": "{}\n",
-	"home/.config/mcp/servers.json":   "{}\n",
-}
-
 // Two profiles providing the module sources is the normal multi-profile case: the install works
 // and the files stay per-profile inputs, unlinked.
 func TestModuleSourcesAcrossProfiles(t *testing.T) {
 	home := sandbox(t)
 	in, out, _ := newInstaller(home, false)
+	moduleFiles := map[string]string{}
+	var moduleLinks []string
+	for _, rel := range link.ModuleSources {
+		moduleFiles[filepath.Join("home", rel)] = "{}\n"
+		moduleLinks = append(moduleLinks, filepath.Join(home, rel))
+	}
 	settingsLink := filepath.Join(home, ".claude", "settings.base.json")
 	serversLink := filepath.Join(home, ".config", "mcp", "servers.json")
 	if err := in.Add(remote(t, "a", moduleFiles), "a"); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{settingsLink, serversLink} { // one profile: linked as before
+	for _, p := range moduleLinks { // one profile: linked as before
 		if got, _ := os.Readlink(p); got == "" {
 			t.Fatalf("%s not linked with a single profile", p)
 		}
@@ -395,13 +396,13 @@ func TestModuleSourcesAcrossProfiles(t *testing.T) {
 	if err := in.Add(remote(t, "b", moduleFiles), "b"); err != nil {
 		t.Fatalf("two profiles with the module sources: %v", err)
 	}
-	for _, p := range []string{settingsLink, serversLink} {
+	for _, p := range moduleLinks {
 		if exists(p) {
 			t.Errorf("%s still linked with two profiles", p)
 		}
 	}
-	if n := strings.Count(out.String(), "lien retiré"); n != 2 {
-		t.Errorf("%d \"lien retiré\" lines ; want 2:\n%s", n, out.String())
+	if n := strings.Count(out.String(), "lien retiré"); n != len(moduleLinks) {
+		t.Errorf("%d \"lien retiré\" lines ; want %d:\n%s", n, len(moduleLinks), out.String())
 	}
 	if !exists(filepath.Join(home, ".arc")) || !exists(filepath.Join(home, ".brc")) {
 		t.Error("other files not linked")
@@ -416,7 +417,7 @@ func TestModuleSourcesAcrossProfiles(t *testing.T) {
 	if err := in.Uninstall("b", false, false); err != nil {
 		t.Fatal(err)
 	}
-	if exists(settingsLink) || exists(serversLink) || strings.Count(out.String(), "dot install") != 2 {
+	if exists(settingsLink) || exists(serversLink) || strings.Count(out.String(), "dot install") != len(moduleLinks) {
 		t.Errorf("uninstall of one of two:\n%s", out.String())
 	}
 	if err := in.Reinstall([]Profile{{"a", filepath.Join(home, ".dot", "a")}}); err != nil || !exists(settingsLink) || !exists(serversLink) {

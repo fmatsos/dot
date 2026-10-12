@@ -57,6 +57,16 @@ func TestLoadOptionalBlocksAbsent(t *testing.T) {
 	}
 }
 
+func TestLoadCrontabModule(t *testing.T) {
+	m, err := Load(writeFile(t, `{"repo":"https://example.com/acme/dots.git","deploy":{"sparse":["home"]},"profiles":{"acme":"home/acme.gitconfig"},"deployProfile":"acme","modules":["crontab"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(m.Modules, []string{"crontab"}) {
+		t.Fatalf("modules = %v", m.Modules)
+	}
+}
+
 func TestLoadKeepsProfileOrder(t *testing.T) {
 	m, err := Load(writeFile(t, `{"repo":"r","deploy":{"sparse":["home"]},"profiles":{"zeta":"home/z.gitconfig","alpha":"home/a.gitconfig"},"deployProfile":"alpha","modules":["mcp"]}`))
 	if err != nil {
@@ -119,6 +129,7 @@ func TestLoadRejects(t *testing.T) {
 		{"modules", set("modules", "settings")},
 		{"modules", set("modules", []any{"unknown"})},
 		{"modules", set("modules", []any{"settings", "settings"})},
+		{"modules", set("modules", []any{"crontab", "crontab"})},
 		{"modules", del("modules")},
 		{"marketplace", set("marketplace", []any{})},
 		{"marketplace", set("marketplace", nil)},

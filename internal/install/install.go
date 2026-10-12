@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fmatsos/dot/internal/crontab"
 	"github.com/fmatsos/dot/internal/link"
 	"github.com/fmatsos/dot/internal/manifest"
 	"github.com/fmatsos/dot/internal/mcp"
@@ -271,7 +272,7 @@ func (in *Installer) shared(done []loaded, all []Profile) error {
 	return in.modules(done, all)
 }
 
-// modules runs the settings and mcp modules declared by any profile of the run. Their sources
+// modules runs the settings, mcp and crontab modules declared by any profile of the run. Their sources
 // are every registered profile, in registry order, like `dot settings` and `dot mcp` without -p.
 func (in *Installer) modules(done []loaded, all []Profile) error {
 	var names []string
@@ -302,6 +303,12 @@ func (in *Installer) modules(done []loaded, all []Profile) error {
 				})
 			}
 			err = mcp.Run(o)
+		case "crontab":
+			o := crontab.Options{DryRun: in.Dry, Out: in.Out}
+			for _, p := range all {
+				o.Sources = append(o.Sources, filepath.Join(p.Dir, "home", ".config", "crontab"))
+			}
+			err = crontab.Run(o)
 		}
 		if err != nil {
 			fmt.Fprintf(in.Err, "%s : %v\n", name, err)

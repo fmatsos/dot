@@ -462,8 +462,9 @@ func TestUnlinkFindsLinksInFoldersTheProfileLost(t *testing.T) {
 func moduleProfile(t *testing.T, name string) Profile {
 	t.Helper()
 	d := filepath.Join(t.TempDir(), name)
-	write(t, d+"/home/.claude/settings.base.json", "{}\n", 0o644)
-	write(t, d+"/home/.config/mcp/servers.json", "{}\n", 0o644)
+	for _, rel := range ModuleSources {
+		write(t, filepath.Join(d, "home", rel), "{}\n", 0o644)
+	}
 	write(t, d+"/home/."+name+"rc", "x\n", 0o644)
 	return Profile{name, d}
 }
@@ -487,8 +488,8 @@ func TestModuleSourcesNeverConflictBetweenProfiles(t *testing.T) {
 			}
 		}
 	}
-	if plan, _ = Plan(a.Dir, home); len(plan) != 3 {
-		t.Errorf("single plan = %d links ; want 3", len(plan))
+	if plan, _ = Plan(a.Dir, home); len(plan) != len(ModuleSources)+1 {
+		t.Errorf("single plan = %d links ; want %d", len(plan), len(ModuleSources)+1)
 	}
 }
 
@@ -566,7 +567,7 @@ func TestApplyModuleSources(t *testing.T) {
 func TestDetachedIgnoresModuleSourcesWithSeveralProfiles(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	a := moduleProfile(t, "a")
-	if d := Detached(a.Dir, home); len(d) != 3 {
+	if d := Detached(a.Dir, home); len(d) != len(ModuleSources)+1 {
 		t.Fatalf("single profile: %v", d)
 	}
 	r := &registry.Registry{}
