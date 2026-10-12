@@ -214,6 +214,7 @@ document.documentElement.dataset.motion = m || (matchMedia("(prefers-reduced-mot
   <a href="https://github.com/fmatsos/dot/blob/main/LICENSE">License: Unlicense</a>
 </p>
 <p class="center">
+  <a href="https://fmatsos.github.io/dot/" rel="nofollow"><b>Website</b></a> ·
   <a href="#why-dot"><b>Why dot?</b></a> ·
   <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="#a-profile"><b>A profile</b></a> ·
@@ -223,8 +224,8 @@ document.documentElement.dataset.motion = m || (matchMedia("(prefers-reduced-mot
 <p><code>dot</code> installs and maintains one or more dotfiles profiles, from a single static binary for Linux
 and macOS. A profile is a data repository with a <code>dot.json</code> manifest, cloned into
 <code>~/.dot/&lt;key&gt;</code>. <code>dot</code> brings the rest: the links in <code>~</code>, a guard against leaks (forbidden terms,
-secrets), secrets read from your vault (<code>bw</code> and <code>pass-cli</code>), and the merge of MCP servers and
-settings for Claude Code, Codex and OpenCode.</p>
+secrets), secrets read from your vault (<code>bw</code> and <code>pass-cli</code>), the merge of MCP servers and
+settings for Claude Code, Codex and OpenCode, and your cron jobs.</p>
 <p>Several profiles can live side by side on one machine, a personal one and a work one for
 instance, each with its own git identity, and <code>dot</code> treats them all the same way.</p>
 <h2 id="why-dot">Why dot?</h2>
@@ -317,6 +318,11 @@ so the same check runs in CI.</p>
 dot secrets run GITHUB_TOKEN -- gh api user      <span class="pl-c"><span class="pl-c">#</span> the token exists for this one command only</span></pre></div>
 <p>The names live in a local file, <code>secrets.local</code> (mode 600), in the profile folder. A value is
 never passed as a process argument and never sits in your shell.</p>
+<p>A Proton Pass item that keeps its value in a custom field (an API key, say) takes a <code>#field</code>
+suffix, or <code>--field</code> on <code>add</code>: <code>dot secrets add TOKEN pass:Dev/Item --field "API key"</code>. A reference
+may be quoted in <code>secrets.local</code> (<code>TOKEN="pass:Dev/Item#API key"</code>); <code>add</code> quotes it when it holds a
+space or a <code>#</code>. The reference is split at its last <code>#</code>, so a Proton Pass item title holding a <code>#</code>
+(<code>Issue#123</code>) cannot be used in a <code>pass:</code> reference.</p>
 <h3 id="configure-your-coding-agents-once">Configure your coding agents once</h3>
 <p>Claude Code, Codex and OpenCode each want their own MCP servers and settings. <code>dot</code> keeps one
 shared list and applies it to all three:</p>
@@ -329,6 +335,19 @@ backed up. For MCP, a local <code>servers.local.json</code> can replace a server
 the secrets of a server stay names that <code>dot secrets run</code> resolves when the server starts. With
 one profile the list is <code>~/.config/mcp/servers.json</code>, a link to the profile's file; with several,
 <code>dot</code> reads the list of each profile in registry order.</p>
+<h3 id="keep-your-cron-jobs-with-your-profile">Keep your cron jobs with your profile</h3>
+<p>A profile can ship its cron jobs in <code>home/.config/crontab</code>, in plain crontab syntax. With
+<code>"crontab"</code> in the manifest's <code>modules</code>, <code>dot install</code> and <code>dot pull</code> write them into your user
+crontab, inside a managed block:</p>
+<pre><code># &gt;&gt;&gt; dot &gt;&gt;&gt;
+0 9 * * 1 $HOME/bin/acme-report
+# &lt;&lt;&lt; dot &lt;&lt;&lt;
+</code></pre>
+<p>Lines outside the block are yours and are never touched; the block is replaced as a whole, so
+there is no <code>crontab -e</code> step after a change. With several profiles, their files are joined in
+registry order. An emptied file removes the block, <code>dot install -n</code> previews it, and a machine
+without cron and without crontab files is left alone. Cron runs jobs with a minimal environment:
+set <code>PATH</code> and any variable your jobs need at the top of the file.</p>
 <h3 id="notice-when-something-drifts-and-rebuild-a-machine">Notice when something drifts, and rebuild a machine</h3>
 <div class="highlight highlight-source-shell"><pre>dot status          <span class="pl-c"><span class="pl-c">#</span> clones: changes, ahead / behind; and files that are no longer links</span>
 dot doctor          <span class="pl-c"><span class="pl-c">#</span> read-only report of every profile</span></pre></div>
@@ -366,6 +385,9 @@ scanner (betterleaks) is pinned to one version and its sha256 is compiled into t
 <li>
 <strong>One config for your coding agents.</strong> <code>dot settings</code> and <code>dot mcp</code> merge the settings and the
 MCP servers of a profile into Claude Code, Codex and OpenCode.</li>
+<li>
+<strong>Cron jobs in the profile.</strong> The <code>crontab</code> module installs <code>home/.config/crontab</code> into a
+managed block of your user crontab, and keeps the lines you added by hand.</li>
 <li>
 <strong>Strict manifests.</strong> <code>dot.json</code> is validated and an unknown key is refused, so a typo is an
 error and not a silent no-op.</li>
@@ -445,7 +467,7 @@ deploy, which git identities the profile has, and which optional modules to enab
 </tr>
 <tr>
 <td><code>modules</code></td>
-<td>Optional: <code>settings</code> and/or <code>mcp</code>, to merge agent settings and MCP servers.</td>
+<td>Optional: <code>settings</code>, <code>mcp</code> and/or <code>crontab</code>, to merge agent settings, MCP servers and cron jobs.</td>
 </tr>
 </tbody>
 </table></div>
