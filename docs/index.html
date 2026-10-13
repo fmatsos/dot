@@ -348,6 +348,21 @@ there is no <code>crontab -e</code> step after a change. With several profiles, 
 registry order. An emptied file removes the block, <code>dot install -n</code> previews it, and a machine
 without cron and without crontab files is left alone. Cron runs jobs with a minimal environment:
 set <code>PATH</code> and any variable your jobs need at the top of the file.</p>
+<h3 id="customise-your-shell-without-owning-zshrc-or-bashrc">Customise your shell without owning <code>.zshrc</code> or <code>.bashrc</code>
+</h3>
+<p><code>dot install</code> and <code>dot pull</code> keep one managed block at the top of <code>~/.zshrc</code> and <code>~/.bashrc</code>
+(created when the shell is installed):</p>
+<pre><code># &gt;&gt;&gt; dot &gt;&gt;&gt;
+[ -r "$HOME/.config/mise/shell.sh" ] &amp;&amp; . "$HOME/.config/mise/shell.sh"
+export PATH="$PATH:$HOME/.nvm/versions/node/v22.11.0/bin"   # only with "nvm" in the manifest
+for _f in "$HOME"/.config/dot/rc.d/*.(sh|zsh)(N); do . "$_f"; done; unset _f
+# &lt;&lt;&lt; dot &lt;&lt;&lt;
+</code></pre>
+<p>A profile ships snippets as <code>home/.config/dot/rc.d/NN-name.sh</code> (<code>*.zsh</code> for zsh only, <code>*.bash</code> for
+bash only); they are sourced in name order, so <code>00-</code> runs before <code>10-</code>. The block is rewritten as
+a whole and goes right after a <code># &lt;&lt;&lt; shellkit &lt;&lt;&lt;</code> block when there is one. Everything outside it
+is yours and never versioned. A <code>.zshrc</code> or <code>.bashrc</code> that is a symlink is never written through:
+dot says so and leaves it.</p>
 <h3 id="notice-when-something-drifts-and-rebuild-a-machine">Notice when something drifts, and rebuild a machine</h3>
 <div class="highlight highlight-source-shell"><pre>dot status          <span class="pl-c"><span class="pl-c">#</span> clones: changes, ahead / behind; and files that are no longer links</span>
 dot doctor          <span class="pl-c"><span class="pl-c">#</span> read-only report of every profile</span></pre></div>
