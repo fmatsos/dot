@@ -18,6 +18,7 @@ import (
 	"github.com/fmatsos/dot/internal/mcp"
 	"github.com/fmatsos/dot/internal/registry"
 	"github.com/fmatsos/dot/internal/settings"
+	"github.com/fmatsos/dot/internal/shellrc"
 )
 
 // Profile is a profile clone: Key is its registry key, Dir its absolute directory.
@@ -259,6 +260,15 @@ func (in *Installer) shared(done []loaded, all []Profile) error {
 		} else if err := git("", "config", "--global", "--add", "include.path", includePath); err != nil {
 			return err
 		}
+	}
+	var nodes []string
+	for _, l := range done {
+		if l.M != nil && l.M.NVM != nil && l.M.NVM.Node != "" && !slices.Contains(nodes, l.M.NVM.Node) {
+			nodes = append(nodes, l.M.NVM.Node)
+		}
+	}
+	if err := shellrc.Ensure(shellrc.Options{Home: in.Home, Dry: in.Dry, Out: in.Out, Err: in.Err, Nodes: nodes}); err != nil {
+		return err
 	}
 	if in.Tools != nil {
 		req := ToolsRequest{Home: in.Home, Dry: in.Dry, Skip: in.Getenv("DOTFILES_TOOLS") == "0", Out: in.Out, Err: in.Err}

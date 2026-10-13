@@ -32,8 +32,6 @@ const (
 	defaultMiseBase = "https://github.com/jdx/mise/releases/download"
 	defaultNVMRepo  = "https://github.com/nvm-sh/nvm.git"
 
-	miseLine = `[ -r "$HOME/.config/mise/shell.sh" ] && . "$HOME/.config/mise/shell.sh"`
-
 	// Node and packages travel as positional arguments, never interpolated in the script.
 	nvmScript = `. "$HOME/.nvm/nvm.sh" && nvm install "$1" >/dev/null && shift &&
 { [ $# -eq 0 ] || npm install -g --no-fund --no-audit "$@" >/dev/null; }`
@@ -76,7 +74,6 @@ type Options struct {
 
 type tools struct {
 	Options
-	settings string
 }
 
 // Run installs what the options ask for; every step is idempotent.
@@ -126,7 +123,7 @@ func Run(o Options) error {
 			return c.Output()
 		}
 	}
-	t := &tools{Options: o, settings: filepath.Join(o.Home, ".config", "shkit", "settings.sh")}
+	t := &tools{Options: o}
 	if t.MiseConfig {
 		if err := t.mise(); err != nil {
 			return err
@@ -193,7 +190,7 @@ func (t *tools) mise() error {
 			return fmt.Errorf("mise install : %w", err)
 		}
 	}
-	return t.activate()
+	return nil
 }
 
 // miseCurrent reports whether the existing binary is the pinned release, by its --version output.
@@ -294,37 +291,6 @@ func writeAtomic(dst string, data []byte) error {
 		return err
 	}
 	return nil
-}
-
-// settingsText returns the settings file content, or ok=false when it does not exist.
-// ponytail: the file is never created, shkit owns it (ceiling: without shkit the line is added by hand).
-func (t *tools) settingsText() (string, bool) {
-	b, err := os.ReadFile(t.settings)
-	return string(b), err == nil
-}
-
-// appendLine adds a comment and a line at the end of the settings file, after a newline if needed.
-func (t *tools) appendLine(text, comment, line string) error {
-	if t.Dry {
-		return nil
-	}
-	if text != "" && !strings.HasSuffix(text, "\n") {
-		text += "\n"
-	}
-	return os.WriteFile(t.settings, []byte(text+comment+"\n"+line+"\n"), 0o644)
-}
-
-func (t *tools) activate() error {
-	text, ok := t.settingsText()
-	if !ok {
-		t.warn("  mise : %s absent, ajoute à ton shell : %s", t.tilde(t.settings), miseLine)
-		return nil
-	}
-	if strings.Contains(text, "mise/shell.sh") {
-		return nil
-	}
-	t.say("  mise : ligne d'activation ajoutée à %s", t.tilde(t.settings))
-	return t.appendLine(text, "# mise (node & co), managed by dot install", miseLine)
 }
 
 // nodeSpec is one pinned node with the packages of every profile that declares it.
@@ -433,12 +399,6 @@ func (t *tools) node(dir string, s nodeSpec) error {
 				return fmt.Errorf("nvm : installation impossible : %w", err)
 			}
 		}
-	}
-	text, ok := t.settingsText()
-	if ok && !strings.Contains(text, "nvm/versions/node/v"+s.node+"/bin") {
-		t.say("  nvm : bin ajouté en fin de PATH dans %s", t.tilde(t.settings))
-		line := fmt.Sprintf(`export PATH="$PATH:$HOME/.nvm/versions/node/v%s/bin"`, s.node)
-		return t.appendLine(text, "# nvm, only for the CLIs mise cannot install (dot install)", line)
 	}
 	return nil
 }

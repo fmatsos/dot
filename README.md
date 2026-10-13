@@ -195,6 +195,25 @@ registry order. An emptied file removes the block, `dot install -n` previews it,
 without cron and without crontab files is left alone. Cron runs jobs with a minimal environment:
 set `PATH` and any variable your jobs need at the top of the file.
 
+### Customise your shell without owning `.zshrc` or `.bashrc`
+
+`dot install` and `dot pull` keep one managed block at the top of `~/.zshrc` and `~/.bashrc`
+(created when the shell is installed):
+
+```text
+# >>> dot >>>
+[ -r "$HOME/.config/mise/shell.sh" ] && . "$HOME/.config/mise/shell.sh"
+export PATH="$PATH:$HOME/.nvm/versions/node/v22.11.0/bin"   # only with "nvm" in the manifest
+for _f in "$HOME"/.config/dot/rc.d/*.(sh|zsh)(N); do . "$_f"; done; unset _f
+# <<< dot <<<
+```
+
+A profile ships snippets as `home/.config/dot/rc.d/NN-name.sh` (`*.zsh` for zsh only, `*.bash` for
+bash only); they are sourced in name order, so `00-` runs before `10-`. The block is rewritten as
+a whole and goes right after a `# <<< shellkit <<<` block when there is one. Everything outside it
+is yours and never versioned. A `.zshrc` or `.bashrc` that is a symlink is never written through:
+dot says so and leaves it.
+
 ### Notice when something drifts, and rebuild a machine
 
 ```sh

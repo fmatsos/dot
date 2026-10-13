@@ -52,6 +52,8 @@ done < <(find "$clone/home" -type f -print0)
 [ "$(dot config get profiles.a.repo)" = "$A" ]
 [ "$(stat -c %a "$registry" 2>/dev/null || stat -f %Lp "$registry")" = 600 ]
 echo 'OK   install clones, registers the first profile as default and links home/ and bin/'
+grep -qxF '# >>> dot >>>' "$HOME/.bashrc"; grep -qF '.config/dot/rc.d' "$HOME/.bashrc"
+echo 'OK   install writes the dot block in ~/.bashrc'
 
 # shellcheck disable=SC2088 # Check the literal include value, before Git expands it.
 git config --global --get-all include.path | grep -qxF '~/.config/git/profiles.gitconfig'

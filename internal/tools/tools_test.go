@@ -230,7 +230,7 @@ func TestMiseDryRunWritesNothing(t *testing.T) {
 		t.Fatal("settings modified")
 	}
 	out := e.out.String()
-	for _, w := range []string{"  [dry] installer mise " + miseVersion + " (linux-x64) dans ~/.local/bin/mise\n", "  mise : ligne d'activation ajoutée à ~/.config/shkit/settings.sh\n"} {
+	for _, w := range []string{"  [dry] installer mise " + miseVersion + " (linux-x64) dans ~/.local/bin/mise\n"} {
 		if !strings.Contains(out, w) {
 			t.Fatalf("missing %q in %q", w, out)
 		}
@@ -372,39 +372,14 @@ func TestSkipStillFetchesButDoesNotInstall(t *testing.T) {
 	eq(t, e.calls, nil)
 }
 
-func TestActivationLineAddedOnce(t *testing.T) {
+func TestMiseNeverTouchesSettings(t *testing.T) {
 	e := newEnv(t)
-	e.write(".config/shkit/settings.sh", "export A=1") // no trailing newline
-	for range 2 {
-		if err := e.run(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	want := "export A=1\n# mise (node & co), managed by dot install\n" + miseLine + "\n"
-	if got := e.read(".config/shkit/settings.sh"); got != want {
-		t.Fatalf("settings %q", got)
-	}
-	// Already activated by hand: untouched.
-	e.write(".config/shkit/settings.sh", ". \"$HOME/.config/mise/shell.sh\"\n")
-	e.reset()
+	e.write(".config/shkit/settings.sh", "export A=1\n")
 	if err := e.run(); err != nil {
 		t.Fatal(err)
 	}
-	if e.read(".config/shkit/settings.sh") != ". \"$HOME/.config/mise/shell.sh\"\n" || e.out.Len() != 0 {
-		t.Fatalf("rewritten: %q", e.out.String())
-	}
-}
-
-func TestSettingsNeverCreated(t *testing.T) {
-	e := newEnv(t)
-	if err := e.run(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(e.path(".config/shkit")); err == nil {
-		t.Fatal("settings created")
-	}
-	if want := "  mise : ~/.config/shkit/settings.sh absent, ajoute à ton shell : " + miseLine + "\n"; e.err.String() != want {
-		t.Fatalf("err %q", e.err.String())
+	if got := e.read(".config/shkit/settings.sh"); got != "export A=1\n" || e.err.Len() != 0 {
+		t.Fatalf("settings %q, err %q (the shell block is shellrc's job)", got, e.err.String())
 	}
 }
 
@@ -420,13 +395,12 @@ func TestNVMCloneInstallAndPath(t *testing.T) {
 		"git clone -q --depth 1 --branch v0.40.4 file:///unused " + e.path(".nvm"),
 		"bash -c " + nvmScript + " _ 9.8.7 demo-cli@2.3.4 @acme/other-cli@5.6.7",
 	})
-	wantOut := "  nvm v0.40.4 → ~/.nvm\n  nvm : node 9.8.7 + demo-cli@2.3.4 @acme/other-cli@5.6.7\n  nvm : bin ajouté en fin de PATH dans ~/.config/shkit/settings.sh\n"
+	wantOut := "  nvm v0.40.4 → ~/.nvm\n  nvm : node 9.8.7 + demo-cli@2.3.4 @acme/other-cli@5.6.7\n"
 	if e.out.String() != wantOut {
 		t.Fatalf("out %q", e.out.String())
 	}
-	line := `export PATH="$PATH:$HOME/.nvm/versions/node/v9.8.7/bin"`
-	if got := e.read(".config/shkit/settings.sh"); got != "export A=1\n# nvm, only for the CLIs mise cannot install (dot install)\n"+line+"\n" {
-		t.Fatalf("settings %q", got)
+	if got := e.read(".config/shkit/settings.sh"); got != "export A=1\n" {
+		t.Fatalf("settings touched: %q (the PATH line is in the dot block)", got)
 	}
 }
 
@@ -434,7 +408,6 @@ func TestNVMIdempotentAndPartial(t *testing.T) {
 	e := newEnv(t)
 	e.opts.MiseConfig = false
 	e.opts.NVM = []manifest.NVM{{Node: "9.8.7", Packages: []string{"demo-cli@2.3.4", "@acme/other-cli@5.6.7"}}}
-	e.write(".config/shkit/settings.sh", "")
 	e.write(".nvm/nvm.sh", "# stub\n")
 	base := ".nvm/versions/node/v9.8.7"
 	e.write(base+"/bin/node", "")
@@ -453,9 +426,6 @@ func TestNVMIdempotentAndPartial(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, e.calls, nil)
-	if n := strings.Count(e.read(".config/shkit/settings.sh"), "nvm/versions/node/v9.8.7/bin"); n != 1 {
-		t.Fatalf("PATH line written %d times", n)
-	}
 	if e.out.Len() != 0 {
 		t.Fatalf("out %q", e.out.String())
 	}
@@ -517,7 +487,6 @@ func TestNVMMergesProfiles(t *testing.T) {
 		{Node: "9.8.7", Packages: []string{"b-cli@1.0.0", "c-cli@1.0.0"}},
 		{Node: "8.0.0"},
 	}
-	e.write(".config/shkit/settings.sh", "")
 	if err := e.run(); err != nil {
 		t.Fatal(err)
 	}
@@ -526,17 +495,12 @@ func TestNVMMergesProfiles(t *testing.T) {
 		"bash -c " + nvmScript + " _ 9.8.7 a-cli@1.0.0 b-cli@1.0.0 c-cli@1.0.0",
 		"bash -c " + nvmScript + " _ 8.0.0",
 	})
-	s := e.read(".config/shkit/settings.sh")
-	if strings.Count(s, "v9.8.7/bin") != 1 || strings.Count(s, "v8.0.0/bin") != 1 {
-		t.Fatalf("settings %q", s)
-	}
 }
 
 func TestNVMSkipAndDry(t *testing.T) {
 	e := newEnv(t)
 	e.opts.MiseConfig = false
 	e.opts.NVM = []manifest.NVM{{Node: "9.8.7", Packages: []string{"demo-cli@2.3.4"}}}
-	e.write(".config/shkit/settings.sh", "x\n")
 	e.opts.Skip = true
 	if err := e.run(); err != nil || len(e.calls) != 0 || e.out.Len() != 0 {
 		t.Fatalf("skip acted: %v %v", err, e.calls)
@@ -546,10 +510,10 @@ func TestNVMSkipAndDry(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, e.calls, nil)
-	if _, err := os.Stat(e.path(".nvm")); err == nil || e.read(".config/shkit/settings.sh") != "x\n" {
+	if _, err := os.Stat(e.path(".nvm")); err == nil {
 		t.Fatal("dry run wrote")
 	}
-	for _, w := range []string{"  [dry] git clone -q --depth 1 --branch v0.40.4 file:///unused " + e.path(".nvm") + "\n", "  nvm : node 9.8.7 + demo-cli@2.3.4\n", "  nvm : bin ajouté en fin de PATH"} {
+	for _, w := range []string{"  [dry] git clone -q --depth 1 --branch v0.40.4 file:///unused " + e.path(".nvm") + "\n", "  nvm : node 9.8.7 + demo-cli@2.3.4\n"} {
 		if !strings.Contains(e.out.String(), w) {
 			t.Fatalf("missing %q in %q", w, e.out.String())
 		}
