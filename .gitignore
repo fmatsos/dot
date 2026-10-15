@@ -2,3 +2,4 @@
 /dot
 *.test
 coverage.out
+.codegraph
