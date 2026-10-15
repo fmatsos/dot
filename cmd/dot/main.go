@@ -73,6 +73,9 @@ func newRoot(env *Env) *cobra.Command {
 
 // execute runs one invocation and returns the exit code.
 func execute(env *Env, args []string) int {
+	if code, ok := sshAskpass(env, args); ok {
+		return code
+	}
 	root := newRoot(env)
 	args, external := route(env, root, append([]string{}, args...))
 	var err error

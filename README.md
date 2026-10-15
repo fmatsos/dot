@@ -95,6 +95,24 @@ dot install https://github.com/you/dotfiles-work.git -p work
 dot profile work ~/src/github.com/acme/    # repositories under this folder use the `work` git identity
 dot whoami                                 # run in a repository: the identity in force and the file that sets it
 dot repos --problems                       # repositories whose email differs from their profile, or a bypassed guard
+dot ssh pve uptime                         # alias `pve` from <profile>/ssh.conf; `dot ssh` lists them
+```
+
+`ssh.conf` is versioned, so it holds no secret: one `<name> <ssh arguments>` line per alias, where
+`{X}` is replaced at connection time by the `secrets.local` secret `X`, or by a vault reference
+(`{bw:<item>}`, `{pass:<vault>/<item>#field}`) that works on a new machine without any `dot secrets add`.
+`password={X}` reads the password from the vault when ssh asks for it (`SSH_ASKPASS`, OpenSSH 8.4+):
+it never goes through an argument or the environment, and ssh tries it once.
+
+`key={pass:<vault>/<item>}` takes the private key of a Proton Pass SSH key item: it is loaded (through
+`ssh-add`'s stdin) into a private `ssh-agent` whose socket sits in `$XDG_RUNTIME_DIR` (mode 700, in memory),
+used by this one connection, then destroyed. The key never touches the disk, an argument or the
+environment, and only that key is offered. Without `key=`, keys stay ssh's (`-i <path>`).
+
+```text
+pve   {pass:Infra/pve#Nom d'utilisateur}@{pass:Infra/pve#Hôte} key={pass:Infra/pve}
+nas   root@{NAS_HOST} password={NAS_PW}
+prod  -i ~/.ssh/id_prod deploy@{PROD_HOST}
 ```
 
 `dot profile` writes an `includeIf` rule into `~/.config/git/profiles.local` (never versioned). The
