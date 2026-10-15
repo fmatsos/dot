@@ -278,7 +278,21 @@ dot install https://github.com/you/dotfiles-work.git -p work
 
 dot profile work <span class="pl-k">~</span>/src/github.com/acme/    <span class="pl-c"><span class="pl-c">#</span> repositories under this folder use the `work` git identity</span>
 dot whoami                                 <span class="pl-c"><span class="pl-c">#</span> run in a repository: the identity in force and the file that sets it</span>
-dot repos --problems                       <span class="pl-c"><span class="pl-c">#</span> repositories whose email differs from their profile, or a bypassed guard</span></pre></div>
+dot repos --problems                       <span class="pl-c"><span class="pl-c">#</span> repositories whose email differs from their profile, or a bypassed guard</span>
+dot ssh pve uptime                         <span class="pl-c"><span class="pl-c">#</span> alias `pve` from &lt;profile&gt;/ssh.conf; `dot ssh` lists them</span></pre></div>
+<p><code>ssh.conf</code> is versioned, so it holds no secret: one <code>&lt;name&gt; &lt;ssh arguments&gt;</code> line per alias, where
+<code>{X}</code> is replaced at connection time by the <code>secrets.local</code> secret <code>X</code>, or by a vault reference
+(<code>{bw:&lt;item&gt;}</code>, <code>{pass:&lt;vault&gt;/&lt;item&gt;#field}</code>) that works on a new machine without any <code>dot secrets add</code>.
+<code>password={X}</code> reads the password from the vault when ssh asks for it (<code>SSH_ASKPASS</code>, OpenSSH 8.4+):
+it never goes through an argument or the environment, and ssh tries it once.</p>
+<p><code>key={pass:&lt;vault&gt;/&lt;item&gt;}</code> takes the private key of a Proton Pass SSH key item: it is loaded (through
+<code>ssh-add</code>'s stdin) into a private <code>ssh-agent</code> whose socket sits in <code>$XDG_RUNTIME_DIR</code> (mode 700, in memory),
+used by this one connection, then destroyed. The key never touches the disk, an argument or the
+environment, and only that key is offered. Without <code>key=</code>, keys stay ssh's (<code>-i &lt;path&gt;</code>).</p>
+<pre><code>pve   {pass:Infra/pve#Nom d'utilisateur}@{pass:Infra/pve#Hôte} key={pass:Infra/pve}
+nas   root@{NAS_HOST} password={NAS_PW}
+prod  -i ~/.ssh/id_prod deploy@{PROD_HOST}
+</code></pre>
 <p><code>dot profile</code> writes an <code>includeIf</code> rule into <code>~/.config/git/profiles.local</code> (never versioned). The
 identity it points to is the <code>work.gitconfig</code> that your manifest declares under <code>profiles</code>, and
 your profile ships the <code>~/.config/git/profiles.gitconfig</code> that <code>dot install</code> adds to your global
