@@ -29,6 +29,10 @@ printf '{"default":"perso","profiles":{"perso":{"repo":"https://example.com/p.gi
 
 [ "$(dot log --format=%s)" = "init perso" ] || ko "git fallback: log"
 dot add home/file
+printf 'new\n' >"$HOME/.dot/perso/home/new"; dot add home/new
+[ "$(git -C "$HOME/.dot/perso" diff --cached --name-only)" = home/new ] || ko "dot add: stages in the clone"
+git -C "$HOME/.dot/perso" reset -q home/new; rm "$HOME/.dot/perso/home/new"
+dot --help | grep -q '^  add ' || ko "dot add: listed in the help"
 [ "$(dot -p acmecorp log --format=%s)" = "init acmecorp" ] || ko "git fallback: -p before the command"
 [ "$(DOT_PROFILE=acmecorp dot log --format=%s)" = "init acmecorp" ] || ko "git fallback: DOT_PROFILE"
 printf 'more\n' >>"$HOME/.dot/perso/home/file"

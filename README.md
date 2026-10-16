@@ -413,6 +413,7 @@ dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
 dot ai settings|mcp|skills [-n]     merge agent settings, MCP servers and skills
 dot ai skills adopt|add|rm|update|find   edit the profile's skills list, or run npx skills
+dot add <path>...                   git add in the profile clone
 dot <cmd>                           run dot-<cmd> (profile bin/, then PATH), otherwise git on the clone
 ```
 
