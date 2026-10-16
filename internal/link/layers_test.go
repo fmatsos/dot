@@ -217,7 +217,7 @@ func TestMultiProfileDropsModuleLinkFromVariant(t *testing.T) {
 	if got, _ := os.Readlink(dst); got != a+"/home@work/.config/mcp/servers.json" {
 		t.Fatalf("single-profile link = %q", got)
 	}
-	// A second profile: module sources are merged by dot mcp, so the variant link must go.
+	// A second profile: module sources are merged by dot ai mcp, so the variant link must go.
 	l := New(home, false, nil, nil, clock)
 	l.Registered = []string{a, b}
 	must(t, l.Apply(a))

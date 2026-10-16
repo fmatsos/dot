@@ -84,7 +84,7 @@ ignored. There is no templating: files in `~` stay links into the clone.
 - `dot install -n` shows the winning layer when it is not `home`.
 - `dot adopt --os` or `--host` moves a file into the matching variant.
 - A `deploy.sparse` list must name each variant it wants (`home@darwin`...).
-- `dot settings`, `dot mcp` and the mise configuration still read `home/` only.
+- `dot ai settings`, `dot ai mcp` and the mise configuration still read `home/` only.
 
 ### Keep a personal and a work setup on the same machine
 
@@ -204,10 +204,10 @@ Claude Code, Codex and OpenCode each want their own MCP servers and settings. `d
 shared list and applies it to all three:
 
 ```sh
-dot mcp -n          # preview the plan
-dot mcp             # the servers of your profiles → Claude Code, Codex and OpenCode
-dot settings -n     # preview the diff of ~/.claude/settings.json
-dot settings        # merge home/.claude/settings.base.json into it
+dot ai mcp -n       # preview the plan
+dot ai mcp          # the servers of your profiles → Claude Code, Codex and OpenCode
+dot ai settings -n  # preview the diff of ~/.claude/settings.json
+dot ai settings     # merge home/.claude/settings.base.json into it
 ```
 
 For settings, the versioned base wins and the extra local keys are kept, and the old file is
@@ -286,7 +286,7 @@ On a new machine, `dot install <url>` brings the profiles back, and `dot repos e
   `dot self-update` verifies the signature, then the checksum, before replacing the executable.
 - **Secrets stay in your vault.** `dot secrets` works with `bw` and `pass-cli` (`add`, `get`,
   `run`, `unlock`, `lock`, `status`), so a profile never has to hold them.
-- **One config for your coding agents.** `dot settings` and `dot mcp` merge the settings and the
+- **One config for your coding agents.** `dot ai settings` and `dot ai mcp` merge the settings and the
   MCP servers of a profile into Claude Code, Codex and OpenCode.
 - **Cron jobs in the profile.** The `crontab` module installs `home/.config/crontab` into a
   managed block of your user crontab, and keeps the lines you added by hand.
@@ -390,14 +390,14 @@ dot launcher [--install|--uninstall]   aliases in the GNOME search
 dot launcher add|update|rm|get|list   edit <profile>/launcher.conf
 dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
-dot settings [-n] | dot mcp [-n]   merge Claude settings and MCP servers
+dot ai settings|mcp [-n]            merge Claude settings and MCP servers
 dot <cmd>                           run dot-<cmd> (profile bin/, then PATH), otherwise git on the clone
 ```
 
 ### Choosing a profile
 
 The target profile is chosen with `-p/--profile <key>`, then `DOT_PROFILE`, then the registry's
-default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `settings` and `mcp` act on
+default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `ai settings` and `ai mcp` act on
 every registered profile, and the other commands on the default profile. With several profiles
 registered, `dot <cmd>` searches every profile's `bin/`: a `dot-<cmd>` claimed by two profiles is
 refused and you must pass `-p`. Without `-p`, the key

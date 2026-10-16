@@ -83,7 +83,7 @@ cp "$root/tests/fixtures/mcp/opencode.json" "$S/versioned.json"
 cp "$root/tests/fixtures/mcp/opencode.jsonc" "$S/versioned.jsonc"
 ln -s "$S/versioned.json" "$HOME/.config/opencode/opencode.json"
 ln -s "$S/versioned.jsonc" "$HOME/.config/opencode/opencode.jsonc"
-mcp() { "$DOT_BIN" mcp "$@" >"$S/out" 2>"$S/err"; }
+mcp() { "$DOT_BIN" ai mcp "$@" >"$S/out" 2>"$S/err"; }
 reset_calls() { : >"$FAKE_CALLS"; : >"$FAKE_WRITES"; }
 foreign() {
   jq -Sc '.mcpServers.foreign' "$HOME/.claude.json" >"$S/claude-foreign.$1"

@@ -159,11 +159,11 @@ func newAdoptCmd(env *Env) *cobra.Command {
 					refuse(tilde, fmt.Sprintf("shadowed by %s:%s/%s, which wins over %s", key, above, filepath.ToSlash(rel), layer))
 					continue
 				}
-				// With several profiles, a module source is merged by dot settings/mcp, never linked:
+				// With several profiles, a module source is merged by dot ai settings/mcp, never linked:
 				// other profiles may hold their own copy, and a link in ~ would shadow the merge.
 				merged := len(others) > 0 && link.IsModuleSource(rel)
 				if merged && layer != "home" {
-					refuse(tilde, "module source: dot settings and dot mcp only read home/, not the variants")
+					refuse(tilde, "module source: dot ai settings and dot ai mcp only read home/, not the variants")
 					continue
 				}
 				if owners := link.ClaimedBy(rel, others); len(owners) > 0 && !merged {
@@ -188,7 +188,7 @@ func newAdoptCmd(env *Env) *cobra.Command {
 					continue
 				}
 				if merged {
-					fmt.Fprintf(env.Stdout, "  %s is not linked: dot settings and dot mcp merge the profiles\n", tilde)
+					fmt.Fprintf(env.Stdout, "  %s is not linked: dot ai settings and dot ai mcp merge the profiles\n", tilde)
 				}
 				done++
 			}

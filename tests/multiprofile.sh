@@ -187,7 +187,7 @@ printf '#!/bin/sh\necho "from path"\nexit 0\n' >"$S/bin/dot-pathonly"; chmod +x 
 echo 'OK   extension only in PATH is run when no profile has it'
 
 # Both profiles provide the module sources (settings.base.json, servers.json): the install must
-# work, nothing links them, and `dot settings` / `dot mcp` merge the two. Separate HOME and PATH.
+# work, nothing links them, and `dot ai settings` / `dot ai mcp` merge the two. Separate HOME and PATH.
 (
   export HOME=$S/home2 XDG_CONFIG_HOME=$S/home2/.config XDG_DATA_HOME=$S/home2/.local/share XDG_CACHE_HOME=$S/home2/.cache
   export XDG_STATE_HOME=$S/home2/.local/state CODEX_HOME=$S/home2/.codex
@@ -210,19 +210,19 @@ printf '#!/bin/bash\nprintf "<%%s> " "$@" >>"$CLAUDE_CALLS"; echo >>"$CLAUDE_CAL
   dot install "$S/remotes/p2" -p p2 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
   [ ! -e "$HOME/.claude/settings.base.json" ] && [ ! -e "$HOME/.config/mcp/servers.json" ]
   jq -e '."p1-key" and ."p2-key"' "$HOME/.claude/settings.json" >/dev/null
-  rm "$HOME/.claude/settings.json"; dot settings -n >"$S/out" 2>&1
+  rm "$HOME/.claude/settings.json"; dot ai settings -n >"$S/out" 2>&1
   grep -q 'p1-key' "$S/out"; grep -q 'p2-key' "$S/out"; [ ! -e "$HOME/.claude/settings.json" ]
-  dot mcp -n >"$S/out" 2>&1
+  dot ai mcp -n >"$S/out" 2>&1
   # message kept: the dry-run plan is the only observable of what would be added (needs --json)
   grep -Fxq 'claude: add p1-srv' "$S/out"; grep -Fxq 'claude: add p2-srv' "$S/out"
   # -p narrows the targets, not the fact that servers.json is no longer linked: apply must still find its source.
   : >"$S/claude.calls"
-  dot mcp -p p1 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
+  dot ai mcp -p p1 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
   grep -Fq '<add-json> <-s> <user> <p1-srv>' "$S/claude.calls" # the source was found, whatever the profile narrowing
   dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
   [ ! -e "$HOME/.claude/settings.base.json" ]
   dot status >"$S/out" 2>"$S/err"; not grep -q 'settings.base.json' "$S/err"
-  echo 'OK   two profiles with the same module sources install, link neither and are merged by dot settings and dot mcp'
+  echo 'OK   two profiles with the same module sources install, link neither and are merged by dot ai settings and dot ai mcp'
 
   dot config set default p1
   dot uninstall -p p2 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }

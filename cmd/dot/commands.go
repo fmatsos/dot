@@ -6,6 +6,6 @@ import "github.com/spf13/cobra"
 // and calls register(newXxxCmd), so adding one never touches a shared file.
 var constructors []func(*Env) *cobra.Command
 
-func register(f func(*Env) *cobra.Command) {
-	constructors = append(constructors, f)
+func register(f ...func(*Env) *cobra.Command) {
+	constructors = append(constructors, f...)
 }

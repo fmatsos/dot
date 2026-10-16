@@ -283,7 +283,7 @@ func (in *Installer) shared(done []loaded, all []Profile) error {
 }
 
 // modules runs the settings, mcp and crontab modules declared by any profile of the run. Their sources
-// are every registered profile, in registry order, like `dot settings` and `dot mcp` without -p.
+// are every registered profile, in registry order, like `dot ai settings` and `dot ai mcp` without -p.
 func (in *Installer) modules(done []loaded, all []Profile) error {
 	var names []string
 	for _, l := range done {

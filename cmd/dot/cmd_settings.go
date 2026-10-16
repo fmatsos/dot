@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newSettingsCmd) }
+func init() { aiCommands = append(aiCommands, newSettingsCmd) }
 
 // targetProfileDirs lists the profile clones a shared-file command acts on: exactly one when
 // DOTFILES_DEPLOY, -p or DOT_PROFILE names it, else every registered profile in registry order.
@@ -45,7 +45,7 @@ func newSettingsCmd(env *Env) *cobra.Command {
 		Long: "Merge <profile>/home/.claude/settings.base.json into ~/.claude/settings.json: the base wins,\n" +
 			"extra local keys are kept. Without -p, every registered profile is merged in\n" +
 			"registry order. The diff shows no context lines; the old file is backed up.",
-		Args: exactArgs(0, "dot settings [-n]"),
+		Args: exactArgs(0, "dot ai settings [-n]"),
 		RunE: func(*cobra.Command, []string) error {
 			dirs, multi, err := targetProfileDirs(env)
 			if err != nil {

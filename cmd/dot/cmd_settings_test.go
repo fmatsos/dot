@@ -22,7 +22,7 @@ func TestSettingsMergesEveryProfileInRegistryOrder(t *testing.T) {
 	writeRegistry(t, env, twoProfiles)
 	writeProfileFile(t, env, "perso", "home/.claude/settings.base.json", `{"theme":"perso","a":1}`)
 	writeProfileFile(t, env, "acmecorp", "home/.claude/settings.base.json", `{"theme":"acme"}`)
-	if code := execute(env, []string{"settings"}); code != 0 {
+	if code := execute(env, []string{"ai", "settings"}); code != 0 {
 		t.Fatalf("code %d, %q", code, out)
 	}
 	got, _ := os.ReadFile(filepath.Join(env.Home, ".claude", "settings.json"))
@@ -31,7 +31,7 @@ func TestSettingsMergesEveryProfileInRegistryOrder(t *testing.T) {
 	}
 	// Second run: nothing to change, the file is left as it is.
 	fi, _ := os.Stat(filepath.Join(env.Home, ".claude", "settings.json"))
-	if code := execute(env, []string{"settings"}); code != 0 {
+	if code := execute(env, []string{"ai", "settings"}); code != 0 {
 		t.Fatalf("code %d, %q", code, out)
 	}
 	again, _ := os.ReadFile(filepath.Join(env.Home, ".claude", "settings.json"))
@@ -46,7 +46,7 @@ func TestSettingsProfileFlagTargetsOne(t *testing.T) {
 	writeRegistry(t, env, twoProfiles)
 	writeProfileFile(t, env, "perso", "home/.claude/settings.base.json", `{"theme":"perso"}`)
 	writeProfileFile(t, env, "acmecorp", "home/.claude/settings.base.json", `{"theme":"acme"}`)
-	if code := execute(env, []string{"-p", "perso", "settings", "-n"}); code != 0 {
+	if code := execute(env, []string{"-p", "perso", "ai", "settings", "-n"}); code != 0 {
 		t.Fatalf("code %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(env.Home, ".claude")); err == nil {
@@ -56,13 +56,13 @@ func TestSettingsProfileFlagTargetsOne(t *testing.T) {
 
 func TestSettingsErrors(t *testing.T) {
 	env, _, errb := testEnv(t)
-	if code := execute(env, []string{"settings"}); code != 1 {
+	if code := execute(env, []string{"ai", "settings"}); code != 1 {
 		t.Fatalf("empty registry: code %d, %q", code, errb)
 	}
-	if code := execute(env, []string{"settings", "--invalid"}); code != 2 {
+	if code := execute(env, []string{"ai", "settings", "--invalid"}); code != 2 {
 		t.Fatalf("unknown option: code %d", code)
 	}
-	if code := execute(env, []string{"settings", "extra"}); code != 2 {
+	if code := execute(env, []string{"ai", "settings", "extra"}); code != 2 {
 		t.Fatalf("extra argument: code %d, %q", code, errb)
 	}
 }

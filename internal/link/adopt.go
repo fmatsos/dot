@@ -136,7 +136,7 @@ func moveFile(src, dst string) error {
 	return os.Remove(src)
 }
 
-// IsModuleSource tells whether ~/rel is merged across profiles by dot settings or dot mcp
+// IsModuleSource tells whether ~/rel is merged across profiles by dot ai settings or dot ai mcp
 // rather than linked once several profiles are registered.
 func IsModuleSource(rel string) bool { return slices.Contains(ModuleSources, filepath.ToSlash(rel)) }
 

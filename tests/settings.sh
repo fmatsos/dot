@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-check of dot settings with fictional settings and an isolated HOME.
+# Self-check of dot ai settings with fictional settings and an isolated HOME.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/tests/lib.sh" # builds DOT_BIN before HOME is redirected
@@ -9,7 +9,7 @@ mkdir -p "$DOTFILES_DEPLOY/home/.claude"
 cat >"$DOTFILES_DEPLOY/home/.claude/settings.base.json" <<'JSON'
 {"env":{"GENERIC_PREF":"base"},"theme":"auto"}
 JSON
-settings() { "$DOT_BIN" settings "$@"; }
+settings() { "$DOT_BIN" ai settings "$@"; }
 
 settings -n >"$S/out"
 [ ! -e "$HOME" ]; grep -q '^+.*GENERIC_PREF' "$S/out"
@@ -58,7 +58,7 @@ settings >"$S/out"
 jq -e '.theme == "auto" and .language == "French" and .env == {GENERIC_PREF:"second",SECOND_PREF:"second"}' "$HOME/.claude/settings.json" >/dev/null
 echo 'OK   all profiles merge in registry order, the last wins, a profile without base is skipped'
 rm -r "$HOME/.claude"
-"$DOT_BIN" -p perso settings >"$S/out"
+"$DOT_BIN" -p perso ai settings >"$S/out"
 jq -e '.env == {GENERIC_PREF:"base"} and (has("language") | not)' "$HOME/.claude/settings.json" >/dev/null
 echo 'OK   -p targets a single profile'
 cp "$HOME/.claude/settings.json" "$S/before-empty"

@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { register(newMcpCmd) }
+func init() { aiCommands = append(aiCommands, newMcpCmd) }
 
 func newMcpCmd(env *Env) *cobra.Command {
 	var dry bool
@@ -20,7 +20,7 @@ func newMcpCmd(env *Env) *cobra.Command {
 			"starts. OpenCode reads the generated file ~/.config/opencode/config.json, merged with its\n" +
 			"versioned files. As long as servers.json is not linked into ~, the source is the profiles'\n" +
 			"(all of them, in registry order, without -p).",
-		Args: exactArgs(0, "dot mcp [-n]"),
+		Args: exactArgs(0, "dot ai mcp [-n]"),
 		RunE: func(*cobra.Command, []string) error {
 			dirs, multi, err := targetProfileDirs(env)
 			if err != nil {

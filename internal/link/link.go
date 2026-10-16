@@ -31,7 +31,7 @@ func (e *NoHomeError) Error() string {
 	return fmt.Sprintf("nothing to link: %s/home missing (dry run without clone?)", e.Dir)
 }
 
-// ModuleSources are the home/ files merged across profiles by `dot settings`, `dot mcp`
+// ModuleSources are the home/ files merged across profiles by `dot ai settings`, `dot ai mcp`
 // and the crontab module. With two or more registered profiles they are per-profile inputs
 // and are not linked into ~; with one, they are linked like any other file.
 var ModuleSources = []string{".claude/settings.base.json", ".config/mcp/servers.json", ".config/crontab"}
