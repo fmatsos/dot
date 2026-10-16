@@ -92,7 +92,7 @@ ignored. There is no templating: files in `~` stay links into the clone.
 dot install https://github.com/you/dotfiles-perso.git
 dot install https://github.com/you/dotfiles-work.git -p work
 
-dot profile work ~/src/github.com/acme/    # repositories under this folder use the `work` git identity
+dot profile work ~/src/github.com/acme/    # repositories under this directory use the `work` git identity
 dot whoami                                 # run in a repository: the identity in force and the file that sets it
 dot repos --problems                       # repositories whose email differs from their profile, or a bypassed guard
 dot ssh pve uptime                         # alias `pve` from <profile>/ssh.conf; `dot ssh` lists them
@@ -110,9 +110,27 @@ used by this one connection, then destroyed. The key never touches the disk, an 
 environment, and only that key is offered. Without `key=`, keys stay ssh's (`-i <path>`).
 
 ```text
-pve   {pass:Infra/pve#Nom d'utilisateur}@{pass:Infra/pve#Hôte} key={pass:Infra/pve}
+pve   {pass:Infra/pve#Username}@{pass:Infra/pve#Host} key={pass:Infra/pve}
 nas   root@{NAS_HOST} password={NAS_PW}
 prod  -i ~/.ssh/id_prod deploy@{PROD_HOST}
+```
+
+On GNOME, `dot launcher --install` adds these aliases to the shell search (Activities, or an extension that
+reuses it such as Search Light): type `ssh` or the start of an alias, and choosing the result opens a terminal running
+`dot ssh <alias>`. It writes `~/.local/share/dbus-1/services/…` and a visible `dot` entry in
+`~/.local/share/applications`, plus one file in `/usr/local/share/gnome-shell/search-providers` (GNOME reads
+providers from the system data dirs only, so this one goes through `sudo`). `dot launcher --uninstall` removes all
+three. The search never shows what is inside `{…}` of an ssh alias, and `dot launcher` reads the default
+profile (or `$DOT_PROFILE`).
+
+The search also offers your own aliases, kept in `<profile>/launcher.conf` (versioned like `ssh.conf`): one
+`<alias> <command line>` per line, `#` for comments. The line is run by `sh -c`, so quotes, pipes and `&&` work;
+it opens no terminal, so write `xdg-terminal-exec <command>` when you want to see the output.
+
+```sh
+dot launcher add gh xdg-open https://github.com
+dot launcher add up "dot pull && notify-send 'dot' 'profiles updated'"
+dot launcher list | get <alias> | update <alias> <command> | rm <alias>
 ```
 
 `dot profile` writes an `includeIf` rule into `~/.config/git/profiles.local` (never versioned). The
@@ -132,7 +150,7 @@ Dotfiles and personal repositories are often public, and they are easy to pollut
 in a snippet, an internal hostname in a comment, a commit made with your work email. Git hooks
 that are one line each (`exec dot guard staged` in `pre-commit`, `exec dot guard msg "$1"` in
 `commit-msg`, `exec dot guard push "$@"` in `pre-push`) run `dot guard` on every commit and push.
-It reads a list of terms that lives in the profile folder and is never committed:
+It reads a list of terms that lives in the profile directory and is never committed:
 
 ```text
 # ~/.dot/<key>/forbidden.local     (one case-insensitive regular expression per line)
@@ -168,7 +186,7 @@ dot secrets add GITHUB_TOKEN bw:github-token     # or pass:<vault>/<item>
 dot secrets run GITHUB_TOKEN -- gh api user      # the token exists for this one command only
 ```
 
-The names live in a local file, `secrets.local` (mode 600), in the profile folder. A value is
+The names live in a local file, `secrets.local` (mode 600), in the profile directory. A value is
 never passed as a process argument and never sits in your shell.
 
 A Proton Pass item that keeps its value in a custom field (an API key, say) takes a `#field`
@@ -242,7 +260,7 @@ dot doctor          # read-only report of every profile
 Some applications rewrite a config file instead of editing it through the link. That file is then
 "detached": its changes would never reach the repository. `dot status` lists it; once you have
 carried its content back into the profile, `dot install` puts the link back and keeps the
-detached file in the backup folder.
+detached file in the backup directory.
 
 On a new machine, `dot install <url>` brings the profiles back, and `dot repos export` /
 `dot repos clone` bring back the repositories you work on, under `~/src/<host>/<owner>/<repo>`.
@@ -316,7 +334,7 @@ then the checksum, before replacing the executable.
 
 ## A profile
 
-A profile is a repository with a `dot.json` at its root. The manifest says which folders to
+A profile is a repository with a `dot.json` at its root. The manifest says which directories to
 deploy, which git identities the profile has, and which optional modules to enable:
 
 ```json
@@ -334,7 +352,7 @@ deploy, which git identities the profile has, and which optional modules to enab
 | Key | Meaning |
 | --- | --- |
 | `repo` | URL of the profile's repository. |
-| `deploy.sparse` | The top-level folders to check out and link. |
+| `deploy.sparse` | The top-level directories to check out and link. |
 | `profiles` | Named git identities, each one a `.gitconfig` under `home/`. |
 | `deployProfile` | The identity to deploy on this machine. It must be one of `profiles`. |
 | `marketplace` | Optional: a plugin marketplace and its plugins. |
@@ -365,6 +383,8 @@ dot self-update [--version vX.Y.Z] [-n]   update dot from a signed release
 dot doctor                          read-only report
 dot config list|get|set|unset       read and edit the ~/.dot/profiles.json registry
 dot whoami | profile | terms | clone | repos
+dot launcher [--install|--uninstall]   aliases in the GNOME search
+dot launcher add|update|rm|get|list   edit <profile>/launcher.conf
 dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
 dot settings [-n] | dot mcp [-n]   merge Claude settings and MCP servers
@@ -383,7 +403,7 @@ of a `dot install <url>` is the repository name in the URL.
 | Variable | Effect |
 | --- | --- |
 | `DOT_PROFILE` | The profile to target when `-p` is not given. |
-| `DOTFILES_DEPLOY` | The folder of a profile, used directly (a transition aid and the entry point of the tests). |
+| `DOTFILES_DEPLOY` | The directory of a profile, used directly (a transition aid and the entry point of the tests). |
 | `DOT_BETTERLEAKS` | Path of a scanner binary that replaces the pinned betterleaks, for tests only. |
 
 ### Exit codes

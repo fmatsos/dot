@@ -3,6 +3,7 @@ module github.com/fmatsos/dot
 go 1.24
 
 require (
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.30.0
 )
