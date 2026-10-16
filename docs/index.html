@@ -276,7 +276,7 @@ ignored. There is no templating: files in <code>~</code> stay links into the clo
 <div class="highlight highlight-source-shell"><pre>dot install https://github.com/you/dotfiles-perso.git
 dot install https://github.com/you/dotfiles-work.git -p work
 
-dot profile work <span class="pl-k">~</span>/src/github.com/acme/    <span class="pl-c"><span class="pl-c">#</span> repositories under this folder use the `work` git identity</span>
+dot profile work <span class="pl-k">~</span>/src/github.com/acme/    <span class="pl-c"><span class="pl-c">#</span> repositories under this directory use the `work` git identity</span>
 dot whoami                                 <span class="pl-c"><span class="pl-c">#</span> run in a repository: the identity in force and the file that sets it</span>
 dot repos --problems                       <span class="pl-c"><span class="pl-c">#</span> repositories whose email differs from their profile, or a bypassed guard</span>
 dot ssh pve uptime                         <span class="pl-c"><span class="pl-c">#</span> alias `pve` from &lt;profile&gt;/ssh.conf; `dot ssh` lists them</span></pre></div>
@@ -289,10 +289,23 @@ it never goes through an argument or the environment, and ssh tries it once.</p>
 <code>ssh-add</code>'s stdin) into a private <code>ssh-agent</code> whose socket sits in <code>$XDG_RUNTIME_DIR</code> (mode 700, in memory),
 used by this one connection, then destroyed. The key never touches the disk, an argument or the
 environment, and only that key is offered. Without <code>key=</code>, keys stay ssh's (<code>-i &lt;path&gt;</code>).</p>
-<pre><code>pve   {pass:Infra/pve#Nom d'utilisateur}@{pass:Infra/pve#Hôte} key={pass:Infra/pve}
+<pre><code>pve   {pass:Infra/pve#Username}@{pass:Infra/pve#Host} key={pass:Infra/pve}
 nas   root@{NAS_HOST} password={NAS_PW}
 prod  -i ~/.ssh/id_prod deploy@{PROD_HOST}
 </code></pre>
+<p>On GNOME, <code>dot launcher --install</code> adds these aliases to the shell search (Activities, or an extension that
+reuses it such as Search Light): type <code>ssh</code> or the start of an alias, and choosing the result opens a terminal running
+<code>dot ssh &lt;alias&gt;</code>. It writes <code>~/.local/share/dbus-1/services/…</code> and a visible <code>dot</code> entry in
+<code>~/.local/share/applications</code>, plus one file in <code>/usr/local/share/gnome-shell/search-providers</code> (GNOME reads
+providers from the system data dirs only, so this one goes through <code>sudo</code>). <code>dot launcher --uninstall</code> removes all
+three. The search never shows what is inside <code>{…}</code> of an ssh alias, and <code>dot launcher</code> reads the default
+profile (or <code>$DOT_PROFILE</code>).</p>
+<p>The search also offers your own aliases, kept in <code>&lt;profile&gt;/launcher.conf</code> (versioned like <code>ssh.conf</code>): one
+<code>&lt;alias&gt; &lt;command line&gt;</code> per line, <code>#</code> for comments. The line is run by <code>sh -c</code>, so quotes, pipes and <code>&amp;&amp;</code> work;
+it opens no terminal, so write <code>xdg-terminal-exec &lt;command&gt;</code> when you want to see the output.</p>
+<div class="highlight highlight-source-shell"><pre>dot launcher add gh xdg-open https://github.com
+dot launcher add up <span class="pl-s"><span class="pl-pds">"</span>dot pull &amp;&amp; notify-send 'dot' 'profiles updated'<span class="pl-pds">"</span></span>
+dot launcher list <span class="pl-k">|</span> get <span class="pl-k">&lt;</span>alias<span class="pl-k">&gt;</span> <span class="pl-k">|</span> update <span class="pl-k">&lt;</span>alias<span class="pl-k">&gt;</span> <span class="pl-k">&lt;</span>command<span class="pl-k">&gt;</span> <span class="pl-k">|</span> rm <span class="pl-k">&lt;</span>alias<span class="pl-k">&gt;</span></pre></div>
 <p><code>dot profile</code> writes an <code>includeIf</code> rule into <code>~/.config/git/profiles.local</code> (never versioned). The
 identity it points to is the <code>work.gitconfig</code> that your manifest declares under <code>profiles</code>, and
 your profile ships the <code>~/.config/git/profiles.gitconfig</code> that <code>dot install</code> adds to your global
@@ -307,7 +320,7 @@ of silently letting one win.</p>
 in a snippet, an internal hostname in a comment, a commit made with your work email. Git hooks
 that are one line each (<code>exec dot guard staged</code> in <code>pre-commit</code>, <code>exec dot guard msg "$1"</code> in
 <code>commit-msg</code>, <code>exec dot guard push "$@"</code> in <code>pre-push</code>) run <code>dot guard</code> on every commit and push.
-It reads a list of terms that lives in the profile folder and is never committed:</p>
+It reads a list of terms that lives in the profile directory and is never committed:</p>
 <pre><code># ~/.dot/&lt;key&gt;/forbidden.local     (one case-insensitive regular expression per line)
 acme
 internal\.example\.com
@@ -330,7 +343,7 @@ so the same check runs in CI.</p>
 (Bitwarden or Proton Pass), and the value is read only when a command needs it:</p>
 <div class="highlight highlight-source-shell"><pre>dot secrets add GITHUB_TOKEN bw:github-token     <span class="pl-c"><span class="pl-c">#</span> or pass:&lt;vault&gt;/&lt;item&gt;</span>
 dot secrets run GITHUB_TOKEN -- gh api user      <span class="pl-c"><span class="pl-c">#</span> the token exists for this one command only</span></pre></div>
-<p>The names live in a local file, <code>secrets.local</code> (mode 600), in the profile folder. A value is
+<p>The names live in a local file, <code>secrets.local</code> (mode 600), in the profile directory. A value is
 never passed as a process argument and never sits in your shell.</p>
 <p>A Proton Pass item that keeps its value in a custom field (an API key, say) takes a <code>#field</code>
 suffix, or <code>--field</code> on <code>add</code>: <code>dot secrets add TOKEN pass:Dev/Item --field "API key"</code>. A reference
@@ -383,7 +396,7 @@ dot doctor          <span class="pl-c"><span class="pl-c">#</span> read-only rep
 <p>Some applications rewrite a config file instead of editing it through the link. That file is then
 "detached": its changes would never reach the repository. <code>dot status</code> lists it; once you have
 carried its content back into the profile, <code>dot install</code> puts the link back and keeps the
-detached file in the backup folder.</p>
+detached file in the backup directory.</p>
 <p>On a new machine, <code>dot install &lt;url&gt;</code> brings the profiles back, and <code>dot repos export</code> /
 <code>dot repos clone</code> bring back the repositories you work on, under <code>~/src/&lt;host&gt;/&lt;owner&gt;/&lt;repo&gt;</code>.</p>
 <h2 id="highlights">Highlights</h2>
@@ -451,7 +464,7 @@ dot status        <span class="pl-c"><span class="pl-c">#</span> changes in the 
 are immutable. <code>dot self-update</code> checks the signature with the public key compiled into the binary,
 then the checksum, before replacing the executable.</p>
 <h2 id="a-profile">A profile</h2>
-<p>A profile is a repository with a <code>dot.json</code> at its root. The manifest says which folders to
+<p>A profile is a repository with a <code>dot.json</code> at its root. The manifest says which directories to
 deploy, which git identities the profile has, and which optional modules to enable:</p>
 <div class="highlight highlight-source-json"><pre>{
   <span class="pl-ent">"repo"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://github.com/you/dotfiles.git<span class="pl-pds">"</span></span>,
@@ -476,7 +489,7 @@ deploy, which git identities the profile has, and which optional modules to enab
 </tr>
 <tr>
 <td><code>deploy.sparse</code></td>
-<td>The top-level folders to check out and link.</td>
+<td>The top-level directories to check out and link.</td>
 </tr>
 <tr>
 <td><code>profiles</code></td>
@@ -518,6 +531,8 @@ dot self-update [--version vX.Y.Z] [-n]   update dot from a signed release
 dot doctor                          read-only report
 dot config list|get|set|unset       read and edit the ~/.dot/profiles.json registry
 dot whoami | profile | terms | clone | repos
+dot launcher [--install|--uninstall]   aliases in the GNOME search
+dot launcher add|update|rm|get|list   edit &lt;profile&gt;/launcher.conf
 dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
 dot settings [-n] | dot mcp [-n]   merge Claude settings and MCP servers
@@ -544,7 +559,7 @@ of a <code>dot install &lt;url&gt;</code> is the repository name in the URL.</p>
 </tr>
 <tr>
 <td><code>DOTFILES_DEPLOY</code></td>
-<td>The folder of a profile, used directly (a transition aid and the entry point of the tests).</td>
+<td>The directory of a profile, used directly (a transition aid and the entry point of the tests).</td>
 </tr>
 <tr>
 <td><code>DOT_BETTERLEAKS</code></td>
