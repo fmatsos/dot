@@ -187,7 +187,7 @@ func (t *tools) mise() error {
 	cfg := filepath.Join(t.Home, ".config", "mise", "config.toml")
 	if _, err := os.Stat(cfg); err == nil && !t.Skip && executable(bin) {
 		if err := t.run(bin, "install", "-y"); err != nil {
-			return fmt.Errorf("mise install : %w", err)
+			return fmt.Errorf("mise install: %w", err)
 		}
 	}
 	return nil
@@ -225,9 +225,9 @@ func (t *tools) miseCurrent(bin string) bool {
 	case <-time.After(miseVersionTimeout):
 	}
 	if found == "" {
-		t.say("  mise : version illisible, %s attendue : mise à jour", miseVersion)
+		t.say("  mise: unreadable version, %s expected: updating", miseVersion)
 	} else {
-		t.say("  mise : version %s trouvée, %s attendue : mise à jour", found, miseVersion)
+		t.say("  mise: version %s found, %s expected: updating", found, miseVersion)
 	}
 	return false
 }
@@ -236,21 +236,21 @@ func (t *tools) fetchMise(bin string) error {
 	goos, goarch := t.Platform()
 	asset := assetFor(goos, goarch)
 	if asset == "" {
-		t.warn("  mise ignoré : plateforme non gérée (%s-%s)", goos, goarch)
+		t.warn("  mise skipped: unsupported platform (%s-%s)", goos, goarch)
 		return nil
 	}
 	if t.Dry {
-		t.say("  [dry] installer mise %s (%s) dans %s", miseVersion, asset, t.tilde(bin))
+		t.say("  [dry] install mise %s (%s) in %s", miseVersion, asset, t.tilde(bin))
 		return nil
 	}
 	t.say("  mise %s (%s) → %s", miseVersion, asset, t.tilde(bin))
 	data, err := t.download(fmt.Sprintf("%s/v%s/mise-v%[2]s-%s", strings.TrimRight(t.MiseBaseURL, "/"), miseVersion, asset))
 	if err != nil {
-		return errors.New("mise : téléchargement impossible")
+		return errors.New("mise: download failed")
 	}
 	sum := sha256.Sum256(data)
 	if hex.EncodeToString(sum[:]) != miseSums[asset] {
-		return errors.New("mise : checksum invalide, abandon")
+		return errors.New("mise: invalid checksum, aborting")
 	}
 	return writeAtomic(bin, data)
 }
@@ -266,7 +266,7 @@ func (t *tools) download(url string) ([]byte, error) {
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDownload+1))
 	if err != nil || len(data) > maxDownload {
-		return nil, errors.New("téléchargement invalide")
+		return nil, errors.New("invalid download")
 	}
 	return data, nil
 }
@@ -328,7 +328,7 @@ func (t *tools) nvm() error {
 	if fi, err := os.Stat(filepath.Join(dir, "nvm.sh")); err != nil || fi.Size() == 0 {
 		t.say("  nvm %s → ~/.nvm", nvmVersion)
 		if err := t.run("git", "clone", "-q", "--depth", "1", "--branch", nvmVersion, t.NVMRepoURL, dir); err != nil {
-			return fmt.Errorf("nvm : clone impossible : %w", err)
+			return fmt.Errorf("nvm: clone failed: %w", err)
 		}
 	} else if err := t.nvmPin(dir); err != nil {
 		return err
@@ -345,19 +345,19 @@ func (t *tools) nvm() error {
 // versions and global packages under ~/.nvm/versions stay. A directory that is no git repo is left alone.
 func (t *tools) nvmPin(dir string) error {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		t.warn("  nvm : ~/.nvm n'est pas un dépôt git, version non vérifiée")
+		t.warn("  nvm: ~/.nvm is not a git repository, version not verified")
 		return nil
 	}
 	cur, err := t.Output("git", "-C", dir, "describe", "--tags", "--exact-match", "HEAD")
 	if err == nil && strings.TrimSpace(string(cur)) == nvmVersion {
 		return nil
 	}
-	t.say("  nvm : mise à jour vers %s", nvmVersion)
+	t.say("  nvm: updating to %s", nvmVersion)
 	if err := t.run("git", "-C", dir, "fetch", "--depth", "1", "origin", "tag", nvmVersion); err != nil {
-		return fmt.Errorf("nvm : mise à jour impossible : %w", err)
+		return fmt.Errorf("nvm: update failed: %w", err)
 	}
 	if err := t.run("git", "-C", dir, "checkout", "-q", nvmVersion); err != nil {
-		return fmt.Errorf("nvm : mise à jour impossible : %w", err)
+		return fmt.Errorf("nvm: update failed: %w", err)
 	}
 	return nil
 }
@@ -388,7 +388,7 @@ func (t *tools) node(dir string, s nodeSpec) error {
 		}
 	}
 	if !executable(filepath.Join(base, "bin", "node")) || len(missing) > 0 {
-		msg := "  nvm : node " + s.node
+		msg := "  nvm: node " + s.node
 		if len(missing) > 0 {
 			msg += " + " + strings.Join(missing, " ")
 		}
@@ -396,7 +396,7 @@ func (t *tools) node(dir string, s nodeSpec) error {
 		if !t.Dry {
 			args := append([]string{"-c", nvmScript, "_", s.node}, missing...)
 			if err := t.Run("bash", args...); err != nil {
-				return fmt.Errorf("nvm : installation impossible : %w", err)
+				return fmt.Errorf("nvm: install failed: %w", err)
 			}
 		}
 	}
@@ -442,7 +442,7 @@ func (t *tools) plugins() error {
 		}
 		for _, p := range m.Plugins {
 			if err := t.run(codex, "plugin", "add", p+"@"+m.Name); err != nil {
-				return fmt.Errorf("codex plugin add %s@%s : %w", p, m.Name, err)
+				return fmt.Errorf("codex plugin add %s@%s: %w", p, m.Name, err)
 			}
 		}
 	}

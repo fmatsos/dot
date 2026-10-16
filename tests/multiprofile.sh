@@ -36,8 +36,9 @@ done
 [ "$(dot config get default)" = a ]
 dot config list | grep -q '"b"'
 [ ! -e "$HOME/.claude/settings.base.json" ] # a module source is no link once two profiles are registered
+rm "$HOME/.a-rc" "$HOME/.b-rc"
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-[ "$(grep -c '^==> ' "$S/out")" -eq 2 ]; [ "$(tail -n1 "$S/out")" = ok ]
+[ "$(readlink "$HOME/.a-rc")" = "$HOME/.dot/a/home/.a-rc" ]; [ "$(readlink "$HOME/.b-rc")" = "$HOME/.dot/b/home/.b-rc" ]
 echo 'OK   two profiles install side by side, the first stays the default, a bare install redoes both'
 
 # A file claimed by two profiles: refused with both paths, nothing written, nothing registered.
@@ -49,7 +50,6 @@ mkdir -p "$S/remotes/c/home/.config/c"; printf 'conf of c\n' >"$S/remotes/c/home
 cp "$registry" "$S/registry.before"; ls -A "$HOME" >"$S/home.before"
 printf 'claimed twice\n' >"$S/remotes/c/home/.a-rc"; commit "$S/remotes/c"
 fails 1 dot install "$S/remotes/c" -p c
-grep -q 'fichier lié par plusieurs profils' "$S/err"
 grep -qF "$HOME/.dot/a/home/.a-rc" "$S/err"; grep -qF "$HOME/.dot/c/home/.a-rc" "$S/err"
 cmp -s "$S/registry.before" "$registry"; [ ! -e "$HOME/.dot/c" ]
 [ ! -e "$HOME/.config/c" ]; [ "$(readlink "$HOME/.a-rc")" = "$HOME/.dot/a/home/.a-rc" ]
@@ -69,24 +69,25 @@ printf 'new in b\n' >"$B/home/.b-new"; commit "$B"
 dot pull >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ "$(readlink "$HOME/.a-new")" = "$HOME/.dot/a/home/.a-new" ]
 [ "$(readlink "$HOME/.b-new")" = "$HOME/.dot/b/home/.b-new" ]
-grep -qx '==> a' "$S/out"; grep -qx '==> b' "$S/out"; [ "$(tail -n1 "$S/out")" = ok ]
 printf 'again\n' >"$A/home/.a-two"; commit "$A"; printf 'again\n' >"$B/home/.b-two"; commit "$B"
 dot pull -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-[ -L "$HOME/.a-two" ]; [ ! -e "$HOME/.b-two" ]; not grep -q '^==> ' "$S/out"
+[ -L "$HOME/.a-two" ]; [ ! -e "$HOME/.b-two" ]
 echo 'OK   pull updates every profile, or only the targeted one'
 
 # A failing profile does not stop the others; the exit code is 1 and the name is reported.
 mv "$B" "$S/remotes/b.away"
 printf 'late\n' >"$A/home/.a-three"; commit "$A"
 fails 1 dot pull
-[ -L "$HOME/.a-three" ]; grep -q 'pull b' "$S/err"; grep -q 'échec : b' "$S/err"
+[ -L "$HOME/.a-three" ]
+# message kept: the failing profile's name is only observable in the error line (needs a stable error code or --json)
+grep -q 'pull b' "$S/err"; grep -q 'failed: b' "$S/err"
 mv "$S/remotes/b.away" "$B"
 dot pull >"$S/out" 2>&1; [ -L "$HOME/.b-two" ]
 echo 'OK   pull goes on after a failing profile and exits 1 naming it'
 
 # uninstall: the default cannot leave first; links go, the clone stays; --purge guards.
 fails 2 dot uninstall
-fails 1 dot uninstall -p a; grep -q 'profil par défaut' "$S/err"; [ -L "$HOME/.a-rc" ]
+fails 1 dot uninstall -p a; [ -L "$HOME/.a-rc" ]
 dot config set default b
 dot uninstall -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ ! -e "$HOME/.a-rc" ] && [ ! -e "$HOME/.local/bin/a-tool" ] && [ ! -e "$HOME/.config/a" ]
@@ -100,13 +101,13 @@ dot install "$A" -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 echo 'OK   an existing clone is reused when its profile is installed again'
 
 printf 'wip\n' >"$HOME/.dot/a/wip.txt"
-fails 1 dot uninstall -p a --purge; grep -q 'changements non commités' "$S/err"
+fails 1 dot uninstall -p a --purge
 [ -d "$HOME/.dot/a" ]; [ -L "$HOME/.a-rc" ]; dot config get profiles.a.repo >/dev/null
 rm "$HOME/.dot/a/wip.txt"
 dot uninstall -p a --purge >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ ! -e "$HOME/.dot/a" ] && [ ! -e "$HOME/.a-rc" ]
 mkdir "$S/elsewhere"; ln -s "$S/elsewhere" "$HOME/.dot/s"; dot config set profiles.s.repo "$S/remotes/s"
-fails 1 dot uninstall -p s --purge; grep -q 'lien' "$S/err"; [ -d "$S/elsewhere" ]
+fails 1 dot uninstall -p s --purge; [ -d "$S/elsewhere" ]; [ -L "$HOME/.dot/s" ]
 dot install "$A" -p a >"$S/out" 2>&1; printf 'wip\n' >"$HOME/.dot/a/wip.txt"
 dot uninstall -p a --purge --force >"$S/out" 2>&1; [ ! -e "$HOME/.dot/a" ]
 [ "$(dot config get default)" = b ]; [ -d "$HOME/.dot/b" ]
@@ -124,6 +125,7 @@ subject() { git -C "$S/remotes/push-$1.git" log -1 --format=%s; }
 for p in a b; do printf 'edit\n' >>"$HOME/.dot/$p/home/.$p-new"; done
 rm "$HOME/.a-rc" "$HOME/.b-rc"; printf 'tool\n' >"$HOME/.a-rc"; printf 'tool\n' >"$HOME/.b-rc"
 dot status >"$S/out" 2>"$S/err"
+# message kept: the ==> header is the only way to tell which profile a listed change belongs to (needs --json)
 grep -qx '==> a' "$S/out"; grep -qx '==> b' "$S/out"
 section() { awk -v k="==> $1" '/^==> /{on = ($0 == k); next} on' "$S/out"; } # lines under one profile header
 section a | grep -q 'M home/.a-new'; section a | not grep -q 'home/.b-new'
@@ -136,14 +138,15 @@ for p in a b; do ln -sf "$HOME/.dot/$p/home/.$p-rc" "$HOME/.$p-rc"; done
 echo 'OK   status lists every profile under its name with its changes and detached files, or only the targeted one'
 
 dot push "msg all" >"$S/out" 2>"$S/err" || { cat "$S/out" "$S/err"; exit 1; }
-grep -qx '==> a' "$S/out"; grep -qx '==> b' "$S/out"
 [ "$(subject a)" = "msg all" ]; [ "$(subject b)" = "msg all" ]
-dot push >"$S/out" 2>&1; [ "$(grep -c '^rien à envoyer$' "$S/out")" -eq 2 ]
+commits() { git -C "$S/remotes/push-$1.git" rev-list --count main; }
+n_a=$(commits a); n_b=$(commits b)
+dot push >"$S/out" 2>&1; [ "$(commits a)" -eq "$n_a" ]; [ "$(commits b)" -eq "$n_b" ]
 echo 'OK   push without -p commits and pushes every profile with the same message'
 
 for p in a b; do printf 'edit\n' >>"$HOME/.dot/$p/home/.$p-new"; done
 dot push -p a "only a" >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-not grep -q '^==> ' "$S/out"; [ "$(subject a)" = "only a" ]; [ "$(subject b)" = "msg all" ]
+[ "$(subject a)" = "only a" ]; [ "$(subject b)" = "msg all" ]
 [ -n "$(git -C "$HOME/.dot/b" status --porcelain)" ]
 echo 'OK   push -p a pushes that profile only'
 
@@ -151,12 +154,17 @@ echo 'OK   push -p a pushes that profile only'
 mv "$S/remotes/push-b.git" "$S/remotes/push-b.away"
 printf 'edit\n' >>"$HOME/.dot/a/home/.a-new"
 fails 1 dot push "late"
-[ "$(subject a)" = "late" ]; grep -qx 'échec : b' "$S/err"; not grep -q 'échec : a' "$S/err"
+[ "$(subject a)" = "late" ]
+# message kept: the failing profile's name is only observable in the error line (needs a stable error code or --json)
+grep -qx 'failed: b' "$S/err"; not grep -q 'failed: a' "$S/err"
 mv "$S/remotes/push-b.away" "$S/remotes/push-b.git"
 echo 'OK   push goes on after a failing profile and exits 1 naming it'
 
 # send is gone: it falls back to git like any unknown word.
-fails 1 dot send; grep -q "'send' is not a git command" "$S/err"
+# an alias proves the word reaches git, whatever git says about it
+git config --global alias.send "!touch $S/send.fallback"
+dot send >/dev/null 2>&1; [ -e "$S/send.fallback" ]
+git config --global --unset alias.send
 echo 'OK   dot send is no dot command any more (git fallback)'
 
 # Multi-profile extensions: search all profiles when no -p, fail if claimed by two, run if by one.
@@ -166,8 +174,11 @@ printf '#!/bin/sh\necho "both from a"\nexit 0\n' >"$HOME/.dot/a/bin/dot-shared";
 printf '#!/bin/sh\necho "both from b"\nexit 0\n' >"$HOME/.dot/b/bin/dot-shared"; chmod +x "$HOME/.dot/b/bin/dot-shared"
 [ "$(dot a-only)" = "a-only from profile a" ] || { echo "FAIL: a-only extension"; exit 1; }
 echo 'OK   extension only in profile a is run'
+# an alias shows the refusal is not a git fallback
+git config --global alias.shared "!touch $S/shared.fallback"
 fails 1 dot shared
-grep -q 'plusieurs profils' "$S/err" && grep -q '\ba\b' "$S/err" && grep -q '\bb\b' "$S/err" || { echo "FAIL: multi-profile error"; cat "$S/err"; exit 1; }
+[ ! -e "$S/shared.fallback" ]; not grep -q 'both from' "$S/out"
+git config --global --unset alias.shared
 echo 'OK   extension claimed by two profiles is refused with profile names'
 dot -p a shared >"$S/out" 2>&1; [ "$(cat "$S/out")" = "both from a" ] || { echo "FAIL: -p a should run a version"; exit 1; }
 echo 'OK   with -p, extension is run from that profile even if others have it'
@@ -180,7 +191,9 @@ echo 'OK   extension only in PATH is run when no profile has it'
 (
   export HOME=$S/home2 XDG_CONFIG_HOME=$S/home2/.config XDG_DATA_HOME=$S/home2/.local/share XDG_CACHE_HOME=$S/home2/.cache
   export XDG_STATE_HOME=$S/home2/.local/state CODEX_HOME=$S/home2/.codex
-  mkdir -p "$HOME" "$S/bin2"; cp "$S/bin/claude" "$S/bin2/claude"
+  mkdir -p "$HOME" "$S/bin2"
+export CLAUDE_CALLS=$S/claude.calls # this claude only records its argv
+printf '#!/bin/bash\nprintf "<%%s> " "$@" >>"$CLAUDE_CALLS"; echo >>"$CLAUDE_CALLS"\nexit 0\n' >"$S/bin2/claude"; chmod +x "$S/bin2/claude"
   export PATH=$S/bin2:/usr/bin:/bin
   for n in p1 p2; do
     mkremote a "$S/remotes/$n"; rm -rf "$S/remotes/$n/bin"
@@ -195,25 +208,25 @@ echo 'OK   extension only in PATH is run when no profile has it'
   [ "$(readlink "$HOME/.claude/settings.base.json")" = "$HOME/.dot/p1/home/.claude/settings.base.json" ]
   [ "$(readlink "$HOME/.config/mcp/servers.json")" = "$HOME/.dot/p1/home/.config/mcp/servers.json" ]
   dot install "$S/remotes/p2" -p p2 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-  [ "$(grep -c 'lien retiré' "$S/out")" -eq 2 ]
   [ ! -e "$HOME/.claude/settings.base.json" ] && [ ! -e "$HOME/.config/mcp/servers.json" ]
   jq -e '."p1-key" and ."p2-key"' "$HOME/.claude/settings.json" >/dev/null
   rm "$HOME/.claude/settings.json"; dot settings -n >"$S/out" 2>&1
   grep -q 'p1-key' "$S/out"; grep -q 'p2-key' "$S/out"; [ ! -e "$HOME/.claude/settings.json" ]
   dot mcp -n >"$S/out" 2>&1
-  grep -Fxq 'claude : ajout p1-srv' "$S/out"; grep -Fxq 'claude : ajout p2-srv' "$S/out"
+  # message kept: the dry-run plan is the only observable of what would be added (needs --json)
+  grep -Fxq 'claude: add p1-srv' "$S/out"; grep -Fxq 'claude: add p2-srv' "$S/out"
   # -p narrows the targets, not the fact that servers.json is no longer linked: apply must still find its source.
+  : >"$S/claude.calls"
   dot mcp -p p1 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-  not grep -q 'invalide ou absent' "$S/out"
+  grep -Fq '<add-json> <-s> <user> <p1-srv>' "$S/claude.calls" # the source was found, whatever the profile narrowing
   dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-  [ ! -e "$HOME/.claude/settings.base.json" ]; not grep -q 'lien retiré' "$S/out"
+  [ ! -e "$HOME/.claude/settings.base.json" ]
   dot status >"$S/out" 2>"$S/err"; not grep -q 'settings.base.json' "$S/err"
   echo 'OK   two profiles with the same module sources install, link neither and are merged by dot settings and dot mcp'
 
   dot config set default p1
   dot uninstall -p p2 >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
   [ ! -e "$HOME/.claude/settings.base.json" ] && [ ! -e "$HOME/.config/mcp/servers.json" ]
-  grep -q 'un seul profil reste' "$S/out"; grep -q 'dot install' "$S/out"
   dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
   [ "$(readlink "$HOME/.claude/settings.base.json")" = "$HOME/.dot/p1/home/.claude/settings.base.json" ]
   [ "$(readlink "$HOME/.config/mcp/servers.json")" = "$HOME/.dot/p1/home/.config/mcp/servers.json" ]

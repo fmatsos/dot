@@ -24,9 +24,9 @@ func gitOut(dir string, args ...string) ([]byte, error) {
 	out, err := c.Output()
 	if err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return out, fmt.Errorf("git %s : %w : %s", strings.Join(args, " "), err, msg)
+			return out, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, msg)
 		}
-		return out, fmt.Errorf("git %s : %w", strings.Join(args, " "), err)
+		return out, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return out, nil
 }

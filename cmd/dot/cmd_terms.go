@@ -19,8 +19,8 @@ var blankOrComment = regexp.MustCompile(`^\s*(#|$)`)
 func newTermsCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:                   "terms",
-		Short:                 "Copie la liste locale des termes interdits dans le secret CI",
-		Long:                  "Copie la liste locale des termes interdits (forbidden.local du profil) dans le secret CI FORBIDDEN_TERMS du dépôt d'origine, par gh, valeurs sur stdin.",
+		Short:                 "Copy the local forbidden terms list into the CI secret",
+		Long:                  "Copy the local forbidden terms list (the profile's forbidden.local) into the CI secret FORBIDDEN_TERMS of the origin repository, through gh, values on stdin.",
 		DisableFlagsInUseLine: true,
 		Args:                  exactArgs(0, "dot terms"),
 		RunE: func(*cobra.Command, []string) error {
@@ -30,12 +30,12 @@ func newTermsCmd(env *Env) *cobra.Command {
 			}
 			origin, err := gitText(dir, "config", "--local", "--get", "remote.origin.url")
 			if err != nil {
-				return fmt.Errorf("terms : origine absente ou URL invalide")
+				return fmt.Errorf("terms: origin missing or invalid URL")
 			}
 			// Mapping against "." keeps <host>/<owner>/<repo>, the form gh expects for -R.
 			repo, err := clone.Path(origin, ".")
 			if err != nil {
-				return fmt.Errorf("terms : origine absente ou URL invalide")
+				return fmt.Errorf("terms: origin missing or invalid URL")
 			}
 			var terms []string
 			if data, err := os.ReadFile(filepath.Join(dir, "forbidden.local")); err == nil {
@@ -46,7 +46,7 @@ func newTermsCmd(env *Env) *cobra.Command {
 				}
 			}
 			if len(terms) == 0 {
-				return fmt.Errorf("terms : liste absente, illisible ou vide")
+				return fmt.Errorf("terms: list missing, unreadable or empty")
 			}
 			// The terms travel on stdin, never on argv.
 			c := exec.Command("gh", "secret", "set", "FORBIDDEN_TERMS", "-R", repo)
@@ -54,7 +54,7 @@ func newTermsCmd(env *Env) *cobra.Command {
 			if err := runWithStdio(env, c); err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(env.Stdout, "secret FORBIDDEN_TERMS mis à jour")
+			_, err = fmt.Fprintln(env.Stdout, "secret FORBIDDEN_TERMS updated")
 			return err
 		},
 	}

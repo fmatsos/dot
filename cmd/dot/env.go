@@ -61,11 +61,11 @@ func (e *Env) ProfileDir() (string, error) {
 		return "", err
 	}
 	if len(r.Profiles) == 0 {
-		return "", errors.New("aucun profil inscrit (dot install <url>)")
+		return "", errors.New("no profile registered (dot install <url>)")
 	}
 	key := cmp.Or(e.Profile, e.Getenv("DOT_PROFILE"), r.Default)
 	if !slices.Contains(r.Keys(), key) {
-		return "", fmt.Errorf("profil inconnu : %s (profils inscrits : %s)", key, strings.Join(r.Keys(), ", "))
+		return "", fmt.Errorf("unknown profile: %s (registered profiles: %s)", key, strings.Join(r.Keys(), ", "))
 	}
 	return e.ProfileDirFor(key), nil
 }

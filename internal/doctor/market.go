@@ -63,9 +63,9 @@ func (c *checker) claude(mk marketplace) {
 	data, _ := os.ReadFile(filepath.Join(c.o.Home, ".claude", "plugins", "known_marketplaces.json"))
 	_ = json.Unmarshal(data, &known)
 	if loc := known[mk.name].InstallLocation; loc != "" && isDir(loc) {
-		c.add(OK, "marketplace Claude %s présent", mk.name)
+		c.add(OK, "marketplace Claude %s present", mk.name)
 	} else {
-		c.add(Warn, "marketplace Claude %s absent : claude plugin marketplace add <dossier> (jq requis)", mk.name)
+		c.add(Warn, "marketplace Claude %s missing: claude plugin marketplace add <directory> (jq required)", mk.name)
 	}
 }
 
@@ -90,17 +90,17 @@ func codexMarket(name string) string {
 func (c *checker) codex(mk marketplace) {
 	market := codexMarket(mk.name)
 	if market == "" || !isDir(market) {
-		c.add(Warn, "marketplace Codex %s absent : codex plugin marketplace add <dossier>", mk.name)
+		c.add(Warn, "marketplace Codex %s missing: codex plugin marketplace add <directory>", mk.name)
 		return
 	}
-	c.add(OK, "marketplace Codex %s présent", mk.name)
+	c.add(OK, "marketplace Codex %s present", mk.name)
 	home := cmp.Or(os.Getenv("CODEX_HOME"), filepath.Join(c.o.Home, ".codex"))
 	for _, plugin := range mk.plugins {
 		src, cache := pluginSource(market, plugin), newestCopy(filepath.Join(home, "plugins", "cache", mk.name, plugin))
 		if src != "" && cache != "" && isDir(filepath.Join(market, src)) && sameTree(filepath.Join(market, src), cache) {
-			c.add(OK, "copie Codex à jour")
+			c.add(OK, "Codex copy up to date")
 		} else {
-			c.add(Warn, "copie Codex périmée : dot pull")
+			c.add(Warn, "Codex copy stale: dot pull")
 		}
 	}
 }

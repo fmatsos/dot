@@ -138,7 +138,7 @@ func RenderOpenCode(cfg map[string]any, desired map[string]*Server) map[string]a
 	return out
 }
 
-// Step is one planned change: action is "ajout", "modification" or "retrait".
+// Step is one planned change: action is "add", "update" or "remove".
 type Step struct{ Tool, Action, Name string }
 
 // Plan compares the wanted entries (nil = absent) with a tool's current ones, by name in code point order.
@@ -149,11 +149,11 @@ func Plan(tool string, want map[string]any, current Entries) []Step {
 		if canon(w) == canon(c) {
 			continue
 		}
-		action := "modification"
+		action := "update"
 		if w == nil {
-			action = "retrait"
+			action = "remove"
 		} else if c == nil {
-			action = "ajout"
+			action = "add"
 		}
 		steps = append(steps, Step{tool, action, name})
 	}

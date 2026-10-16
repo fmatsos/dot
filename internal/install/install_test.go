@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	c := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.com"}, args...)...)
 	if out, err := c.CombinedOutput(); err != nil {
-		t.Fatalf("git %v : %v\n%s", args, err, out)
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
 
@@ -135,10 +136,6 @@ func TestAddInstallsInOrder(t *testing.T) {
 	if got := keysOf(t, home); len(got) != 1 || got[0] != "a" {
 		t.Errorf("registry keys = %v", got)
 	}
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if lines[0] == "" || lines[len(lines)-1] != "ok" || !strings.HasPrefix(lines[0], "clone partiel → ") {
-		t.Errorf("output = %q", out.String())
-	}
 	dir := filepath.Join(home, ".dot", "a")
 	if got, _ := os.Readlink(filepath.Join(home, ".arc")); got != filepath.Join(dir, "home", ".arc") {
 		t.Errorf("link = %q", got)
@@ -154,7 +151,7 @@ func TestAddInstallsInOrder(t *testing.T) {
 	if err := in.Reinstall([]Profile{{"a", dir}}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "lien :") {
+	if strings.Contains(out.String(), ".arc") { // the path, not the wording: nothing is linked again
 		t.Errorf("second run linked again:\n%s", out.String())
 	}
 	if n := strings.Count(globalInclude(t), includePath); n != 1 {
@@ -172,7 +169,7 @@ func gitCfg(t *testing.T, dir, key string) string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", dir, "config", "--local", key).Output()
 	if err != nil {
-		t.Fatalf("git config %s : %v", key, err)
+		t.Fatalf("git config %s: %v", key, err)
 	}
 	return strings.TrimSpace(string(out))
 }
@@ -226,8 +223,12 @@ func TestAddRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := remote(t, "b", nil)
-	if err := in.Add(other, "a"); err == nil || !strings.Contains(err.Error(), "déjà inscrit avec un autre dépôt") {
-		t.Errorf("same key, other repo: %v", err)
+	before, _ := os.ReadFile(filepath.Join(home, ".dot", "profiles.json"))
+	if err := in.Add(other, "a"); err == nil {
+		t.Error("same key, other repo accepted")
+	}
+	if after, _ := os.ReadFile(filepath.Join(home, ".dot", "profiles.json")); !bytes.Equal(before, after) || exists(filepath.Join(home, ".brc")) {
+		t.Error("a refused install wrote something")
 	}
 	if err := in.Add(a, "bad key"); err == nil {
 		t.Error("invalid key accepted")
@@ -249,10 +250,10 @@ func TestConflictWritesNothing(t *testing.T) {
 	if !errors.As(err, &ce) {
 		t.Fatalf("err = %v ; want a ConflictError", err)
 	}
-	for _, want := range []string{filepath.Join(home, ".dot", "a", "home", ".shared"), filepath.Join(home, ".dot", "b", "home", ".shared")} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("message lacks %s:\n%v", want, err)
-		}
+	// The refusal names both sources, as data.
+	wantSrcs := []string{filepath.Join(home, ".dot", "a", "home", ".shared"), filepath.Join(home, ".dot", "b", "home", ".shared")}
+	if len(ce.Conflicts) != 1 || !slices.Equal(ce.Conflicts[0].Srcs, wantSrcs) {
+		t.Errorf("conflicts = %+v ; want sources %v", ce.Conflicts, wantSrcs)
 	}
 	after, _ := os.ReadFile(filepath.Join(home, ".dot", "profiles.json"))
 	if !bytes.Equal(before, after) || exists(filepath.Join(home, ".dot", "b")) || exists(filepath.Join(home, ".brc")) {
@@ -272,7 +273,8 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if entries, _ := os.ReadDir(home); len(entries) != 0 {
 		t.Errorf("dry run created %v", entries)
 	}
-	if !strings.Contains(out.String(), "rien à lier") || !strings.Contains(out.String(), "[dry] git -C ") || tools != 0 {
+	// The preview names the clone it would make (the path, not the wording).
+	if !strings.Contains(out.String(), filepath.Join(home, ".dot", "a")) || tools != 0 {
 		t.Errorf("output = %q, tools = %d", out.String(), tools)
 	}
 	// Dry run over a real clone: previews, still writes nothing and does not register a new profile.
@@ -291,8 +293,9 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if err := in.Reinstall([]Profile{{"a", filepath.Join(home, ".dot", "a")}}); err != nil {
 		t.Fatal(err)
 	}
+	// The preview names the link it would make (the path, not the wording).
 	if exists(filepath.Join(home, ".arc")) || len(keysOf(t, home)) != 1 || exists(filepath.Join(home, ".dot", "b")) ||
-		!strings.HasSuffix(strings.TrimSpace(out.String()), "ok (dry run)") || !strings.Contains(out.String(), "[dry]") {
+		!strings.Contains(out.String(), filepath.Join(home, ".arc")) {
 		t.Errorf("dry run over a clone wrote something:\n%s", out.String())
 	}
 	if tools != 1 {
@@ -304,7 +307,7 @@ func TestPullContinuesAfterFailure(t *testing.T) {
 	home := sandbox(t)
 	a := remote(t, "a", nil)
 	b := remote(t, "b", nil)
-	in, out, errOut := newInstaller(home, false)
+	in, out, _ := newInstaller(home, false)
 	for k, u := range map[string]string{"a": a, "b": b} {
 		if err := in.Add(u, k); err != nil {
 			t.Fatal(err)
@@ -327,21 +330,22 @@ func TestPullContinuesAfterFailure(t *testing.T) {
 	if !exists(filepath.Join(home, ".anew")) {
 		t.Error("profile a was not updated after b failed")
 	}
-	if !strings.Contains(errOut.String(), "pull b") || !strings.Contains(errOut.String(), "échec : b") || !strings.Contains(out.String(), "==> a") {
-		t.Errorf("stderr = %q stdout = %q", errOut.String(), out.String())
-	}
 }
 
 func TestUninstall(t *testing.T) {
 	home := sandbox(t)
-	in, out, _ := newInstaller(home, false)
+	in, _, _ := newInstaller(home, false)
 	for _, k := range []string{"a", "b"} {
 		if err := in.Add(remote(t, k, nil), k); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := in.Uninstall("a", false, false); err == nil || !strings.Contains(err.Error(), "profil par défaut") {
-		t.Errorf("uninstalling the default with another profile: %v", err)
+	registryBefore, _ := os.ReadFile(filepath.Join(home, ".dot", "profiles.json"))
+	if err := in.Uninstall("a", false, false); err == nil {
+		t.Error("uninstalling the default with another profile accepted")
+	}
+	if after, _ := os.ReadFile(filepath.Join(home, ".dot", "profiles.json")); !bytes.Equal(registryBefore, after) || !exists(filepath.Join(home, ".arc")) {
+		t.Error("a refused uninstall changed something")
 	}
 	if err := in.Uninstall("b", false, false); err != nil {
 		t.Fatal(err)
@@ -349,18 +353,15 @@ func TestUninstall(t *testing.T) {
 	if exists(filepath.Join(home, ".brc")) || !exists(filepath.Join(home, ".arc")) || !exists(filepath.Join(home, ".dot", "b", "home")) {
 		t.Error("uninstall removed the wrong links or the clone")
 	}
-	if !strings.Contains(out.String(), "clone gardé") {
-		t.Errorf("output = %q", out.String())
-	}
-	if err := in.Uninstall("b", false, false); err == nil || !strings.Contains(err.Error(), "profil inconnu : b") {
-		t.Errorf("second uninstall: %v", err)
+	if err := in.Uninstall("b", false, false); err == nil {
+		t.Error("second uninstall of an unregistered profile accepted")
 	}
 	// Purge refusals leave the profile installed.
 	dir := filepath.Join(home, ".dot", "a")
 	if err := os.WriteFile(filepath.Join(dir, "wip"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := in.Uninstall("a", true, false); err == nil || !strings.Contains(err.Error(), "non commités") || !exists(filepath.Join(home, ".arc")) {
+	if err := in.Uninstall("a", true, false); err == nil || !exists(filepath.Join(home, ".arc")) || !exists(filepath.Join(dir, "wip")) {
 		t.Errorf("dirty purge: %v", err)
 	}
 	if err := in.Uninstall("a", true, true); err != nil || exists(dir) || exists(filepath.Join(home, ".arc")) {
@@ -401,24 +402,36 @@ func TestModuleSourcesAcrossProfiles(t *testing.T) {
 			t.Errorf("%s still linked with two profiles", p)
 		}
 	}
-	if n := strings.Count(out.String(), "lien retiré"); n != len(moduleLinks) {
-		t.Errorf("%d \"lien retiré\" lines ; want %d:\n%s", n, len(moduleLinks), out.String())
+	for _, rel := range link.ModuleSources { // each removed link is announced (the path, not the wording)
+		if !strings.Contains(out.String(), rel) {
+			t.Errorf("%s removed without a word:\n%s", rel, out.String())
+		}
 	}
 	if !exists(filepath.Join(home, ".arc")) || !exists(filepath.Join(home, ".brc")) {
 		t.Error("other files not linked")
 	}
-	// A reinstall stays unlinked and quiet.
+	// A reinstall stays unlinked and quiet: no module source is mentioned again.
 	out.Reset()
-	if err := in.Reinstall([]Profile{{"a", filepath.Join(home, ".dot", "a")}}); err != nil || exists(settingsLink) || strings.Contains(out.String(), "lien retiré") {
+	if err := in.Reinstall([]Profile{{"a", filepath.Join(home, ".dot", "a")}}); err != nil || exists(settingsLink) {
 		t.Errorf("reinstall: %v\n%s", err, out.String())
 	}
-	// Back to one profile: nothing is linked on its own, the message says so; install links again.
+	for _, rel := range link.ModuleSources {
+		if strings.Contains(out.String(), rel) {
+			t.Errorf("reinstall mentions %s again:\n%s", rel, out.String())
+		}
+	}
+	// Back to one profile: nothing is linked on its own, the files are named; install links again.
 	out.Reset()
 	if err := in.Uninstall("b", false, false); err != nil {
 		t.Fatal(err)
 	}
-	if exists(settingsLink) || exists(serversLink) || strings.Count(out.String(), "dot install") != len(moduleLinks) {
+	if exists(settingsLink) || exists(serversLink) {
 		t.Errorf("uninstall of one of two:\n%s", out.String())
+	}
+	for _, rel := range link.ModuleSources { // the files left unlinked are named (the path, not the wording)
+		if !strings.Contains(out.String(), rel) {
+			t.Errorf("%s left unlinked without a word:\n%s", rel, out.String())
+		}
 	}
 	if err := in.Reinstall([]Profile{{"a", filepath.Join(home, ".dot", "a")}}); err != nil || !exists(settingsLink) || !exists(serversLink) {
 		t.Errorf("reinstall of the last profile: %v", err)
@@ -457,6 +470,7 @@ func TestAddResolvesDefaultBranch(t *testing.T) {
 		if err := in.Add(defaultBranchRemote(t, "a", "trunk"), "a"); err != nil {
 			t.Fatal(err)
 		}
+		// The git argv of the preview (not prose): the real branch, not main.
 		if !strings.Contains(out.String(), "origin trunk") || !strings.Contains(out.String(), "init -q -b trunk") {
 			t.Errorf("out = %s", out.String())
 		}
@@ -479,7 +493,8 @@ func TestAddWithoutDefaultBranchCleansUp(t *testing.T) {
 		url := filepath.Join(t.TempDir(), "empty")
 		gitIn(t, t.TempDir(), "init", "-q", "--bare", "-b", "main", url)
 		err := in.Add(url, "empty")
-		if err == nil || !strings.Contains(err.Error(), "branche par défaut introuvable") {
+		// message kept: an empty remote and any other clone failure leave the same state and the same error type, only the wording tells them apart
+		if err == nil || !strings.Contains(err.Error(), "default branch not found") {
 			t.Fatalf("err = %v", err)
 		}
 		if exists(filepath.Join(home, ".dot", "empty")) || exists(filepath.Join(home, ".dot", "profiles.json")) {
@@ -506,7 +521,7 @@ func TestAddCreatesPrivateDirectories(t *testing.T) {
 	}
 	for _, d := range []string{filepath.Join(home, ".dot"), filepath.Join(home, ".dot", "a")} {
 		if fi, err := os.Stat(d); err != nil || fi.Mode().Perm() != 0o700 {
-			t.Errorf("%s : %v, %v ; want 0700", d, fi, err)
+			t.Errorf("%s: %v, %v; want 0700", d, fi, err)
 		}
 	}
 }

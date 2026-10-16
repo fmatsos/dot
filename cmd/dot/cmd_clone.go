@@ -13,19 +13,19 @@ import (
 
 func init() { register(newCloneCmd) }
 
-const cloneUsage = "usage : dot clone [--path] <url> [arguments git clone…]"
+const cloneUsage = "usage: dot clone [--path] <url> [git clone arguments…]"
 
 // srcRoot is $DOT_SRC, or ~/src.
 func srcRoot(env *Env) string { return cmp.Or(env.Getenv("DOT_SRC"), filepath.Join(env.Home, "src")) }
 
 func newCloneCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
-		Use:   "clone [--path] <url> [arguments git clone…]",
-		Short: "Clone dans ~/src/<hôte>/<propriétaire>/<dépôt>",
-		Long: "Clone dans ~/src/<hôte>/<propriétaire>/<dépôt>.\n\n" +
-			"Seuls le premier groupe et le nom du dépôt sont gardés (pas les sous-groupes). --path affiche " +
-			"la destination sans cloner. Racine : $DOT_SRC (défaut ~/src). Un dépôt déjà cloné au même " +
-			"endroit est réutilisé. Les arguments suivants vont à git clone.",
+		Use:   "clone [--path] <url> [git clone arguments…]",
+		Short: "Clone into ~/src/<host>/<owner>/<repository>",
+		Long: "Clone into ~/src/<host>/<owner>/<repository>.\n\n" +
+			"Only the first group and the repository name are kept (no subgroups). --path prints " +
+			"the destination without cloning. Root: $DOT_SRC (default ~/src). A repository already cloned at the same " +
+			"place is reused. The following arguments go to git clone.",
 		DisableFlagsInUseLine: true,
 		// Everything after the URL belongs to git clone, flags included.
 		DisableFlagParsing: true,
@@ -58,7 +58,7 @@ func newCloneCmd(env *Env) *cobra.Command {
 			case err != nil:
 				return err
 			case reused:
-				_, err = fmt.Fprintf(env.Stdout, "déjà cloné : %s\n", target)
+				_, err = fmt.Fprintf(env.Stdout, "already cloned: %s\n", target)
 			default:
 				_, err = fmt.Fprintln(env.Stdout, target)
 			}

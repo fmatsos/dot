@@ -16,8 +16,8 @@ import (
 
 // Sentinel errors the command layer maps to exit code 3 (message printed as is).
 var (
-	ErrLocked        = errors.New("Bitwarden verrouillé : lance « dot secrets unlock »")
-	ErrPassLoggedOut = errors.New("Proton Pass : non connecté (pass-cli login)")
+	ErrLocked        = errors.New(`Bitwarden locked: run "dot secrets unlock"`)
+	ErrPassLoggedOut = errors.New("Proton Pass: not logged in (pass-cli login)")
 )
 
 // Store reads and manages the secrets of one profile directory.
@@ -125,14 +125,14 @@ func (s *Store) Read(ctx context.Context, m Mapping) (string, error) {
 	case "pass":
 		out, err = s.run(ctx, nil, nil, "pass-cli", "item", "view", "--vault-name", m.Vault(), "--item-title", m.Title(), "--field", m.Field())
 	default:
-		err = errors.New("backend inconnu")
+		err = errors.New("unknown backend")
 	}
 	if err != nil {
-		return "", fmt.Errorf("%s (%s) : lecture impossible", m.Name, m.Backend())
+		return "", fmt.Errorf("%s (%s): read failed", m.Name, m.Backend())
 	}
 	v := strings.TrimSuffix(string(out), "\n")
 	if v == "" {
-		return "", fmt.Errorf("%s (%s) : valeur vide", m.Name, m.Backend())
+		return "", fmt.Errorf("%s (%s): empty value", m.Name, m.Backend())
 	}
 	return v, nil
 }
@@ -167,9 +167,9 @@ func (s *Store) Resolve(ctx context.Context, names []string) ([]string, error) {
 type State string
 
 const (
-	Readable    State = "lisible"
-	Locked      State = "verrouillé"
-	Unavailable State = "indisponible"
+	Readable    State = "readable"
+	Locked      State = "locked"
+	Unavailable State = "unavailable"
 )
 
 // Entry is the status of one mapping. It never holds a value.
@@ -179,7 +179,7 @@ type Entry struct {
 	State   State
 }
 
-func (e Entry) String() string { return fmt.Sprintf("%s (%s) : %s", e.Name, e.Backend, e.State) }
+func (e Entry) String() string { return fmt.Sprintf("%s (%s): %s", e.Name, e.Backend, e.State) }
 
 // Status reports every secret of dir/secrets.local as readable, locked or unavailable, reading
 // each value only to test it. An error means the mapping file itself is missing or malformed.
@@ -235,15 +235,15 @@ func writeAtomic(dir, name string, data []byte) error {
 // keeps the session in bw-session.local (0600).
 func (s *Store) Unlock(ctx context.Context, password string) error {
 	if password == "" {
-		return errors.New("Bitwarden : mot de passe vide")
+		return errors.New("Bitwarden: empty password")
 	}
 	out, err := s.run(ctx, []string{"BW_PASSWORD=" + password}, nil, "bw", "unlock", "--passwordenv", "BW_PASSWORD", "--raw")
 	if err != nil {
-		return errors.New("Bitwarden : déverrouillage impossible")
+		return errors.New("Bitwarden: unlock failed")
 	}
 	sess := strings.TrimRight(string(out), "\n")
 	if sess == "" {
-		return errors.New("Bitwarden : session vide")
+		return errors.New("Bitwarden: empty session")
 	}
 	s.session = ""
 	return writeAtomic(s.Dir, "bw-session.local", []byte(sess))
@@ -255,7 +255,7 @@ func (s *Store) Lock(ctx context.Context) error {
 	os.Remove(s.cachePath())
 	s.session = ""
 	if err != nil {
-		return errors.New("Bitwarden : verrouillage impossible")
+		return errors.New("Bitwarden: lock failed")
 	}
 	return nil
 }

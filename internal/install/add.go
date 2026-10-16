@@ -21,7 +21,7 @@ func DeriveKey(url string) (string, error) {
 	}
 	s = strings.TrimSuffix(s, ".git")
 	if err := (&registry.Registry{}).Add(s, "x"); err != nil {
-		return "", fmt.Errorf("clé de profil impossible à déduire de %s (utiliser -p <clé>)", url)
+		return "", fmt.Errorf("cannot derive a profile key from %s (use -p <key>)", url)
 	}
 	return s, nil
 }
@@ -43,7 +43,7 @@ func (in *Installer) Add(url, key string) (err error) {
 		return err
 	}
 	if i := slices.Index(r.Keys(), key); i >= 0 && r.Profiles[i].Repo != url {
-		return fmt.Errorf("profil %s déjà inscrit avec un autre dépôt : %s", key, r.Profiles[i].Repo)
+		return fmt.Errorf("profile %s already registered with another repository: %s", key, r.Profiles[i].Repo)
 	}
 	dir := in.dirOf(key)
 	created, err := in.ensureClone(dir, url)
@@ -96,21 +96,21 @@ func (in *Installer) Add(url, key string) (err error) {
 func (in *Installer) ensureClone(dir, url string) (created bool, err error) {
 	if _, serr := os.Stat(filepath.Join(dir, ".git")); serr == nil {
 		if out, _ := gitOut(dir, "config", "remote.origin.url"); strings.TrimSpace(string(out)) != url {
-			return false, fmt.Errorf("%s est déjà un clone d'un autre dépôt", dir)
+			return false, fmt.Errorf("%s is already a clone of another repository", dir)
 		}
 		return false, nil
 	}
 	if entries, rerr := os.ReadDir(dir); rerr == nil && len(entries) > 0 {
-		return false, fmt.Errorf("%s existe déjà et n'est pas un clone git", dir)
+		return false, fmt.Errorf("%s already exists and is not a git clone", dir)
 	}
 	branch, berr := defaultBranch(url)
 	if berr != nil {
 		if !in.Dry {
-			return false, fmt.Errorf("clone de %s impossible : %w", url, berr)
+			return false, fmt.Errorf("cannot clone %s: %w", url, berr)
 		}
 		branch = "main" // ponytail: a dry run previews with main when the remote cannot be asked
 	}
-	fmt.Fprintf(in.Out, "clone partiel → %s\n", dir)
+	fmt.Fprintf(in.Out, "partial clone → %s\n", dir)
 	if in.Dry {
 		fmt.Fprintf(in.Out, "  [dry] mkdir -p %s\n", dir)
 	} else if err := mkPrivateDirs(dir); err != nil {
@@ -126,7 +126,7 @@ func (in *Installer) ensureClone(dir, url string) (created bool, err error) {
 		{"checkout", "-q", branch},
 	} {
 		if err := in.run(dir, a...); err != nil {
-			return true, fmt.Errorf("clone de %s impossible : %w", url, err)
+			return true, fmt.Errorf("cannot clone %s: %w", url, err)
 		}
 	}
 	return true, nil
@@ -153,7 +153,7 @@ func defaultBranch(url string) (string, error) {
 	if hasMain {
 		return "main", nil
 	}
-	return "", errors.New("branche par défaut introuvable (dépôt vide ?)")
+	return "", errors.New("default branch not found (empty repository?)")
 }
 
 // Uninstall removes the links of a profile and its registry entry. The clone stays unless purge;
@@ -165,7 +165,7 @@ func (in *Installer) Uninstall(key string, purge, force bool) error {
 		return err
 	}
 	if !slices.Contains(r.Keys(), key) {
-		return fmt.Errorf("profil inconnu : %s (profils inscrits : %s)", key, strings.Join(r.Keys(), ", "))
+		return fmt.Errorf("unknown profile: %s (registered profiles: %s)", key, strings.Join(r.Keys(), ", "))
 	}
 	dir := in.dirOf(key)
 	if purge {
@@ -186,13 +186,13 @@ func (in *Installer) Uninstall(key string, purge, force bool) error {
 		in.relinkHint(in.dirOf(rest[0]))
 	}
 	if !purge {
-		fmt.Fprintf(in.Out, "profil %s désinstallé (clone gardé : %s)\n", key, link.Tilde(in.Home, dir))
+		fmt.Fprintf(in.Out, "profile %s uninstalled (clone kept: %s)\n", key, link.Tilde(in.Home, dir))
 		return nil
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
-	fmt.Fprintf(in.Out, "profil %s désinstallé (clone supprimé : %s)\n", key, link.Tilde(in.Home, dir))
+	fmt.Fprintf(in.Out, "profile %s uninstalled (clone removed: %s)\n", key, link.Tilde(in.Home, dir))
 	return nil
 }
 
@@ -204,14 +204,14 @@ func (in *Installer) relinkHint(dir string) {
 			continue
 		}
 		if t, err := os.Readlink(dst); err != nil || t != src {
-			fmt.Fprintf(in.Out, "  %s n'est pas relié (un seul profil reste) : `dot install` le reliera\n", link.Tilde(in.Home, dst))
+			fmt.Fprintf(in.Out, "  %s is not linked (one profile left): `dot install` will link it\n", link.Tilde(in.Home, dst))
 		}
 	}
 }
 
 func (in *Installer) checkPurge(dir string, force bool) error {
 	if filepath.Dir(dir) != filepath.Join(in.Home, ".dot") {
-		return fmt.Errorf("suppression refusée : %s n'est pas un clone sous ~/.dot", dir)
+		return fmt.Errorf("purge refused: %s is not a clone under ~/.dot", dir)
 	}
 	fi, err := os.Lstat(dir)
 	if os.IsNotExist(err) {
@@ -221,17 +221,17 @@ func (in *Installer) checkPurge(dir string, force bool) error {
 		return err
 	}
 	if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
-		return fmt.Errorf("suppression refusée : %s est un lien ou n'est pas un dossier", dir)
+		return fmt.Errorf("purge refused: %s is a link or not a directory", dir)
 	}
 	if force {
 		return nil
 	}
 	out, err := gitOut(dir, "status", "--porcelain")
 	if err != nil {
-		return fmt.Errorf("suppression refusée : état de %s illisible (--force pour passer outre)", dir)
+		return fmt.Errorf("purge refused: cannot read the state of %s (--force to override)", dir)
 	}
 	if len(strings.TrimSpace(string(out))) > 0 {
-		return fmt.Errorf("suppression refusée : %s a des changements non commités (--force pour passer outre)", dir)
+		return fmt.Errorf("purge refused: %s has uncommitted changes (--force to override)", dir)
 	}
 	return nil
 }

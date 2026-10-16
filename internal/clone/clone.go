@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ErrInvalidURL = errors.New("URL non prise en charge")
-	ErrOccupied   = errors.New("destination déjà occupée")
+	ErrInvalidURL = errors.New("unsupported URL")
+	ErrOccupied   = errors.New("destination already occupied")
 
 	urlRe = regexp.MustCompile(`^(?:https|ssh)://(?:[^/@:[:space:]]+@)?([[:alnum:]][[:alnum:].-]*)(?::[0-9]+)?/(.+)$`)
 	scpRe = regexp.MustCompile(`^[^/@:[:space:]]+@([[:alnum:]][[:alnum:].-]*):(.+)$`)
@@ -73,7 +73,7 @@ func Clone(url string, o Options) (target string, reused bool, err error) {
 		if sameOrigin(target, o) {
 			return target, true, nil
 		}
-		return target, false, fmt.Errorf("clone : %w : %s", ErrOccupied, target)
+		return target, false, fmt.Errorf("clone: %w: %s", ErrOccupied, target)
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return target, false, err

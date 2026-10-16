@@ -14,12 +14,12 @@ func init() { register(newPushCmd) }
 func newPushCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "push [message]",
-		Short: "Commite les fichiers suivis modifiés des profils, puis pousse",
-		Long: "Pour chaque profil : commite les fichiers suivis modifiés, puis git push.\n\n" +
-			"Message par défaut : « Update <fichiers> ». Les fichiers nouveaux ne sont pas inclus : " +
-			"dot add <fichier> d'abord. Le garde-fou (secrets, références interdites) tourne au commit et au push.\n" +
-			"Sans -p, $DOT_PROFILE ni $DOTFILES_DEPLOY, tous les profils inscrits sont traités (même message pour\n" +
-			"tous) ; un profil en échec n'arrête pas les autres, le code de sortie est 1 s'il y en a un.",
+		Short: "Commit the modified tracked files of the profiles, then push",
+		Long: "For each profile: commit the modified tracked files, then git push.\n\n" +
+			"Default message: \"Update <files>\". New files are not included: " +
+			"dot add <file> first. The guard (secrets, forbidden references) runs at commit and at push.\n" +
+			"Without -p, $DOT_PROFILE or $DOTFILES_DEPLOY, every registered profile is processed (same message for\n" +
+			"all); a failing profile does not stop the others, the exit code is 1 if there is one.",
 		DisableFlagsInUseLine: true,
 		Args:                  cobra.ArbitraryArgs,
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -35,13 +35,13 @@ func newPushCmd(env *Env) *cobra.Command {
 				}
 				if err := pushProfile(env, p.Dir, msg); err != nil {
 					if _, ok := err.(exitError); !ok { // a child's failure was already reported by git
-						fmt.Fprintf(env.Stderr, "push %s : %v\n", p.Key, err)
+						fmt.Fprintf(env.Stderr, "push %s: %v\n", p.Key, err)
 					}
 					failed = append(failed, p.Key)
 				}
 			}
 			if len(failed) > 0 {
-				fmt.Fprintf(env.Stderr, "échec : %s\n", strings.Join(failed, ", "))
+				fmt.Fprintf(env.Stderr, "failed: %s\n", strings.Join(failed, ", "))
 				return exitError{code: 1}
 			}
 			return nil
@@ -56,7 +56,7 @@ func pushProfile(env *Env, dir, msg string) error {
 		return exitError{code: 1}
 	}
 	if untracked != "" {
-		fmt.Fprintf(env.Stderr, "fichiers nouveaux non suivis (dot add <fichier> pour les inclure) :\n%s\n", untracked)
+		fmt.Fprintf(env.Stderr, "new untracked files (dot add <file> to include them):\n%s\n", untracked)
 	}
 	if err := runWithStdio(env, gitCmd(dir, "add", "-u")); err != nil {
 		return err
@@ -67,10 +67,10 @@ func pushProfile(env *Env, dir, msg string) error {
 		// A commit left unpushed by an earlier failed push must stay retryable.
 		ahead, aerr := gitText(dir, "rev-list", "--count", "@{upstream}..HEAD")
 		if aerr != nil || ahead == "0" {
-			_, err = fmt.Fprintln(env.Stdout, "rien à envoyer")
+			_, err = fmt.Fprintln(env.Stdout, "nothing to send")
 			return err
 		}
-		fmt.Fprintf(env.Stdout, "rien à commiter, %s commit(s) à pousser\n", ahead)
+		fmt.Fprintf(env.Stdout, "nothing to commit, %s commit(s) to push\n", ahead)
 		return runWithStdio(env, gitCmd(dir, "push"))
 	} else if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 		return exitError{code: 1}

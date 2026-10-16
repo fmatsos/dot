@@ -20,7 +20,7 @@ import (
 
 func init() { register(newSSHCmd) }
 
-const sshUsage = "usage : dot ssh [<nom> [arguments ssh…]]"
+const sshUsage = "usage: dot ssh [<name> [ssh arguments…]]"
 
 const sshFile = "ssh.conf"
 
@@ -45,7 +45,7 @@ var promptVisible = func(prompt string) (string, error) {
 	return strings.TrimRight(line, "\r\n"), err
 }
 
-// sshAliases reads <profile>/ssh.conf (versioned, so it holds no secret): one "<nom> <arguments ssh…>"
+// sshAliases reads <profile>/ssh.conf (versioned, so it holds no secret): one "<name> <ssh arguments…>"
 // per line, # for comments.
 // ponytail: whitespace split outside {…}, no quoting; a later line wins. Use ~/.ssh/config for anything fancier.
 func sshAliases(file string) (names []string, args map[string][]string, err error) {
@@ -77,7 +77,7 @@ func sshAliases(file string) (names []string, args map[string][]string, err erro
 func sshValue(ctx context.Context, st *secrets.Store, key string) (string, error) {
 	if strings.HasPrefix(key, "bw:") || strings.HasPrefix(key, "pass:") {
 		if !secrets.Valid("REF", key) {
-			return "", fmt.Errorf("référence invalide : %s", key)
+			return "", fmt.Errorf("invalid reference: %s", key)
 		}
 		return st.Read(ctx, secrets.Mapping{Name: key, Ref: key})
 	}
@@ -115,7 +115,7 @@ func startAgent(key string) (sock string, stop func(), err error) {
 	}
 	if err = agent.Start(); err != nil {
 		stop()
-		return "", nil, fmt.Errorf("ssh-agent : %w", err)
+		return "", nil, fmt.Errorf("ssh-agent: %w", err)
 	}
 	for i := 0; i < 100; i++ {
 		if _, err = os.Stat(sock); err == nil {
@@ -128,7 +128,7 @@ func startAgent(key string) (sock string, stop func(), err error) {
 	add.Stdin = strings.NewReader(strings.TrimSuffix(key, "\n") + "\n")
 	if err := add.Run(); err != nil {
 		stop()
-		return "", nil, errors.New("ssh-add : clé refusée par l'agent")
+		return "", nil, errors.New("ssh-add: key refused by the agent")
 	}
 	return sock, stop, nil
 }
@@ -178,20 +178,20 @@ func sshAskpass(env *Env, args []string) (code int, ok bool) {
 
 func newSSHCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
-		Use:   "ssh [<nom> [arguments ssh…]]",
-		Short: "Se connecte en SSH à un alias du profil",
-		Long: "Se connecte en SSH à un alias du profil.\n\n" +
-			"Sans argument : liste les alias. Les alias sont dans <dossier du profil>/ssh.conf, versionné : une " +
-			"ligne « <nom> <arguments ssh…> » chacune, # pour un commentaire. Les arguments suivant le nom " +
-			"sont ajoutés après ceux de l'alias, donc une commande distante fonctionne : dot ssh prod uptime.\n\n" +
-			"Rien de secret dans ce fichier : {X} est remplacé à la connexion par le secret X de secrets.local, " +
-			"ou par {bw:<élément>} / {pass:<coffre>/<élément>[#champ]} lu directement dans le coffre " +
-			"(ex. « pve root@{pass:Infra/pve#host} »). « password={X} » fait lire le mot de passe dans le coffre " +
-			"au moment où ssh le demande (SSH_ASKPASS, OpenSSH ≥ 8.4) : il ne passe ni en argument ni dans " +
-			"l'environnement, et un seul essai est fait. « key={pass:<coffre>/<élément>} » charge la clé privée d'un " +
-			"élément Proton Pass de type clé SSH (ou {X} avec X=pass:…#private_key) dans un agent éphémère " +
-			"privé, détruit à la fin : la clé n'est jamais sur le disque. Sinon les clés restent celles de " +
-			"ssh (-i <chemin>).",
+		Use:   "ssh [<name> [ssh arguments…]]",
+		Short: "Connect over SSH to a profile alias",
+		Long: "Connect over SSH to a profile alias.\n\n" +
+			"Without arguments: list the aliases. The aliases live in <profile directory>/ssh.conf, versioned: one " +
+			"\"<name> <ssh arguments…>\" line each, # for a comment. Arguments after the name " +
+			"are appended after the alias ones, so a remote command works: dot ssh prod uptime.\n\n" +
+			"Nothing secret in this file: {X} is replaced at connection time by the secret X of secrets.local, " +
+			"or by {bw:<item>} / {pass:<vault>/<item>[#field]} read straight from the vault " +
+			"(e.g. \"pve root@{pass:Infra/pve#host}\"). \"password={X}\" reads the password from the vault " +
+			"when ssh asks for it (SSH_ASKPASS, OpenSSH >= 8.4): it goes neither in an argument nor in " +
+			"the environment, and a single attempt is made. \"key={pass:<vault>/<item>}\" loads the private key of a " +
+			"Proton Pass SSH key item (or {X} with X=pass:…#private_key) into a private ephemeral agent, " +
+			"destroyed at the end: the key is never on disk. Otherwise keys stay ssh's own " +
+			"(-i <path>).",
 		DisableFlagsInUseLine: true,
 		// Everything after the name belongs to ssh, flags included.
 		DisableFlagParsing: true,
@@ -205,7 +205,7 @@ func newSSHCmd(env *Env) *cobra.Command {
 			}
 			names, aliases, err := sshAliases(filepath.Join(dir, sshFile))
 			if err != nil {
-				return fmt.Errorf("ssh : %w", err)
+				return fmt.Errorf("ssh: %w", err)
 			}
 			if len(args) == 0 {
 				for _, n := range names {
@@ -215,11 +215,11 @@ func newSSHCmd(env *Env) *cobra.Command {
 			}
 			target, ok := aliases[args[0]]
 			if !ok {
-				return usagef("alias ssh inconnu : %s (voir dot ssh)", args[0])
+				return usagef("unknown ssh alias: %s (see dot ssh)", args[0])
 			}
 			bin, err := exec.LookPath("ssh")
 			if err != nil {
-				return fmt.Errorf("ssh : %w", err)
+				return fmt.Errorf("ssh: %w", err)
 			}
 			st := secrets.New(dir)
 			var argv, extra []string
@@ -228,7 +228,7 @@ func newSSHCmd(env *Env) *cobra.Command {
 				if kind, _, ok := strings.Cut(a, "="); ok && (kind == "password" || kind == "key") {
 					m := secretArg.FindStringSubmatch(a)
 					if m == nil {
-						return usagef("%s : %s= attend {X}", args[0], kind)
+						return usagef("%s: %s= expects {X}", args[0], kind)
 					}
 					if kind == "key" {
 						key = m[2]

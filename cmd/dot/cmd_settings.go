@@ -31,9 +31,9 @@ func targetProfileDirs(env *Env) (dirs []string, multi bool, err error) {
 	return dirs, len(dirs) > 1, nil
 }
 
-// reportErr prints "<prefix> : <err>" like the bash scripts did and returns a silent exit 1.
+// reportErr prints "<prefix>: <err>" like the bash scripts did and returns a silent exit 1.
 func reportErr(env *Env, prefix string, err error) error {
-	fmt.Fprintf(env.Stderr, "%s : %v\n", prefix, err)
+	fmt.Fprintf(env.Stderr, "%s: %v\n", prefix, err)
 	return exitError{code: 1}
 }
 
@@ -41,10 +41,10 @@ func newSettingsCmd(env *Env) *cobra.Command {
 	var dry bool
 	cmd := &cobra.Command{
 		Use:   "settings [-n]",
-		Short: "Fusionne les réglages Claude avec la base versionnée (-n pour le diff seul)",
-		Long: "Fusionne <profil>/home/.claude/settings.base.json dans ~/.claude/settings.json : la base gagne,\n" +
-			"les clés locales en plus sont gardées. Sans -p, tous les profils inscrits sont fusionnés dans\n" +
-			"l'ordre du registre. Le diff n'affiche aucune ligne de contexte ; l'ancien fichier est sauvegardé.",
+		Short: "Merge the Claude settings with the versioned base (-n for the diff only)",
+		Long: "Merge <profile>/home/.claude/settings.base.json into ~/.claude/settings.json: the base wins,\n" +
+			"extra local keys are kept. Without -p, every registered profile is merged in\n" +
+			"registry order. The diff shows no context lines; the old file is backed up.",
 		Args: exactArgs(0, "dot settings [-n]"),
 		RunE: func(*cobra.Command, []string) error {
 			dirs, multi, err := targetProfileDirs(env)
@@ -61,6 +61,6 @@ func newSettingsCmd(env *Env) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "affiche le diff sans rien écrire")
+	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "show the diff without writing anything")
 	return cmd
 }

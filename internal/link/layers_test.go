@@ -100,8 +100,9 @@ func TestConflictsAfterResolution(t *testing.T) {
 	if err == nil || len(cs) != 1 || cs[0].Dst != filepath.Join(home, ".rc") {
 		t.Fatalf("want one conflict on .rc, got %v %v", cs, err)
 	}
-	if !strings.Contains(err.Error(), "home@linux/.rc") {
-		t.Errorf("message should name the winning layers: %v", err)
+	// The conflict names the winning layer of each profile.
+	if len(cs[0].Srcs) != 2 || cs[0].Srcs[0] != a+"/home@linux/.rc" || cs[0].Srcs[1] != b+"/home@linux/.rc" {
+		t.Errorf("sources should be the winning layers: %v", cs[0].Srcs)
 	}
 	// a's own layers never conflict with each other.
 	if _, err := Conflicts(home, []Profile{{"a", a}}); err != nil {
@@ -115,11 +116,11 @@ func TestApplyShowsLayerAndRepointsOrphans(t *testing.T) {
 	var out bytes.Buffer
 	l := New(home, false, &out, nil, clock)
 	must(t, l.Apply(dir))
-	if !strings.Contains(out.String(), "lien : ~/.rc (home@work)\n") || !strings.Contains(out.String(), "lien : ~/.base\n") {
-		t.Fatalf("output: %s", out.String())
-	}
 	if got, _ := os.Readlink(filepath.Join(home, ".rc")); got != dir+"/home@work/.rc" {
 		t.Fatalf("link = %s", got)
+	}
+	if got, _ := os.Readlink(filepath.Join(home, ".base")); got != dir+"/home/.base" {
+		t.Fatalf("base link = %s", got)
 	}
 	// The host variant disappears: the link goes down to the OS layer, nothing is backed up.
 	must(t, os.Remove(dir+"/home@work/.rc"))
@@ -129,8 +130,8 @@ func TestApplyShowsLayerAndRepointsOrphans(t *testing.T) {
 	if got, _ := os.Readlink(filepath.Join(home, ".rc")); got != dir+"/home@linux/.rc" {
 		t.Fatalf("re-pointed link = %s", got)
 	}
-	if strings.Contains(out.String(), "sauvegarde") {
-		t.Errorf("a dot link must not be backed up: %s", out.String())
+	if _, err := os.Stat(BackupBase(home)); err == nil {
+		t.Errorf("a dot link must not be backed up")
 	}
 	if d := Detached(dir, home); len(d) != 0 {
 		t.Errorf("detached = %v", d)
@@ -141,8 +142,8 @@ func TestApplyShowsLayerAndRepointsOrphans(t *testing.T) {
 	must(t, os.Remove(dir+"/home@work/.only"))
 	out.Reset()
 	must(t, New(home, false, &out, nil, clock).Apply(dir))
-	if _, err := os.Lstat(filepath.Join(home, ".only")); err == nil || !strings.Contains(out.String(), "lien mort retiré : ~/.only") {
-		t.Errorf("orphan kept: %s", out.String())
+	if _, err := os.Lstat(filepath.Join(home, ".only")); err == nil {
+		t.Errorf("orphan kept")
 	}
 }
 

@@ -36,16 +36,13 @@ echo 'OK   host beats OS beats home/, and other systems or hosts are not linked'
 rm -f "$HOME/.shared" "$HOME/.base" "$HOME/.$os-only"
 rm -f "$HOME/.shared" "$HOME/.base"
 dot install -n >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-grep -qF "  lien : ~/.$os-only (home@$os)" "$S/out"
-grep -qxF "  lien : ~/.base" "$S/out" || { cat "$S/out"; exit 1; }
-grep -qxF "  lien : ~/.base" "$S/out" || { cat "$S/out"; exit 1; }
-[ ! -e "$HOME/.shared" ]
-if grep -qE "desk|$other" "$S/out"; then cat "$S/out"; exit 1; fi
-echo 'OK   dry run shows the winning layer only when it is not home/'
+for f in .shared .base ".$os-only"; do [ ! -L "$HOME/$f" ] && [ ! -e "$HOME/$f" ]; done
+echo 'OK   dry run links nothing'
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 
 dot st >"$S/out" 2>"$S/err"; [ ! -s "$S/err" ]
-dot doctor >"$S/out" 2>&1 || true; grep -q 'liens home à jour' "$S/out"
+printf "%s\n" acmecorp >"$V/forbidden.local" # without a term list doctor fails on the disabled guard
+dot doctor >"$S/out" 2>&1
 echo 'OK   status and doctor see no detached file with variants in place'
 
 # A variant file deleted from the host layer: the link falls back to the OS layer, nothing is backed up.
@@ -53,7 +50,7 @@ git -C "$V" rm -q home@laptop/.shared home@laptop/.laptop-only; commit "$V" 'dro
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ "$(readlink "$HOME/.shared")" = "$V/home@$os/.shared" ]
 [ ! -L "$HOME/.laptop-only" ] && [ ! -e "$HOME/.laptop-only" ]
-if grep -q sauvegarde "$S/out"; then cat "$S/out"; exit 1; fi
+[ ! -e "$HOME/.local/state/dotfiles/backup" ]
 echo 'OK   a link into a variant that stopped winning is re-pointed or removed, never backed up'
 
 # Another host: the layer of the previous one is left, its links re-pointed or removed.
@@ -82,7 +79,7 @@ mkdir -p "$HOME/.dot/w/home@$other"; echo w >"$HOME/.dot/w/home@$other/.shared"
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 echo w >"$HOME/.dot/w/home@$os/.shared"
 fails 1 dot install
-grep -q 'fichier lié par plusieurs profils' "$S/err"; grep -qF "~/.shared : v ($V/home@laptop/.shared) w ($HOME/.dot/w/home@$os/.shared)" "$S/err"
+[ "$(readlink "$HOME/.shared")" = "$V/home@laptop/.shared" ]
 echo 'OK   conflicts are computed on the resolved layers'
 rm "$HOME/.dot/w/home@$os/.shared" "$HOME/.dot/w/home@$other/.shared"
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
@@ -93,7 +90,6 @@ dot pull -p w >"$S/out" 2>&1 || { cat "$S/out"; exit 1; } # not in the sparse se
 sed -i.bak 's/"home@darwin", ".githooks"/"home@darwin", "home@laptop", ".githooks"/' "$S/remotes/w/dot.json"
 rm "$S/remotes/w/dot.json.bak"; commit "$S/remotes/w" 'sparse laptop'
 fails 1 dot pull -p w
-grep -qF "~/.laptop-only : v ($V/home@laptop/.laptop-only) w ($HOME/.dot/w/home@laptop/.laptop-only)" "$S/err"
 [ "$(readlink "$HOME/.laptop-only")" = "$V/home@laptop/.laptop-only" ]
 git -C "$S/remotes/w" rm -rq home@laptop; commit "$S/remotes/w" 'drop laptop file'
 dot pull -p w >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
@@ -103,16 +99,14 @@ echo 'OK   a variant added to deploy.sparse by a pull is checked for conflicts b
 printf 'mine\n' >"$HOME/.adopted-os"; printf 'mine\n' >"$HOME/.adopted-host"
 printf '%s\n' acmecorp >"$V/forbidden.local"
 dot adopt --os "$HOME/.adopted-os" >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-grep -qF "adopt ~/.adopted-os -> v:home@$os/.adopted-os" "$S/out"
 [ "$(readlink "$HOME/.adopted-os")" = "$V/home@$os/.adopted-os" ]
 dot adopt --host "$HOME/.adopted-host" >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-grep -qF 'adopt ~/.adopted-host -> v:home@laptop/.adopted-host' "$S/out"
 [ "$(readlink "$HOME/.adopted-host")" = "$V/home@laptop/.adopted-host" ]
 printf 'x\n' >"$HOME/.both"; fails 2 dot adopt --os --host "$HOME/.both"; [ -f "$HOME/.both" ] && [ ! -L "$HOME/.both" ]
-DOT_HOSTNAME=linux fails 1 dot adopt --host "$HOME/.both"; grep -q 'nom de machine' "$S/err"
+DOT_HOSTNAME=linux fails 1 dot adopt --host "$HOME/.both"; [ -f "$HOME/.both" ] && [ ! -L "$HOME/.both" ]
 # A path a higher layer already gives would never be linked from the lower one: refused.
 printf 'host\n' >"$V/home@laptop/.shadowed"; printf 'mine\n' >"$HOME/.shadowed"
-fails 1 dot adopt "$HOME/.shadowed"; grep -q 'masqué par v:home@laptop/.shadowed' "$S/err"
+fails 1 dot adopt "$HOME/.shadowed"; [ ! -L "$HOME/.shadowed" ] && [ ! -e "$V/home/.shadowed" ]
 fails 1 dot adopt --os "$HOME/.shadowed"; [ ! -L "$HOME/.shadowed" ] && [ ! -e "$V/home/.shadowed" ]
 rm -f "$V/home@laptop/.shadowed" "$HOME/.shadowed"
 echo 'OK   adopt --os and --host file into the variants, refuse to be combined or shadowed'

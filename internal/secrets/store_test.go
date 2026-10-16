@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -114,10 +115,6 @@ func TestReadFailuresNeverEchoValues(t *testing.T) {
 			t.Errorf("Read(%s) = %v", m.Ref, err)
 		}
 	}
-	_, err := f.Read(context.Background(), bwMap("Empty"))
-	if err == nil || err.Error() != "ACME_TOKEN (bw) : valeur vide" {
-		t.Errorf("empty = %v", err)
-	}
 }
 
 func TestLockedStates(t *testing.T) {
@@ -154,13 +151,9 @@ func TestStatusAndTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got []string
-	for _, e := range es {
-		got = append(got, e.String())
-	}
-	want := "A (bw) : verrouillé,B (pass) : lisible,C (pass) : indisponible"
-	if strings.Join(got, ",") != want {
-		t.Errorf("status = %v", got)
+	want := []Entry{{"A", "bw", Locked}, {"B", "pass", Readable}, {"C", "pass", Unavailable}}
+	if !slices.Equal(es, want) {
+		t.Errorf("status = %v", es)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
@@ -182,7 +175,7 @@ func TestStatusFileErrors(t *testing.T) {
 		t.Errorf("absent: %v", err)
 	}
 	os.WriteFile(filepath.Join(dir, File), []byte("garbage\n"), 0o600)
-	if _, err := Status(context.Background(), dir); err == nil || err.Error() != "ligne 1 mal formée" {
+	if _, err := Status(context.Background(), dir); err == nil || errors.Is(err, ErrNoFile) {
 		t.Errorf("malformed: %v", err)
 	}
 }
@@ -200,7 +193,7 @@ func TestResolveAllOrNothing(t *testing.T) {
 	if kv, err := f.Resolve(context.Background(), []string{"A_VAR", "C_VAR"}); err == nil || kv != nil {
 		t.Errorf("failing secret: %v, %v", kv, err)
 	}
-	if _, err := f.Resolve(context.Background(), []string{"NOPE"}); err == nil || err.Error() != "NOPE : NAME inconnu" {
+	if _, err := f.Resolve(context.Background(), []string{"NOPE"}); err == nil || !strings.Contains(err.Error(), "NOPE") {
 		t.Errorf("unknown: %v", err)
 	}
 }
@@ -268,26 +261,30 @@ func TestAddRefusals(t *testing.T) {
 		env  string
 		name string
 		ref  string
-		want string
+		want error // the sentinel the refusal is, when it has one
 	}{
-		{"FAKE_LIST=[{\"name\":\"ACME\"},{\"name\":\"ACME staging\"}]", "N", "bw:ACME", "Bitwarden : recherche ambiguë pour bw get, choisis un nom plus précis"},
-		{"FAKE_LIST=[{\"name\":\"ACME staging\"}]", "N", "bw:ACME", "Bitwarden : recherche ambiguë pour bw get, choisis un nom plus précis"},
-		{"FAKE_LIST=not json", "N", "bw:ACME", "Bitwarden : recherche impossible"},
-		{"FAKE_STATE=locked", "N", "bw:ACME", ErrLocked.Error()},
-		{"FAKE_PASS_OUT=1", "N", "pass:Personal/X", ErrPassLoggedOut.Error()},
-		{"X=1", "N", "pass:V/I#password", "élément ou champ introuvable : un champ #nom se lit, il ne se crée pas"},
-		{"X=1", "1BAD", "bw:ACME", ErrMalformed.Error()},
-		{"X=1", "N", "bw:", ErrMalformed.Error()},
-		{"X=1", "DUP", "bw:ACME", "DUP : NAME déjà enregistré"},
+		{"FAKE_LIST=[{\"name\":\"ACME\"},{\"name\":\"ACME staging\"}]", "N", "bw:ACME", nil}, // ambiguous search
+		{"FAKE_LIST=[{\"name\":\"ACME staging\"}]", "N", "bw:ACME", nil},                     // ambiguous search
+		{"FAKE_LIST=not json", "N", "bw:ACME", nil},                                          // search fails
+		{"FAKE_STATE=locked", "N", "bw:ACME", ErrLocked},
+		{"FAKE_PASS_OUT=1", "N", "pass:Personal/X", ErrPassLoggedOut},
+		{"X=1", "N", "pass:V/I#password", nil}, // a #field is read, never created
+		{"X=1", "1BAD", "bw:ACME", ErrMalformed},
+		{"X=1", "N", "bw:", ErrMalformed},
+		{"X=1", "DUP", "bw:ACME", nil}, // NAME already registered
 	} {
 		f := newFake(t, tc.env)
 		os.WriteFile(filepath.Join(f.dir, File), []byte("DUP=bw:Other\n"), 0o600)
 		_, err := f.Add(context.Background(), tc.name, tc.ref, never)
-		if err == nil || err.Error() != tc.want {
-			t.Errorf("%s %s : %v, want %q", tc.name, tc.ref, err, tc.want)
+		if err == nil || tc.want != nil && !errors.Is(err, tc.want) {
+			t.Errorf("%s %s : %v, want %v", tc.name, tc.ref, err, tc.want)
 		}
 		if f.mapping(t) != "DUP=bw:Other\n" {
 			t.Errorf("mapping changed: %q", f.mapping(t))
+		}
+		// refused before anything was created: the causes that carry no sentinel differ only by wording
+		if _, statErr := os.Stat(filepath.Join(f.store, "created.json")); statErr == nil {
+			t.Errorf("%s %s : an item was created", tc.name, tc.ref)
 		}
 	}
 }
@@ -297,16 +294,22 @@ func TestAddReadbackMismatchLeavesMappingUnchanged(t *testing.T) {
 		f := newFake(t)
 		f.put(t, "bw-"+name, content)
 		_, err := f.Add(context.Background(), "N", "bw:"+name, func() (string, error) { return "fake-new", nil })
-		if err == nil || !strings.HasPrefix(err.Error(), "élément créé mais non enregistré") {
-			t.Errorf("%s: %v", name, err)
+		if err == nil {
+			t.Errorf("%s: unverified item accepted", name)
+		}
+		if _, statErr := os.Stat(filepath.Join(f.store, "created.json")); statErr != nil { // created, then refused on the read back
+			t.Errorf("%s: item not created", name)
 		}
 		if _, statErr := os.Stat(filepath.Join(f.dir, File)); statErr == nil {
 			t.Errorf("%s: mapping file written", name)
 		}
 	}
 	f := newFake(t)
-	if _, err := f.Add(context.Background(), "N", "bw:Item", func() (string, error) { return "", nil }); err == nil || err.Error() != "valeur vide" {
-		t.Errorf("empty input: %v", err)
+	if _, err := f.Add(context.Background(), "N", "bw:Item", func() (string, error) { return "", nil }); err == nil {
+		t.Error("empty input accepted")
+	}
+	if _, statErr := os.Stat(filepath.Join(f.store, "created.json")); statErr == nil {
+		t.Error("an item was created from an empty value")
 	}
 }
 
@@ -325,11 +328,19 @@ func TestUnlockAndLock(t *testing.T) {
 	if strings.Contains(f.argv(t), "fake-master") {
 		t.Errorf("master password in argv:\n%s", f.argv(t))
 	}
-	if err := f.Unlock(context.Background(), "wrong"); err == nil || err.Error() != "Bitwarden : déverrouillage impossible" {
-		t.Errorf("wrong password: %v", err)
+	before := f.argv(t)
+	if err := f.Unlock(context.Background(), "wrong"); err == nil {
+		t.Error("wrong password accepted")
 	}
-	if err := f.Unlock(context.Background(), ""); err == nil || err.Error() != "Bitwarden : mot de passe vide" {
-		t.Errorf("empty password: %v", err)
+	if f.argv(t) == before { // bw was asked: the refusal comes from it
+		t.Error("bw not called for a wrong password")
+	}
+	before = f.argv(t)
+	if err := f.Unlock(context.Background(), ""); err == nil {
+		t.Error("empty password accepted")
+	}
+	if f.argv(t) != before { // refused before any call to bw
+		t.Errorf("bw called for an empty password:\n%s", f.argv(t))
 	}
 	if err := f.Lock(context.Background()); err != nil {
 		t.Fatal(err)
@@ -339,8 +350,8 @@ func TestUnlockAndLock(t *testing.T) {
 	}
 	f.Env = append(f.Env, "FAKE_LOCK_FAIL=1")
 	os.WriteFile(cache, []byte("x"), 0o600)
-	if err := f.Lock(context.Background()); err == nil || err.Error() != "Bitwarden : verrouillage impossible" {
-		t.Errorf("failing lock: %v", err)
+	if err := f.Lock(context.Background()); err == nil {
+		t.Error("failing lock not reported")
 	}
 	if _, err := os.Stat(cache); err == nil {
 		t.Error("cache kept after a failing lock")

@@ -51,24 +51,24 @@ func TestAdoptHappyPathAndDryRun(t *testing.T) {
 		t.Fatalf("-n : code %d", code)
 	}
 	if fi, err := os.Lstat(f); err != nil || !fi.Mode().IsRegular() {
-		t.Fatalf("-n a touché le fichier : %v", err)
+		t.Fatalf("-n touched the file: %v", err)
 	}
 	if code := execute(env, []string{"adopt", f}); code != 0 {
 		t.Fatalf("code %d", code)
 	}
 	dst := filepath.Join(env.ProfileDirFor("perso"), "home", ".config", "app", "rc")
 	if got, _ := os.Readlink(f); got != dst {
-		t.Fatalf("lien = %q, attendu %q", got, dst)
+		t.Fatalf("link = %q, want %q", got, dst)
 	}
 	if b, _ := os.ReadFile(dst); string(b) != "hello\n" {
-		t.Fatalf("contenu = %q", b)
+		t.Fatalf("content = %q", b)
 	}
 	if fi, _ := os.Stat(dst); fi.Mode().Perm() != 0o640 {
 		t.Fatalf("mode = %v", fi.Mode())
 	}
 	// Once linked, the file is a symlink: refused.
 	if code := execute(env, []string{"adopt", f}); code != 1 {
-		t.Fatalf("relance : code %d", code)
+		t.Fatalf("second run: code %d", code)
 	}
 }
 
@@ -96,21 +96,22 @@ func TestAdoptRefusals(t *testing.T) {
 	if err := os.Symlink(exist, sym); err != nil {
 		t.Fatal(err)
 	}
-	for name, p := range map[string]string{"hors de ~": outside, "terme": term, "secret": sec, "existe": exist,
-		"autre profil": other, "dossier": dirArg, "~/.dot": inDot, "lien": sym, "..": filepath.Join(env.Home, "..", filepath.Base(outside))} {
+	for name, p := range map[string]string{"outside ~": outside, "term": term, "secret": sec, "exists": exist,
+		"other profile": other, "directory": dirArg, "~/.dot": inDot, "link": sym, "..": filepath.Join(env.Home, "..", filepath.Base(outside))} {
 		before, _ := os.Lstat(p)
 		if code := execute(env, []string{"adopt", p}); code != 1 {
-			t.Errorf("%s : code %d", name, code)
+			t.Errorf("%s: code %d", name, code)
 		}
 		if after, err := os.Lstat(p); before != nil && (err != nil || after.Mode() != before.Mode()) {
-			t.Errorf("%s : fichier modifié", name)
+			t.Errorf("%s: file modified", name)
 		}
 	}
+	// Absence of the found text, not wording: whatever the refusal says, it must not echo the match.
 	if strings.Contains(errb.String(), "AcmeCorp") || strings.Contains(errb.String(), "SECRETTOKEN") {
-		t.Errorf("texte trouvé rapporté : %s", errb)
+		t.Errorf("found text reported: %s", errb)
 	}
 	if _, err := os.Lstat(filepath.Join(dir, "home", ".term")); err == nil {
-		t.Error("fichier à terme interdit déplacé")
+		t.Error("file with a forbidden term was moved")
 	}
 }
 
@@ -124,7 +125,7 @@ func TestAdoptSparseWithoutHome(t *testing.T) {
 		t.Fatalf("code %d", code)
 	}
 	if fi, err := os.Lstat(f); err != nil || !fi.Mode().IsRegular() {
-		t.Fatal("fichier déplacé")
+		t.Fatal("file was moved")
 	}
 }
 
@@ -139,6 +140,6 @@ func TestAdoptFailsClosedWithoutTerms(t *testing.T) {
 		t.Fatalf("code %d", code)
 	}
 	if fi, err := os.Lstat(f); err != nil || !fi.Mode().IsRegular() {
-		t.Fatal("fichier déplacé")
+		t.Fatal("file was moved")
 	}
 }

@@ -75,7 +75,7 @@ func findExtension(env *Env, name string) (path string, deploy string, err error
 			return path, env.ProfileDirFor(owners[0]), nil
 		case 0:
 		default:
-			return "", "", fmt.Errorf("extension dot-%s revendiquée par plusieurs profils (%s) : précisez -p <clé>", name, strings.Join(owners, ", "))
+			return "", "", fmt.Errorf("extension dot-%s claimed by several profiles (%s): specify -p <key>", name, strings.Join(owners, ", "))
 		}
 	}
 	if p, err := exec.LookPath("dot-" + name); err == nil {
@@ -122,7 +122,7 @@ func runExternal(env *Env, args []string) error {
 	}
 	dir, err := env.ProfileDir()
 	if err != nil {
-		return usagef("commande inconnue : %s", name)
+		return usagef("unknown command: %s", name)
 	}
 	return runWithStdio(env, gitCmd(dir, args...))
 }

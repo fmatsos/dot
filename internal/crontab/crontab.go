@@ -54,7 +54,7 @@ func Run(o Options) error {
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("%s illisible (%w)", source, err)
+			return fmt.Errorf("%s unreadable (%w)", source, err)
 		}
 		if text := strings.TrimRight(string(data), "\n"); text != "" {
 			content.WriteString(text)
@@ -66,7 +66,7 @@ func Run(o Options) error {
 		if content.Len() == 0 && errors.Is(err, exec.ErrNotFound) {
 			return nil
 		}
-		return fmt.Errorf("commande crontab introuvable (%w)", err)
+		return fmt.Errorf("crontab command not found (%w)", err)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(command, "-l")
@@ -75,7 +75,7 @@ func Run(o Options) error {
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || !strings.Contains(stderr.String(), "no crontab for") {
-			return fmt.Errorf("lecture de la crontab impossible : %s (%w)", strings.TrimSpace(stderr.String()), err)
+			return fmt.Errorf("cannot read the crontab: %s (%w)", strings.TrimSpace(stderr.String()), err)
 		}
 	} else {
 		current = stdout.String()
@@ -86,12 +86,12 @@ func Run(o Options) error {
 	}
 	updated := Apply(current, block)
 	if updated == current {
-		fmt.Fprintln(o.Out, "crontab: à jour")
+		fmt.Fprintln(o.Out, "crontab: up to date")
 		return nil
 	}
 	if o.DryRun {
 		if block == "" {
-			fmt.Fprintln(o.Out, "[dry] crontab: bloc retiré")
+			fmt.Fprintln(o.Out, "[dry] crontab: block removed")
 		} else {
 			fmt.Fprintf(o.Out, "[dry] crontab:\n%s", block)
 		}
@@ -102,8 +102,8 @@ func Run(o Options) error {
 	cmd = exec.Command(command, "-")
 	cmd.Stdin, cmd.Stderr = strings.NewReader(updated), &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("installation de la crontab impossible : %s (%w)", strings.TrimSpace(stderr.String()), err)
+		return fmt.Errorf("cannot install the crontab: %s (%w)", strings.TrimSpace(stderr.String()), err)
 	}
-	fmt.Fprintln(o.Out, "crontab: mis à jour")
+	fmt.Fprintln(o.Out, "crontab: updated")
 	return nil
 }

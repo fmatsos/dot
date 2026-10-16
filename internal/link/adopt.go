@@ -24,27 +24,27 @@ func AdoptSource(home, cwd, arg string) (abs, rel string, err error) {
 	home = filepath.Clean(home)
 	rel, err = filepath.Rel(home, abs)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", "", errors.New("hors de ~")
+		return "", "", errors.New("outside ~")
 	}
 	if rel == ".dot" || strings.HasPrefix(rel, ".dot"+string(filepath.Separator)) {
-		return "", "", errors.New("dans ~/.dot")
+		return "", "", errors.New("inside ~/.dot")
 	}
 	fi, err := os.Lstat(abs)
 	switch {
 	case err != nil:
-		return "", "", errors.New("introuvable")
+		return "", "", errors.New("not found")
 	case fi.Mode()&fs.ModeSymlink != 0:
-		return "", "", errors.New("lien symbolique (déjà lié ?)")
+		return "", "", errors.New("symlink (already linked?)")
 	case fi.IsDir():
-		return "", "", errors.New("dossier (donne les fichiers)")
+		return "", "", errors.New("directory (give the files)")
 	case !fi.Mode().IsRegular():
-		return "", "", errors.New("pas un fichier ordinaire")
+		return "", "", errors.New("not a regular file")
 	}
 	// A parent that is a symlink may lead out of home or into a profile clone.
 	realHome, err1 := filepath.EvalSymlinks(home)
 	realDir, err2 := filepath.EvalSymlinks(filepath.Dir(abs))
 	if err1 != nil || err2 != nil || realDir != filepath.Join(realHome, filepath.Dir(rel)) {
-		return "", "", errors.New("passe par un dossier lié")
+		return "", "", errors.New("goes through a linked directory")
 	}
 	return abs, rel, nil
 }
@@ -89,7 +89,7 @@ func AdoptMove(src, dst string, linkBack bool) error {
 	}
 	if err := os.Symlink(dst, src); err != nil {
 		if mv := moveFile(dst, src); mv != nil {
-			return fmt.Errorf("lien impossible (%v) et fichier non restitué, il reste dans %s", err, dst)
+			return fmt.Errorf("cannot link (%v) and file not restored, it stays in %s", err, dst)
 		}
 		undo()
 		return err
@@ -145,7 +145,7 @@ func IsModuleSource(rel string) bool { return slices.Contains(ModuleSources, fil
 func SafeDest(root, dst string) error {
 	rel, err := filepath.Rel(root, filepath.Dir(dst))
 	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
-		return fmt.Errorf("destination hors du clone")
+		return fmt.Errorf("destination outside the clone")
 	}
 	d := root
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {
@@ -158,7 +158,7 @@ func SafeDest(root, dst string) error {
 			return nil // the rest is created by AdoptMove
 		}
 		if fi.Mode()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("%s est un lien symbolique dans le clone : le fichier en sortirait", d)
+			return fmt.Errorf("%s is a symlink in the clone: the file would leave it", d)
 		}
 	}
 	return nil

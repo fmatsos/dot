@@ -24,6 +24,6 @@ func TestFileSkipsMediaContentButNotItsNameNorSecrets(t *testing.T) {
 	if err := os.WriteFile(txt, []byte("tenant acmecorp\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wantFailure(t, g.File(txt, "~/notes.txt"), "contenu")
-	wantFailure(t, g.File(img, "~/acmecorp.webp"), "nom")
+	wantFailure(t, g.File(txt, "~/notes.txt"), "")
+	wantFailure(t, g.File(img, "~/acmecorp.webp"), "")
 }

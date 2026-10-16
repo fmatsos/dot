@@ -2,6 +2,7 @@ package link
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -87,34 +88,38 @@ func TestApply(t *testing.T) {
 			if _, err := os.Lstat(filepath.Join(home, ".local/bin/deep")); err == nil {
 				t.Error("bin/ depth 2 linked")
 			}
-			if !strings.Contains(out, "  lien : ~/.zshrc\n") || strings.Contains(out, "sauvegarde") {
-				t.Errorf("out = %q", out)
+			if _, err := os.Stat(home + "/.local/state/dotfiles/backup"); err == nil {
+				t.Error("backup made with nothing to back up")
 			}
 		}},
 		{"already linked is silent", func(t *testing.T, home, dir string) {
 			must(t, os.Symlink(dir+"/home/.zshrc", home+"/.zshrc"))
 		}, false, func(t *testing.T, home, dir, out, _ string) {
+			// The path, not the wording: a link already in place is not reported at all.
 			if strings.Contains(out, ".zshrc") {
 				t.Errorf("out = %q", out)
 			}
+			if linkTarget(home+"/.zshrc") != dir+"/home/.zshrc" {
+				t.Error("link changed")
+			}
+			if _, err := os.Stat(home + "/.local/state/dotfiles/backup"); err == nil {
+				t.Error("backup made for a link already in place")
+			}
 		}},
-		{"different file is backed up with message", func(t *testing.T, home, dir string) {
+		{"different file is backed up", func(t *testing.T, home, dir string) {
 			write(t, home+"/.zshrc", "mine\n", 0o644)
 		}, false, func(t *testing.T, home, dir, out, _ string) {
 			b := filepath.Join(home, ".local/state/dotfiles/backup/20261006-120000")
 			if got, _ := os.ReadFile(b + "/.zshrc"); string(got) != "mine\n" {
 				t.Errorf("backup = %q", got)
 			}
-			if !strings.Contains(out, "  sauvegarde : ~/.zshrc → ~/.local/state/dotfiles/backup/20261006-120000/\n  lien : ~/.zshrc\n") {
-				t.Errorf("out = %q", out)
+			if linkTarget(home+"/.zshrc") != dir+"/home/.zshrc" {
+				t.Error("not linked after the backup")
 			}
 		}},
-		{"identical content is moved silently", func(t *testing.T, home, dir string) {
+		{"identical content is moved", func(t *testing.T, home, dir string) {
 			write(t, home+"/.zshrc", "zsh\n", 0o644)
 		}, false, func(t *testing.T, home, dir, out, _ string) {
-			if strings.Contains(out, "sauvegarde") {
-				t.Errorf("out = %q", out)
-			}
 			if _, err := os.Stat(home + "/.local/state/dotfiles/backup/20261006-120000/.zshrc"); err != nil {
 				t.Error("not moved to backup")
 			}
@@ -137,7 +142,8 @@ func TestApply(t *testing.T) {
 		{"real directory is ignored", func(t *testing.T, home, dir string) {
 			must(t, os.MkdirAll(home+"/.zshrc", 0o755))
 		}, false, func(t *testing.T, home, dir, out, errOut string) {
-			if errOut != "  ignoré (dossier existant) : "+home+"/.zshrc\n" {
+			// The skipped path is reported, on the error stream (the path, not the wording).
+			if !strings.Contains(errOut, home+"/.zshrc") {
 				t.Errorf("err = %q", errOut)
 			}
 			if fi, _ := os.Lstat(home + "/.zshrc"); !fi.IsDir() {
@@ -149,9 +155,6 @@ func TestApply(t *testing.T) {
 			must(t, os.Symlink(dir+"/bin/gone", home+"/.local/bin/gone"))
 			must(t, os.Symlink("/nowhere/x", home+"/.local/bin/foreign"))
 		}, false, func(t *testing.T, home, dir, out, _ string) {
-			if !strings.Contains(out, "  lien mort retiré : ~/.local/bin/gone\n") {
-				t.Errorf("out = %q", out)
-			}
 			if _, err := os.Lstat(home + "/.local/bin/gone"); err == nil {
 				t.Error("dead link kept")
 			}
@@ -164,14 +167,8 @@ func TestApply(t *testing.T) {
 			must(t, os.MkdirAll(home+"/.local/bin", 0o755))
 			must(t, os.Symlink(dir+"/bin/gone", home+"/.local/bin/gone"))
 		}, true, func(t *testing.T, home, dir, out, _ string) {
-			b := "20261006-120000"
-			for _, want := range []string{
-				"  sauvegarde : ~/.zshrc → ~/.local/state/dotfiles/backup/" + b + "/\n",
-				"  [dry] mkdir -p " + home + "/.local/state/dotfiles/backup/" + b + "\n",
-				"  [dry] mv " + home + "/.zshrc " + home + "/.local/state/dotfiles/backup/" + b + "/.zshrc\n",
-				"  [dry] ln -s " + dir + "/home/.zshrc " + home + "/.zshrc\n",
-				"  lien mort retiré : ~/.local/bin/gone\n  [dry] rm -f " + home + "/.local/bin/gone\n",
-			} {
+			// The plan is shown: it names what it would touch (the paths, not the wording).
+			for _, want := range []string{home + "/.zshrc", dir + "/home/.zshrc", home + "/.local/bin/gone"} {
 				if !strings.Contains(out, want) {
 					t.Errorf("missing %q in %q", want, out)
 				}
@@ -196,11 +193,13 @@ func TestApply(t *testing.T) {
 			var out, errOut bytes.Buffer
 			must(t, New(home, tc.dry, &out, &errOut, clock).Apply(dir))
 			tc.check(t, home, dir, out.String(), errOut.String())
-			if !tc.dry { // idempotent: a second run says nothing
+			if !tc.dry { // idempotent: a second run does not touch the links again
 				out.Reset()
 				must(t, New(home, false, &out, &errOut, clock).Apply(dir))
-				if strings.Contains(out.String(), "lien :") {
-					t.Errorf("second run relinked: %q", out.String())
+				for _, p := range []string{".zshrc", ".config/git/config", ".local/bin/dot-x"} {
+					if strings.Contains(out.String(), p) {
+						t.Errorf("second run touched %s: %q", p, out.String())
+					}
 				}
 			}
 		})
@@ -211,8 +210,8 @@ func TestApplyNoHome(t *testing.T) {
 	home := t.TempDir()
 	err := New(home, true, nil, nil, clock).Apply(filepath.Join(home, "nope"))
 	var nh *NoHomeError
-	if err == nil || !strings.HasPrefix(err.Error(), "rien à lier : ") || !strings.HasSuffix(err.Error(), "/home absent (dry run sans clone ?)") {
-		t.Fatalf("err = %v (%T) %v", err, err, nh)
+	if !errors.As(err, &nh) || nh.Dir != filepath.Join(home, "nope") {
+		t.Fatalf("err = %v (%T)", err, err)
 	}
 }
 
@@ -226,12 +225,15 @@ func TestDriftAndDeadLinks(t *testing.T) {
 	write(t, home+"/.zshrc", "rewritten\n", 0o644) // a tool replaced the link by a file
 	must(t, os.Remove(home+"/.config/git/config"))
 	got := Drift(dir, home)
-	want := []string{
-		"détaché (plus un lien, à réconcilier) : ~/.config/git/config",
-		"détaché (plus un lien, à réconcilier) : ~/.zshrc",
-	}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
+	// One line per detached file, sorted: each names its path (the wording around it is a message).
+	want := []string{"~/.config/git/config", "~/.zshrc"}
+	if len(got) != len(want) {
 		t.Fatalf("drift = %v", got)
+	}
+	for i, p := range want {
+		if !strings.HasSuffix(got[i], p) {
+			t.Fatalf("drift = %v", got)
+		}
 	}
 	must(t, os.Symlink("/nowhere", home+"/.local/bin/dead1"))
 	must(t, os.Symlink("/nowhere", home+"/.local/bin/.hidden"))
@@ -285,13 +287,13 @@ func TestConflicts(t *testing.T) {
 				if c.Dst != filepath.Join(home, w) || strings.Join(c.Keys, ",") != "perso,acmecorp" {
 					t.Errorf("conflict %d = %+v", i, c)
 				}
-				msg := err.Error()
-				if !strings.Contains(msg, c.Srcs[0]) || !strings.Contains(msg, c.Srcs[1]) {
-					t.Errorf("message lacks both sources: %s", msg)
+				if len(c.Srcs) != 2 || !strings.HasPrefix(c.Srcs[0], pa.Dir+"/") || !strings.HasPrefix(c.Srcs[1], pb.Dir+"/") {
+					t.Errorf("conflict %d sources = %v", i, c.Srcs)
 				}
 			}
-			if !strings.HasPrefix(err.Error(), "installation refusée") {
-				t.Errorf("msg = %s", err)
+			var ce *ConflictError
+			if !errors.As(err, &ce) || len(ce.Conflicts) != len(tc.wants) {
+				t.Errorf("err = %v (%T)", err, err)
 			}
 		})
 	}
@@ -325,9 +327,6 @@ func TestUnlink(t *testing.T) {
 	}
 	if _, err := os.Stat(home); err != nil {
 		t.Error("home removed")
-	}
-	if !strings.Contains(out.String(), "  lien retiré : ~/.zshrc\n") {
-		t.Errorf("out = %q", out.String())
 	}
 }
 
@@ -376,8 +375,9 @@ func TestApplyThroughDirectoryLinkKeepsProfileSource(t *testing.T) {
 	if _, err := os.Stat(home + "/.local/state/dotfiles/backup"); err == nil {
 		t.Error("backup made for a file already linked")
 	}
+	// The path, not the wording: a file already linked is not reported at all.
 	if strings.Contains(out.String(), ".config/foo/bar") || strings.Contains(errOut.String(), ".config/foo/bar") {
-		t.Errorf("message for a file already linked: %q %q", out.String(), errOut.String())
+		t.Errorf("output for a file already linked: %q %q", out.String(), errOut.String())
 	}
 }
 
@@ -419,9 +419,6 @@ func TestUnlinkAfterSourceDeleted(t *testing.T) {
 	must(t, Unlink(dir, home, &out))
 	if _, err := os.Lstat(home + "/.zshrc"); err == nil {
 		t.Error("dead link left in ~")
-	}
-	if !strings.Contains(out.String(), "  lien retiré : ~/.zshrc\n") {
-		t.Errorf("out = %q", out.String())
 	}
 }
 
@@ -523,9 +520,6 @@ func TestApplyModuleSources(t *testing.T) {
 			if _, err := os.Lstat(filepath.Join(home, rel)); err == nil {
 				t.Errorf("%s still linked", rel)
 			}
-			if !strings.Contains(out.String(), "  lien retiré : ~/"+rel+"\n") {
-				t.Errorf("no message for %s: %q", rel, out.String())
-			}
 		}
 		if linkTarget(home+"/.brc") != b.Dir+"/home/.brc" {
 			t.Error("other files not linked")
@@ -558,7 +552,8 @@ func TestApplyModuleSources(t *testing.T) {
 		lk := New(home, true, &out, nil, clock)
 		lk.Registered = []string{a.Dir, b.Dir}
 		must(t, lk.Apply(b.Dir))
-		if linkTarget(home+"/.claude/settings.base.json") == "" || !strings.Contains(out.String(), "[dry] rm -f") {
+		// The plan names the link it would remove (the path, not the wording).
+		if linkTarget(home+"/.claude/settings.base.json") == "" || !strings.Contains(out.String(), home+"/.claude/settings.base.json") {
 			t.Errorf("dry run: %q", out.String())
 		}
 	})

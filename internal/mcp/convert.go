@@ -19,7 +19,7 @@ var (
 )
 
 // ErrSource marks an invalid source file or an unknown secret name.
-var ErrSource = errors.New("source invalide ou NOM de secret inconnu")
+var ErrSource = errors.New("invalid source or unknown secret NAME")
 
 // Server is one desired server in the form every tool receives: stdio (Command, Args, Env) or HTTP (URL).
 type Server struct {
@@ -67,7 +67,7 @@ func decode(data []byte) (any, error) {
 		return nil, err
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return nil, errors.New("JSON invalide")
+		return nil, errors.New("invalid JSON")
 	}
 	return v, nil
 }
@@ -235,7 +235,7 @@ func Convert(shared []Source, local map[string]any, owners []Owner, dot string) 
 			s, ok := parseEntry(raw, isLocal, owner, dot)
 			if !ok || !nameRe.MatchString(name) {
 				if spread {
-					return nil, fmt.Errorf("%w : serveur %s, ses secrets ne sont pas tous déclarés par un même profil", ErrSource, name)
+					return nil, fmt.Errorf("%w: server %s, its secrets are not all declared by one profile", ErrSource, name)
 				}
 				return nil, ErrSource
 			}

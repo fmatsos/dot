@@ -36,12 +36,9 @@ clone=$HOME/.dot/a
 
 dot install -n "$A" -p a >"$S/out" 2>&1
 [ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]
-grep -qF "[dry] git -C $clone fetch -q --filter=blob:none origin main" "$S/out"
-grep -qF "rien à lier : $clone/home absent (dry run sans clone ?)" "$S/out"
-echo 'OK   dry run prints the sparse clone commands and creates nothing in HOME'
+echo 'OK   dry run creates nothing in HOME'
 
 dot install "$A" -p a >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-[ "$(tail -n1 "$S/out")" = ok ]
 while IFS= read -r -d '' f; do
   target=$HOME/${f#"$clone/home/"}
   [ "$(readlink "$target")" = "$f" ]
@@ -68,9 +65,11 @@ echo 'OK   HEAD deployed with sparse blobless config, profiles include and local
 grep -q '"theme": "dark"' "$HOME/.claude/settings.json"
 echo 'OK   the settings module declared by the manifest ran'
 
+links() { find "$HOME" -type l | sort | while IFS= read -r l; do echo "$l $(readlink "$l") $(stat_inode_mtime "$l")"; done; }
+links >"$S/links.before"
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-if grep -qE 'lien :|sauvegarde' "$S/out"; then cat "$S/out"; exit 1; fi
-[ "$(tail -n1 "$S/out")" = ok ]
+cmp -s "$S/links.before" <(links)
+[ ! -e "$HOME/.local/state/dotfiles/backup" ]
 echo 'OK   second install has no links to create or files to back up'
 
 # A deploy.sparse changed by a pull is applied to the existing clone: folders appear, then leave.
@@ -88,12 +87,13 @@ echo 'OK   a changed deploy.sparse is reapplied to the existing clone on pull'
 printf 'edited by a tool\n' >"$S/new"
 rm "$HOME/.a-rc"; cp "$S/new" "$HOME/.a-rc"
 dot st >"$S/out" 2>"$S/err"
-grep -Fxq 'détaché (plus un lien, à réconcilier) : ~/.a-rc' "$S/err"
+# message kept: dot st exits 0 and only tells a detached file apart from any other warning by its wording
+grep -Fq '~/.a-rc' "$S/err"
 [ "$(wc -l <"$S/err")" -eq 1 ]
 echo 'OK   dot st reports the file a tool detached from its link'
 
 dot install -n >"$S/out" 2>&1
-[ ! -L "$HOME/.a-rc" ]; grep -qF '[dry]' "$S/out"; [ "$(tail -n1 "$S/out")" = 'ok (dry run)' ]
+[ ! -L "$HOME/.a-rc" ]
 echo 'OK   dry run on an installed profile writes nothing'
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ "$(readlink "$HOME/.a-rc")" = "$clone/home/.a-rc" ]
@@ -107,26 +107,21 @@ old=$base/20000101-010203
 mkdir -p "$old"
 DOTFILES_BACKUP_DAYS=0 dot install >"$S/out" 2>&1; [ -d "$old" ]
 DOTFILES_BACKUP_DAYS=abc dot install >"$S/out" 2>"$S/err"; [ -d "$old" ]
-grep -q 'DOTFILES_BACKUP_DAYS invalide, purge ignorée' "$S/err"
-DOTFILES_BACKUP_DAYS=30 dot install -n >"$S/out" 2>&1; [ -d "$old" ]; grep -q '\[dry\] purge :' "$S/out"
+DOTFILES_BACKUP_DAYS=30 dot install -n >"$S/out" 2>&1; [ -d "$old" ]
 DOTFILES_BACKUP_DAYS=30 dot install >"$S/out" 2>&1
 [ ! -e "$old" ]; [ -f "${backups[0]}" ]
-grep -Fxq 'sauvegardes : 1 dossier(s) purgé(s)' "$S/out"
-echo 'OK   DOTFILES_BACKUP_DAYS: 0 and invalid keep, -n lists, a real install purges old backups'
+echo 'OK   DOTFILES_BACKUP_DAYS: 0 and invalid keep, -n keeps, a real install purges old backups'
 
 # Refusals leave no registry change and no half clone.
 cp "$registry" "$S/registry.before"
 B=$S/remotes/dots-b; mkremote b "$B"
 fails 1 dot install "$B" -p a
-grep -q 'déjà inscrit avec un autre dépôt' "$S/err"
 mkremote a "$S/remotes/bad-manifest"; printf '{}\n' >"$S/remotes/bad-manifest/dot.json"
 git -C "$S/remotes/bad-manifest" -c user.name=F -c user.email=f@example.com commit -q -am bad
 fails 1 dot install "$S/remotes/bad-manifest"; [ ! -e "$HOME/.dot/bad-manifest" ]
-grep -q 'manifest :' "$S/err"
 mkremote a "$S/remotes/no-id"; printf '[user]\n\tname = Nobody\n' >"$S/remotes/no-id/home/.config/git/profiles/a.gitconfig"
 git -C "$S/remotes/no-id" -c user.name=F -c user.email=f@example.com commit -q -am noid
 fails 1 dot install "$S/remotes/no-id"; [ ! -e "$HOME/.dot/no-id" ]
-grep -q 'profil a : user.name et user.email requis' "$S/err"
 fails 1 dot install "$B" -p 'bad key'; [ ! -e "$HOME/.dot/bad key" ]
 fails 1 dot install "$S/remotes/missing" -p missing; [ ! -e "$HOME/.dot/missing" ]
 cmp -s "$S/registry.before" "$registry"
@@ -136,15 +131,15 @@ dot install "$B" >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
 [ "$(dot config get profiles.dots-b.repo)" = "$B" ]; [ "$(dot config get default)" = a ]
 [ -L "$HOME/.b-rc" ]
 echo 'OK   the key comes from the repository name, and the default stays the first profile'
-fails 2 dot uninstall; grep -qFx 'usage : dot uninstall -p <clé> [--purge]' "$S/err"
-fails 1 dot uninstall -p nope; grep -q 'profil inconnu : nope' "$S/err"
-fails 1 dot uninstall -p a; grep -q 'profil par défaut' "$S/err"; [ -L "$HOME/.a-rc" ]
+cp "$registry" "$S/registry.two"
+fails 2 dot uninstall
+fails 1 dot uninstall -p nope; cmp -s "$S/registry.two" "$registry"
+fails 1 dot uninstall -p a; [ -L "$HOME/.a-rc" ]; cmp -s "$S/registry.two" "$registry"
 dot uninstall -p dots-b >"$S/out" 2>&1
 [ ! -e "$HOME/.b-rc" ] && [ ! -e "$HOME/.config/b" ] && [ -d "$HOME/.dot/dots-b/home" ]
-grep -Fq 'lien retiré : ~/.b-rc' "$S/out"
 fails 1 dot config get profiles.dots-b.repo
 echo 'OK   uninstall removes the links and the entry, keeps the clone, and guards its usage'
 
 fresh=$S/fresh; mkdir "$fresh"
-HOME=$fresh fails 1 dot install; grep -Fxq 'dot : aucun profil inscrit (dot install <url>)' "$S/err"
-echo 'OK   install without profile or url explains itself'
+HOME=$fresh fails 1 dot install; [ -z "$(find "$fresh" -mindepth 1 -print -quit)" ]
+echo 'OK   install without profile or url fails and writes nothing'

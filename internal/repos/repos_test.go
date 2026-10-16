@@ -21,7 +21,7 @@ func (w *world) git(args ...string) string {
 	w.t.Helper()
 	out, err := exec.Command("git", args...).CombinedOutput()
 	if err != nil {
-		w.t.Fatalf("git %v : %v\n%s", args, err, out)
+		w.t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 	return strings.TrimSpace(string(out))
 }
@@ -84,23 +84,41 @@ func newWorld(t *testing.T) *world {
 
 func (w *world) lines(rows []Row) string { return strings.Join(Format(rows, false), "\n") }
 
+// byPath indexes the collected rows by the last element of their path (clean, dirty, scratch...).
+func (w *world) byPath() map[string]Row {
+	w.t.Helper()
+	m := map[string]Row{}
+	for _, r := range Collect(w.home, w.src, w.sandbox, true) {
+		m[filepath.Base(r.Path)] = r
+	}
+	return m
+}
+
 func TestOverview(t *testing.T) {
 	w := newWorld(t)
-	out := w.lines(Collect(w.home, w.src, w.sandbox, true))
-	if n := strings.Count(out, "\n") + 1; n != 4 {
-		t.Fatalf("%d lignes :\n%s", n, out)
+	rows := Collect(w.home, w.src, w.sandbox, true)
+	out := w.lines(rows)
+	if n := strings.Count(out, "\n") + 1; n != 4 || len(rows) != 4 {
+		t.Fatalf("%d lines:\n%s", n, out)
 	}
-	for _, want := range []string{
-		"~/source repos/git.example.com/team/clean ", "✎0", "⇡0 ⇣0", "perso", "tester@example.com",
-		"/dirty ", "✎1", "✗ email différent du profil perso", "/ahead ", "⇡1 ⇣0", "~/sandbox/scratch ",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("sans %q :\n%s", want, out)
-		}
+	got := w.byPath()
+	clean, dirty, ahead, scratch := got["clean"], got["dirty"], got["ahead"], got["scratch"]
+	if clean.display != "~/source repos/git.example.com/team/clean" || clean.Changes != 0 || clean.Ahead != 0 || clean.Behind != 0 ||
+		clean.Profile != "perso" || clean.Email != "tester@example.com" || clean.Reason != "" {
+		t.Errorf("clean = %+v", clean)
+	}
+	if dirty.Changes != 1 || dirty.Reason != reasonEmail+"perso" {
+		t.Errorf("dirty = %+v", dirty)
+	}
+	if ahead.Ahead != 1 || ahead.Behind != 0 {
+		t.Errorf("ahead = %+v", ahead)
+	}
+	if scratch.display != "~/sandbox/scratch" {
+		t.Errorf("scratch = %+v", scratch)
 	}
 	for _, bad := range []string{"clean.wt", "linked", "plain", "mirror"} {
 		if strings.Contains(out, "/"+bad) {
-			t.Errorf("%q ne doit pas apparaître :\n%s", bad, out)
+			t.Errorf("%q must not appear:\n%s", bad, out)
 		}
 	}
 }
@@ -109,44 +127,47 @@ func TestProblemsAndHooksGuard(t *testing.T) {
 	w := newWorld(t)
 	rows, ok, err := Problems(w.home, w.src, w.sandbox)
 	if err != nil || ok || len(rows) != 1 || !strings.Contains(rows[0], "/dirty ") {
-		t.Fatalf("problèmes = %q, %v, %v", rows, ok, err)
+		t.Fatalf("problems = %q, %v, %v", rows, ok, err)
+	}
+	if r := w.byPath()["dirty"]; r.Reason != reasonEmail+"perso" {
+		t.Fatalf("dirty = %+v", r)
 	}
 	w.git("-C", w.base+"/dirty", "config", "user.email", "tester@example.com")
 	if rows, ok, _ := Problems(w.home, w.src, w.sandbox); !ok || len(rows) != 0 {
-		t.Fatalf("après correction : %q", rows)
+		t.Fatalf("after the fix: %q", rows)
 	}
 	w.git("-C", w.base+"/clean", "checkout", "-q", "--detach")
-	if out := w.lines(Collect(w.home, w.src, w.sandbox, true)); !strings.Contains(out, "détaché") {
-		t.Fatalf("détaché absent :\n%s", out)
+	if b := w.byPath()["clean"].Branch; b == "" || b == "main" { // a detached HEAD has no branch name to show
+		t.Fatalf("branch of a detached HEAD: %q", b)
 	}
 	w.git("-C", w.base+"/clean", "config", "core.hooksPath", ".husky")
 	rows, ok, _ = Problems(w.home, w.src, w.sandbox)
-	if ok || len(rows) != 1 || !strings.Contains(rows[0], "✗ hooksPath local : garde-fou contourné") {
-		t.Fatalf("hooksPath : %q", rows)
+	if ok || len(rows) != 1 || w.byPath()["clean"].Reason != reasonHooks {
+		t.Fatalf("hooksPath: %q", rows)
 	}
 	w.git("-C", w.base+"/clean", "config", "user.email", "other@example.com")
 	rows, _, _ = Problems(w.home, w.src, w.sandbox)
-	if len(rows) != 1 || !strings.Contains(rows[0], "✗ email différent du profil perso ; ✗ hooksPath local") {
-		t.Fatalf("raisons combinées : %q", rows)
+	if r := w.byPath()["clean"].Reason; len(rows) != 1 || !strings.Contains(r, reasonEmail) || !strings.Contains(r, reasonHooks) {
+		t.Fatalf("combined reasons: %q", rows)
 	}
 	w.git("-C", w.base+"/clean", "config", "user.email", "tester@example.com")
 	w.git("-C", w.base+"/clean", "config", "core.hooksPath", ".githooks")
 	if _, ok, _ := Problems(w.home, w.src, w.sandbox); ok {
-		t.Fatal(".githooks sans pre-push exécutable toléré")
+		t.Fatal(".githooks without an executable pre-push accepted")
 	}
 	for _, hook := range []string{"# dot guard push\nexit 0", "exit 0 # dot guard push", "echo dot guard push", "dotguard push", "dot guard staged"} {
 		write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\n"+hook+"\n", 0o755)
 		if _, ok, _ := Problems(w.home, w.src, w.sandbox); ok {
-			t.Fatalf("pre-push %q toléré", hook)
+			t.Fatalf("pre-push %q accepted", hook)
 		}
 	}
 	write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\nMODE=x dot guard push \"$@\" || exit 1\n", 0o755)
 	if rows, ok, _ := Problems(w.home, w.src, w.sandbox); !ok {
-		t.Fatalf("appel avec variable toléré : %q", rows)
+		t.Fatalf("call with a variable wrongly flagged: %q", rows)
 	}
 	write(t, w.base+"/clean/.githooks/pre-push", "#!/bin/sh\nexec dot guard push \"$@\"\n", 0o755)
 	if rows, ok, _ := Problems(w.home, w.src, w.sandbox); !ok {
-		t.Fatalf("pre-push exécutable toléré : %q", rows)
+		t.Fatalf("executable pre-push wrongly flagged: %q", rows)
 	}
 	w.git("-C", w.base+"/clean", "config", "--unset", "core.hooksPath")
 }
@@ -160,28 +181,28 @@ func TestProfileWithoutHooksPath(t *testing.T) {
 		filepath.Join(w.home, ".config/git/profiles/demo.gitconfig"))
 	w.git("-C", w.sandbox+"/scratch", "config", "core.hooksPath", ".husky")
 	if rows, ok, _ := Problems(w.home, w.src, w.sandbox); !ok {
-		t.Fatalf("hooks locaux non signalés sans hooksPath de profil : %q", rows)
+		t.Fatalf("local hooks flagged without a profile hooksPath: %q", rows)
 	}
 }
 
 func TestFormatAlignsByRunes(t *testing.T) {
 	rows := []Row{
-		{display: "~/é", Branch: "main", Profile: "-", Email: "aucun"},
-		{display: "~/longer", Branch: "détaché", Changes: 12, Profile: "perso", Email: "a@example.com", Reason: "✗ x"},
+		{display: "~/é", Branch: "main", Profile: "-", Email: "none"},
+		{display: "~/longer", Branch: "detached", Changes: 12, Profile: "perso", Email: "a@example.com", Reason: "✗ x"},
 	}
 	got := Format(rows, true)
-	if !strings.HasSuffix(got[0], "aucun") {
-		t.Errorf("ligne 0 = %q", got[0])
+	if !strings.HasSuffix(got[0], "none") {
+		t.Errorf("line 0 = %q", got[0])
 	}
 	if !strings.HasSuffix(got[1], "  \033[31m✗ x\033[0m") {
-		t.Errorf("ligne 1 = %q", got[1])
+		t.Errorf("line 1 = %q", got[1])
 	}
 	col := func(line, word string) int { return len([]rune(line[:strings.Index(line, word)])) }
-	if col(got[0], "main") != col(got[1], "détaché") || col(got[0], "aucun") != col(got[1], "a@example.com") {
-		t.Errorf("colonnes désalignées :\n%s\n%s", got[0], got[1])
+	if col(got[0], "main") != col(got[1], "detached") || col(got[0], "none") != col(got[1], "a@example.com") {
+		t.Errorf("misaligned columns:\n%s\n%s", got[0], got[1])
 	}
 	if strings.Contains(Format(rows, false)[1], "\033[") {
-		t.Error("couleur sans demande")
+		t.Error("color without request")
 	}
 }
 
@@ -195,13 +216,13 @@ func TestExportSortedPrivate(t *testing.T) {
 	}
 	want := "https://git.example.com/team/ahead.git\nhttps://git.example.com/team/clean.git\nhttps://git.example.com/team/dirty.git\n"
 	if b, _ := os.ReadFile(file); string(b) != want {
-		t.Fatalf("contenu = %q", b)
+		t.Fatalf("content = %q", b)
 	}
 	if fi, _ := os.Stat(file); fi.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v", fi.Mode())
 	}
 	if m, _ := filepath.Glob(file + ".*"); len(m) != 0 {
-		t.Fatalf("temporaires restants : %v", m)
+		t.Fatalf("temp files left: %v", m)
 	}
 }
 
@@ -215,13 +236,12 @@ func TestCloneListContinuesAfterFailures(t *testing.T) {
 	if err != nil || good != 1 || bad != 2 {
 		t.Fatalf("good %d bad %d err %v", good, bad, err)
 	}
-	for _, want := range []string{"échec : (URL invalide)\n", "échec : " + fresh + "/git.example.com/team/unreachable\n"} {
-		if !strings.Contains(errb.String(), want) {
-			t.Errorf("stderr sans %q : %q", want, errb.String())
-		}
+	// one line per failure; the unreachable one names its destination (a path printed on purpose)
+	if n := strings.Count(errb.String(), "\n"); n != 2 || !strings.Contains(errb.String(), fresh+"/git.example.com/team/unreachable") {
+		t.Errorf("stderr: %q", errb.String())
 	}
 	if strings.Contains(errb.String(), "invalid-url") || strings.Contains(errb.String(), "https://") || strings.Contains(errb.String(), "file://") {
-		t.Errorf("URL affichée : %q", errb.String())
+		t.Errorf("URL printed: %q", errb.String())
 	}
 	if _, err := os.Stat(fresh + "/git.example.com/team/clean/marker"); err != nil {
 		t.Fatal(err)

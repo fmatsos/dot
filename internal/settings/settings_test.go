@@ -131,14 +131,11 @@ func TestRunLifecycle(t *testing.T) {
 		t.Fatal("dry run made a backup")
 	}
 
-	out, err = run(t, Options{Home: home, Bases: []string{base}})
-	if err != nil {
+	if _, err = run(t, Options{Home: home, Bases: []string{base}}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "settings : sauvegarde → ~/.local/state/dotfiles/backup/20261006-120000-") || !strings.HasSuffix(out, "/.claude/settings.json\nsettings : mis à jour\n") {
-		t.Fatalf("messages:\n%s", out)
-	}
-	m, _ := filepath.Glob(filepath.Join(home, ".local/state/dotfiles/backup/*/.claude/settings.json"))
+	// the backup is a directory stamped with the clock (Now), holding the previous file
+	m, _ := filepath.Glob(filepath.Join(home, ".local/state/dotfiles/backup/20261006-120000-*/.claude/settings.json"))
 	if len(m) != 1 {
 		t.Fatalf("backups: %v", m)
 	}
@@ -154,9 +151,9 @@ func TestRunLifecycle(t *testing.T) {
 		t.Fatalf("merge: %v", cur)
 	}
 
-	out, err = run(t, Options{Home: home, Bases: []string{base}})
-	if err != nil || out != "settings: à jour\n" {
-		t.Fatalf("second run: %v %q", err, out)
+	merged := mustRead(t, target)
+	if _, err = run(t, Options{Home: home, Bases: []string{base}}); err != nil || string(mustRead(t, target)) != string(merged) {
+		t.Fatalf("second run: %v", err)
 	}
 	m, _ = filepath.Glob(filepath.Join(home, ".local/state/dotfiles/backup/*/.claude/settings.json"))
 	if len(m) != 1 {

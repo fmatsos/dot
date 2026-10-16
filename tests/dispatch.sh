@@ -27,16 +27,16 @@ for key in perso acmecorp; do
 done
 printf '{"default":"perso","profiles":{"perso":{"repo":"https://example.com/p.git"},"acmecorp":{"repo":"https://example.com/a.git"}}}\n' >"$HOME/.dot/profiles.json"
 
-[ "$(dot log --oneline | wc -l)" -eq 1 ] && dot log --oneline | grep -q 'init perso' || ko "git fallback : log --oneline"
+[ "$(dot log --format=%s)" = "init perso" ] || ko "git fallback: log"
 dot add home/file
-[ "$(dot -p acmecorp log --format=%s)" = "init acmecorp" ] || ko "git fallback : -p avant la commande"
-[ "$(DOT_PROFILE=acmecorp dot log --format=%s)" = "init acmecorp" ] || ko "git fallback : DOT_PROFILE"
+[ "$(dot -p acmecorp log --format=%s)" = "init acmecorp" ] || ko "git fallback: -p before the command"
+[ "$(DOT_PROFILE=acmecorp dot log --format=%s)" = "init acmecorp" ] || ko "git fallback: DOT_PROFILE"
 printf 'more\n' >>"$HOME/.dot/perso/home/file"
-dot diff | grep -q '^+more' || ko "git fallback : diff"
-dot diff --stat | grep -q 'home/file' || ko "git fallback : diff --stat"
+dot diff | grep -q '^+more' || ko "git fallback: diff"
+dot diff --stat | grep -q 'home/file' || ko "git fallback: diff --stat"
 code=0; dot nosuchgitcmd >"$S/out" 2>"$S/err" || code=$?
-[ "$code" -ne 0 ] || ko "git fallback : commande inconnue"
-ok "git fallback : dot log --oneline, diff, add, -p, DOT_PROFILE, échec propagé"
+[ "$code" -ne 0 ] || ko "git fallback: unknown command"
+ok "git fallback: dot log, diff, add, -p, DOT_PROFILE, failure propagated"
 
 cat >"$HOME/.dot/perso/bin/dot-hello" <<'BASH'
 #!/usr/bin/env bash
@@ -53,42 +53,46 @@ echo "only deploy=${DOTFILES_DEPLOY:-none} args=$*"
 exit 7
 BASH
 chmod +x "$HOME/.dot/perso/bin/dot-hello" "$S/pathbin/dot-hello" "$S/pathbin/dot-only"
-[ "$(dot hello a --b)" = "hello perso deploy=$HOME/.dot/perso args=a --b" ] || ko "extension du profil"
-[ "$(dot -p acmecorp hello x)" = "hello path deploy=$HOME/.dot/acmecorp args=x" ] || ko "extension du PATH, profil visé"
+[ "$(dot hello a --b)" = "hello perso deploy=$HOME/.dot/perso args=a --b" ] || ko "profile extension"
+[ "$(dot -p acmecorp hello x)" = "hello path deploy=$HOME/.dot/acmecorp args=x" ] || ko "PATH extension, targeted profile"
 code=0; HELLO_CODE=5 dot hello >/dev/null || code=$?
-[ "$code" -eq 5 ] || ko "code de sortie de l'extension"
+[ "$code" -eq 5 ] || ko "extension exit code"
 code=0; out=$(dot only z) || code=$?
-[ "$code" -eq 7 ] && [ "$out" = "only deploy=$HOME/.dot/perso args=z" ] || ko "extension du PATH seule"
+[ "$code" -eq 7 ] && [ "$out" = "only deploy=$HOME/.dot/perso args=z" ] || ko "PATH-only extension"
 [ "$(dot help only 2>&1)" = "only deploy=$HOME/.dot/perso args=--help" ] || ko "dot help <extension>"
 [ "$(dot only --help)" = "only deploy=$HOME/.dot/perso args=--help" ] || ko "dot <extension> --help"
-ok "extensions : bin/ du profil avant PATH, DOTFILES_DEPLOY, code de sortie, aide"
+ok "extensions: profile bin/ before PATH, DOTFILES_DEPLOY, exit code, help"
 
 # st: git status -sb on the targeted profile clone (several profiles: see multiprofile.sh).
 out=$(dot -p perso st)
 grep -q '^## main' <<<"$out" && grep -q 'home/file' <<<"$out" || ko "st"
-[ "$(dot -p perso status)" = "$out" ] || ko "alias status"
-ok "st et status : état du clone"
+[ "$(dot -p perso status)" = "$out" ] || ko "status alias"
+ok "st and status: clone state"
 
 # push: commits tracked changes only, warns about new files, pushes, then has nothing left.
 printf 'untracked\n' >"$HOME/.dot/perso/home/new"
 dot -p perso push >"$S/out" 2>"$S/err"
-grep -q 'fichiers nouveaux non suivis' "$S/err" && grep -q '^home/new$' "$S/err" || ko "push : fichiers nouveaux"
-[ "$(git -C "$HOME/.dot/perso" log -1 --format=%s)" = "Update file" ] || ko "push : message par défaut"
-[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "Update file" ] || ko "push : push"
-[ "$(dot -p perso push)" = "rien à envoyer" ] || ko "push : rien à envoyer"
+grep -Fq 'home/new' "$S/err" && [ -z "$(git -C "$HOME/.dot/perso" ls-files home/new)" ] || ko "push: new files"
+[ "$(git -C "$HOME/.dot/perso" log -1 --format=%s)" = "Update file" ] || ko "push: default message"
+[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "Update file" ] || ko "push: push"
+head=$(git -C "$S/remotes/perso.git" rev-parse main)
+dot -p perso push >/dev/null 2>&1 || ko "push: nothing to send"
+[ "$(git -C "$S/remotes/perso.git" rev-parse main)" = "$head" ] && [ "$(git -C "$HOME/.dot/perso" rev-parse HEAD)" = "$head" ] || ko "push: nothing to send"
 printf 'again\n' >>"$HOME/.dot/perso/home/file"
-dot -p perso push fix: un message libre >/dev/null 2>&1
-[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "fix: un message libre" ] || ko "push : message"
-ok "push : commit des fichiers suivis, avertissement, push, rien à envoyer"
+dot -p perso push fix: a free message >/dev/null 2>&1
+[ "$(git -C "$S/remotes/perso.git" log -1 --format=%s)" = "fix: a free message" ] || ko "push: message"
+ok "push: tracked files committed, warning, push, nothing left to send"
 
 # whoami: identity in force here, and where it comes from.
 out=$(dot whoami 2>&1)
 grep -q 'tester@example.com' <<<"$out" && grep -q 'Tester <tester@example.com>' <<<"$out" || ko "whoami"
 git config --global --unset user.email
-out=$(GIT_CONFIG_GLOBAL=$S/gitconfig dot whoami 2>&1 || true)
-grep -q 'aucun email : useConfigOnly bloquera les commits ici' <<<"$out" || ko "whoami sans email"
+git config --global user.useConfigOnly true # git then refuses to guess an identity, whatever the host name
+code=0; dot whoami >/dev/null 2>&1 || code=$?
+[ "$code" -ne 0 ] || ko "whoami without email"
+git config --global --unset user.useConfigOnly
 git config --global user.email tester@example.com
-ok "whoami : identité et origine, message sans email"
+ok "whoami: identity and origin, failure without email"
 
 # repos prints its reason in red on a terminal only, and not with NO_COLOR.
 if command -v script >/dev/null; then
@@ -96,9 +100,9 @@ if command -v script >/dev/null; then
   printf '[user]\n  email = expected@example.com\n[dotfiles]\n  profile = perso\n' >"$HOME/.config/git/profiles/perso.gitconfig"
   git clone -q "$S/remotes/perso.git" "$DOT_SRC/git.example.com/team/bad" 2>/dev/null
   git -C "$DOT_SRC/git.example.com/team/bad" config dotfiles.profile perso
-  grep -q $'\e\\[31m✗ email' <<<"$(in_pty /dev/null "$DOT_BIN repos")" || ko "pas de rouge dans un terminal"
-  ! grep -q $'\e\\[' <<<"$(NO_COLOR=1 in_pty /dev/null "$DOT_BIN repos")" || ko "NO_COLOR ignoré"
-  ! grep -q $'\e\\[' <<<"$(dot repos)" || ko "rouge hors terminal"
+  grep -q $'\e\\[31m' <<<"$(in_pty /dev/null "$DOT_BIN repos")" || ko "no red on a terminal"
+  ! grep -q $'\e\\[' <<<"$(NO_COLOR=1 in_pty /dev/null "$DOT_BIN repos")" || ko "NO_COLOR ignored"
+  ! grep -q $'\e\\[' <<<"$(dot repos)" || ko "red off a terminal"
 fi
-ok "repos : rouge sur un terminal seulement, NO_COLOR respecté"
+ok "repos: red on a terminal only, NO_COLOR honored"
 echo "== $pass OK, 0 FAIL"

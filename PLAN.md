@@ -1,259 +1,259 @@
-# Plan dot v2 — Go et multi-profils
+# dot v2 plan: Go and multiple profiles
 
-État : phases 1 à 3 implémentées (voir l'avancement en fin de document) ; phases 4 et 5 à faire.
+Status: phases 1 to 3 implemented (see the progress section at the end); phases 4 and 5 to do.
 
-## Contexte et objectifs
+## Context and goals
 
-dot v2 sort le CLI des dotfiles dans un dépôt dédié `fmatsos/dot`, réécrit en Go, capable de gérer un ou plusieurs profils, chacun porté par son propre dépôt de données.
+dot v2 moves the dotfiles CLI into a dedicated repository `fmatsos/dot`, rewritten in Go, able to manage one or several profiles, each carried by its own data repository.
 
-Point de départ (6 octobre 2026) :
+Starting point (6 October 2026):
 
-- `dot` est un CLI bash d'environ 1 000 lignes (plus 100 lignes d'awk) dans le dépôt `fmatsos/dotfiles`, couvert par 14 scripts de tests boîte noire (233 vérifications).
-- L'étape 1 est livrée (commit `e876d53`) : toutes les valeurs propres au dépôt vivent dans un manifeste `dot.json`, plus aucune dans le code.
-- Le moteur et les données partagent encore le même dépôt, et un seul profil existe.
+- `dot` is a bash CLI of about 1,000 lines (plus 100 lines of awk) in the `fmatsos/dotfiles` repository, covered by 14 black-box test scripts (233 checks).
+- Step 1 is delivered (commit `e876d53`): every value specific to the repository lives in a `dot.json` manifest, none left in the code.
+- The engine and the data still share the same repository, and a single profile exists.
 
-Objectifs de la v2 :
+Goals of v2:
 
-1. **Un moteur public et agnostique** : aucune valeur personnelle ni professionnelle dans `fmatsos/dot`.
-2. **Plusieurs profils** : un dépôt de données par profil (perso, travail…), installés côte à côte sur une même machine.
-3. **Un binaire autonome** : `dot` s'installe et tourne sans mise, sans bash 4.4, sur Linux et macOS.
-4. **Aucune régression** : les comportements actuels (liens, garde-fou, secrets, MCP, doctor) restent identiques, prouvés par les tests existants.
+1. **A public, agnostic engine**: no personal or professional value in `fmatsos/dot`.
+2. **Several profiles**: one data repository per profile (personal, work...), installed side by side on one machine.
+3. **A standalone binary**: `dot` installs and runs without mise, without bash 4.4, on Linux and macOS.
+4. **No regression**: current behaviors (links, guard, secrets, MCP, doctor) stay identical, proven by the existing tests.
 
-## Décisions prises
+## Decisions made
 
-Dix décisions sont acquises ; elles ne se rediscutent pas pendant l'implémentation.
+Ten decisions are settled; they are not reopened during implementation.
 
-| Sujet | Décision |
+| Topic | Decision |
 | --- | --- |
-| Langage | Go, binaire statique par plateforme |
-| Bibliothèque CLI | cobra : aide et complétion zsh générées, une dépendance assumée |
-| Dépôt | `fmatsos/dot`, public, sans aucune valeur propre à un utilisateur |
-| Emplacement des profils | `~/.dot/<clé>`, un clone par profil |
-| Registre | `~/.dot/profiles.json`, propre à la machine, créé par `dot install`, modifié par `dot config` |
-| Ciblage | `-p/--profile <clé>`, puis `DOT_PROFILE`, puis le profil par défaut du registre |
-| Portée sans `-p` | `pull` et `doctor` agissent sur tous les profils ; les autres commandes sur le profil par défaut |
-| Conflit de liens | deux profils qui lient le même fichier dans `~` : installation refusée |
-| `install.sh` | conservé comme amorce minimale pour une machine neuve |
-| `dot profile` | garde son nom et son rôle : règles d'identité git `includeIf` |
+| Language | Go, one static binary per platform |
+| CLI library | cobra: generated help and zsh completion, one accepted dependency |
+| Repository | `fmatsos/dot`, public, with no value specific to a user |
+| Profile location | `~/.dot/<key>`, one clone per profile |
+| Registry | `~/.dot/profiles.json`, specific to the machine, created by `dot install`, changed by `dot config` |
+| Targeting | `-p/--profile <key>`, then `DOT_PROFILE`, then the registry's default profile |
+| Scope without `-p` | `pull` and `doctor` act on all profiles; the other commands on the default profile |
+| Link conflict | two profiles linking the same file in `~`: installation refused |
+| `install.sh` | kept as the minimal bootstrap for a fresh machine |
+| `dot profile` | keeps its name and role: git `includeIf` identity rules |
 
-mise reste le gestionnaire d'outils (node, CLI figées), déclaré dans les données, mais `dot` lui-même n'en dépend plus. Les clés de profil qui nomment un employeur n'apparaissent que dans le registre local et dans le dépôt de ce profil.
+mise stays the tool manager (node, pinned CLIs), declared in the data, but `dot` itself no longer depends on it. Profile keys that name an employer only appear in the local registry and in that profile's repository.
 
-## Architecture du dépôt fmatsos/dot
+## Architecture of the fmatsos/dot repository
 
-Un seul binaire Go porte toute la logique ; les profils ne contiennent que des données, et les outils existants sont appelés, jamais réécrits.
+One Go binary carries all the logic; profiles only hold data, and existing tools are called, never rewritten.
 
-*Un binaire autonome orchestre les profils et les outils existants.*
+*A standalone binary orchestrates the profiles and the existing tools.*
 
 ```mermaid
 flowchart LR
-  subgraph dot["dot : binaire Go, dépôt fmatsos/dot"]
+  subgraph dot["dot: Go binary, fmatsos/dot repository"]
     direction TB
-    cmd["Commandes<br/>-p, aide, complétion"]
-    reg["Registre<br/>profiles.json, config"]
-    man["Manifeste<br/>dot.json validé"]
-    lnk["Liens<br/>~ fichier par fichier"]
-    grd["Garde-fou<br/>staged, push, all"]
+    cmd["Commands<br/>-p, help, completion"]
+    reg["Registry<br/>profiles.json, config"]
+    man["Manifest<br/>validated dot.json"]
+    lnk["Links<br/>~ file by file"]
+    grd["Guard<br/>staged, push, all"]
     sec["Secrets<br/>bw, pass, run"]
-    mcp["MCP et réglages<br/>fusion des profils"]
-    doc["Doctor<br/>bilan sans écriture"]
+    mcp["MCP and settings<br/>profile merge"]
+    doc["Doctor<br/>report, no writes"]
   end
-  prof["~/.dot : un clone par profil<br/>profiles.json : registre local (600)<br/>perso/ : dot.json, home/, secrets.local<br/>work/ : un autre dépôt, son dot.json"]
-  home["~ : liens vers ~/.dot/profil/home"]
-  tools["Outils appelés, jamais réécrits<br/>git : clone, pull, hooks d'une ligne<br/>bw, pass-cli : secrets à la demande<br/>claude, codex, opencode : MCP, plugins<br/>betterleaks : figé dans ~/.cache/dot<br/>mise : outils des profils, facultatif"]
-  dot -->|"lit, clone, installe"| prof
-  prof -->|"relie fichier par fichier"| home
-  dot -->|"appelle"| tools
+  prof["~/.dot: one clone per profile<br/>profiles.json: local registry (600)<br/>personal/: dot.json, home/, secrets.local<br/>work/: another repository, its dot.json"]
+  home["~: links to ~/.dot/profile/home"]
+  tools["Tools called, never rewritten<br/>git: clone, pull, one-line hooks<br/>bw, pass-cli: secrets on demand<br/>claude, codex, opencode: MCP, plugins<br/>betterleaks: pinned in ~/.cache/dot<br/>mise: profile tools, optional"]
+  dot -->|"reads, clones, installs"| prof
+  prof -->|"links file by file"| home
+  dot -->|"calls"| tools
 ```
 
-Chaque paquet tient dans `internal/<nom>` et ne dépend que du manifeste et du registre ; les commandes vivent dans `cmd/dot`.
+Each package lives in `internal/<name>` and only depends on the manifest and the registry; the commands live in `cmd/dot`.
 
 ```text
 fmatsos/dot/
-├── cmd/dot/            point d'entrée, options globales (-p, --version)
-├── internal/registry/  profiles.json : lecture, écriture atomique, validation
-├── internal/manifest/  dot.json : structs, clés inconnues refusées
-├── internal/link/      liens, sauvegardes, purge, conflits entre profils
-├── internal/guard/     garde-fou, betterleaks figé
+├── cmd/dot/            entry point, global options (-p, --version)
+├── internal/registry/  profiles.json: read, atomic write, validation
+├── internal/manifest/  dot.json: structs, unknown keys refused
+├── internal/link/      links, backups, purge, conflicts between profiles
+├── internal/guard/     guard, pinned betterleaks
 ├── internal/secrets/   bw, pass-cli, run
-├── internal/mcp/       fusion et rendu Claude, Codex, OpenCode
-├── tests/              les scripts bash actuels, contrat boîte noire
-└── install.sh          amorce minimale
+├── internal/mcp/       merge and rendering for Claude, Codex, OpenCode
+├── tests/              the current bash scripts, black-box contract
+└── install.sh          minimal bootstrap
 ```
 
-**Extensions** : comme aujourd'hui, `dot <cmd>` lance un exécutable `dot-<cmd>` trouvé dans le `bin/` d'un profil ou dans le `PATH` ; un nom revendiqué par deux profils est refusé.
+**Extensions**: as today, `dot <cmd>` runs an executable `dot-<cmd>` found in a profile's `bin/` or in the `PATH`; a name claimed by two profiles is refused.
 
-## Modèle des profils
+## Profile model
 
-Un profil est un dépôt de données cloné dans `~/.dot/<clé>` ; le registre ne retient que sa clé et son URL, le chemin s'en déduit.
+A profile is a data repository cloned into `~/.dot/<key>`; the registry only keeps its key and URL, the path is derived.
 
 ```text
 ~/.dot/
-├── profiles.json      registre local (600), jamais versionné
-├── perso/             clone : dot.json, home/, bin/, secrets.local, forbidden.local
-└── work/              clone d'un autre dépôt, avec son propre dot.json
+├── profiles.json      local registry (600), never versioned
+├── personal/          clone: dot.json, home/, bin/, secrets.local, forbidden.local
+└── work/              clone of another repository, with its own dot.json
 ```
 
 ```json
-{ "default": "perso",
+{ "default": "personal",
   "profiles": {
-    "perso": { "repo": "https://github.com/<utilisateur>/dotfiles.git" },
-    "work":  { "repo": "<dépôt privé>" } } }
+    "personal": { "repo": "https://github.com/<user>/dotfiles.git" },
+    "work":     { "repo": "<private repository>" } } }
 ```
 
-**Le `dot.json` de chaque profil** garde le schéma de l'étape 1, sans `deploy.path` (le chemin vient du registre) : dossiers du clone partiel, profils git et profil d'identité du clone, marketplace et plugins, paquets nvm, modules lancés après installation.
+**Each profile's `dot.json`** keeps the step 1 schema, without `deploy.path` (the path comes from the registry): sparse clone directories, git profiles and the clone's identity profile, marketplace and plugins, nvm packages, modules run after installation.
 
-**Commandes du registre**
+**Registry commands**
 
-| Commande | Effet |
+| Command | Effect |
 | --- | --- |
-| `dot install <url> [-p <clé>]` | clone dans `~/.dot/<clé>`, inscrit au registre (créé au besoin ; le premier profil devient le défaut), installe |
-| `dot install` | réinstalle tous les profils inscrits |
-| `dot uninstall -p <clé>` | retire les liens du profil, puis son entrée ; le clone est gardé sauf `--purge` |
-| `dot config list` | affiche le registre |
-| `dot config get <clé>` | lit une valeur (`default`, `profiles.work.repo`) |
-| `dot config set <clé> <valeur>` | écrit une valeur validée, de façon atomique |
-| `dot config unset <clé>` | retire une valeur ; refuse un profil encore installé |
+| `dot install <url> [-p <key>]` | clones into `~/.dot/<key>`, adds it to the registry (created if needed; the first profile becomes the default), installs |
+| `dot install` | reinstalls all registered profiles |
+| `dot uninstall -p <key>` | removes the profile's links, then its entry; the clone is kept unless `--purge` |
+| `dot config list` | prints the registry |
+| `dot config get <key>` | reads a value (`default`, `profiles.work.repo`) |
+| `dot config set <key> <value>` | writes a validated value, atomically |
+| `dot config unset <key>` | removes a value; refuses a profile that is still installed |
 
-**Composition entre profils** : jamais par écrasement de fichiers, toujours par les mécanismes d'inclusion existants.
+**Composition between profiles**: never by overwriting files, always through the existing include mechanisms.
 
-- Git : chaque profil apporte ses `profiles/<nom>.gitconfig` et ses règles `includeIf`, inclus depuis `~/.gitconfig`.
-- MCP : `dot mcp` fusionne les `servers.json` de tous les profils, dans l'ordre du registre, puis `servers.local.json`.
-- Réglages Claude : `dot settings` fusionne les `settings.base.json` de tous les profils dans le même ordre.
-- Liens : un fichier revendiqué par deux profils bloque `dot install`, avec les deux chemins dans le message.
+- Git: each profile brings its `profiles/<name>.gitconfig` and its `includeIf` rules, included from `~/.gitconfig`.
+- MCP: `dot mcp` merges the `servers.json` of all profiles, in registry order, then `servers.local.json`.
+- Claude settings: `dot settings` merges the `settings.base.json` of all profiles in the same order.
+- Links: a file claimed by two profiles blocks `dot install`, with both paths in the message.
 
-## Distribution et amorce
+## Distribution and bootstrap
 
-`dot` s'installe depuis une release GitHub vérifiée par sha256, sans mise ni `curl | sh` ; mise reste installé ensuite par les données, pour les autres outils.
+`dot` is installed from a GitHub release verified by sha256, without mise or `curl | sh`; mise is still installed afterwards through the data, for the other tools.
 
-**Releases** (CI du dépôt `fmatsos/dot`, sur tag `vX.Y.Z`) :
+**Releases** (CI of the `fmatsos/dot` repository, on a `vX.Y.Z` tag):
 
-- binaires statiques `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64` (`CGO_ENABLED=0`) ;
-- un fichier `SHA256SUMS` publié avec la release ;
-- la version est inscrite dans le binaire (`dot --version`).
+- static binaries `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64` (`CGO_ENABLED=0`);
+- a `SHA256SUMS` file published with the release;
+- the version is stamped into the binary (`dot --version`).
 
-**Amorce `install.sh`** (une trentaine de lignes, versionnée dans `fmatsos/dot`) :
+**`install.sh` bootstrap** (about thirty lines, versioned in `fmatsos/dot`):
 
-1. détecter la plateforme ;
-2. télécharger la release figée dans le script et la vérifier contre la somme écrite dans le script ;
-3. l'installer dans `~/.local/bin/dot` ;
-4. lancer `dot install <url du premier profil>`.
+1. detect the platform;
+2. download the release pinned in the script and verify it against the sum written in the script;
+3. install it into `~/.local/bin/dot`;
+4. run `dot install <url of the first profile>`.
 
-Une nouvelle version de `dot` se publie en changeant la version et la somme dans l'amorce (`scripts/pin-install.sh`), puis `dot self-update` sur les machines. Une somme publiée avec la release ne prouve rien contre une release compromise, et un binaire installé ne peut pas connaître la somme d'une version future : `SHA256SUMS` est donc signé en Ed25519 (OpenSSL 3 en CI, secret `RELEASE_SIGNING_KEY`), et `self-update` vérifie cette signature avec la clé publique compilée dans le binaire (`crypto/ed25519`, sans dépendance) avant de vérifier la somme du binaire.
+A new version of `dot` is published by changing the version and the sum in the bootstrap (`scripts/pin-install.sh`), then `dot self-update` on the machines. A sum published with the release proves nothing against a compromised release, and an installed binary cannot know the sum of a future version: `SHA256SUMS` is therefore signed with Ed25519 (OpenSSL 3 in CI, secret `RELEASE_SIGNING_KEY`), and `self-update` verifies this signature with the public key compiled into the binary (`crypto/ed25519`, no dependency) before verifying the binary's sum.
 
-**Outils annexes** : `dot guard` télécharge lui-même la version figée de betterleaks (sha256 compilé dans le binaire) dans `~/.cache/dot/`, ce qui rend le garde-fou indépendant du `PATH` des clients git graphiques. Ensuite, `dot install` installe mise (version et sha256 figés, comme aujourd'hui) seulement si un profil déclare un `config.toml`.
+**Side tools**: `dot guard` downloads the pinned version of betterleaks itself (sha256 compiled into the binary) into `~/.cache/dot/`, which makes the guard independent of the `PATH` of graphical git clients. Then `dot install` installs mise (pinned version and sha256, as today) only if a profile declares a `config.toml`.
 
-## Garde-fou et secrets
+## Guard and secrets
 
-Le garde-fou passe dans le binaire (`dot guard`) avec les mêmes règles qu'aujourd'hui ; chaque profil apporte sa propre liste de termes interdits.
+The guard moves into the binary (`dot guard`) with the same rules as today; each profile brings its own list of forbidden terms.
 
-**`dot guard staged | msg <fichier> | push | all`**
+**`dot guard staged | msg <file> | push | all`**
 
-- Les hooks des dépôts deviennent des appels d'une ligne : `exec dot guard staged`.
-- Il échoue fermé : liste absente, vide ou invalide, commande git en échec, scanner indisponible, tout bloque.
-- Il ne rapporte que des noms de fichiers ou des commits, jamais le texte trouvé.
-- Les noms de fichiers sont lus séparés par NUL, sans guillemets git.
-- betterleaks tourne avec `--redact`, depuis la copie figée de `~/.cache/dot/`.
+- Repository hooks become one-line calls: `exec dot guard staged`.
+- It fails closed: a missing, empty or invalid list, a failing git command, an unavailable scanner, everything blocks.
+- It only reports file names or commits, never the text found.
+- File names are read NUL-separated, without git quoting.
+- betterleaks runs with `--redact`, from the pinned copy in `~/.cache/dot/`.
 
-**Quelle liste pour quel dépôt** : le hook `pre-push` global lit `dotfiles.profile` du dépôt poussé et applique `~/.dot/<ce profil>/forbidden.local`. Un dépôt perso est donc contrôlé contre les termes du travail, un dépôt de travail contre ses propres termes. `dotfiles.guard secrets` (betterleaks seul) est conservé pour les dépôts qui citent un employeur volontairement.
+**Which list for which repository**: the global `pre-push` hook reads `dotfiles.profile` of the pushed repository and applies `~/.dot/<that profile>/forbidden.local`. A personal repository is therefore checked against the work terms, a work repository against its own terms. `dotfiles.guard secrets` (betterleaks only) is kept for repositories that quote an employer on purpose.
 
-**Secrets (`dot secrets`)** : comportement inchangé.
+**Secrets (`dot secrets`)**: behavior unchanged.
 
-- Chaque profil a son `secrets.local` (`NOM=bw:<élément>` ou `NOM=pass:<coffre>/<élément>`).
-- Les valeurs ne passent jamais en argument de processus : environnement limité à une commande, ou stdin.
-- `run` résout toutes les valeurs avant de lancer la commande, puis remplace le processus par elle (`syscall.Exec`).
-- Session Bitwarden : `BW_SESSION` ou le cache `bw-session.local` (600).
-- Les tests utilisent des CLI factices placés en tête de `PATH`.
+- Each profile has its `secrets.local` (`NAME=bw:<item>` or `NAME=pass:<vault>/<item>`).
+- Values never go through a process argument: environment limited to one command, or stdin.
+- `run` resolves all the values before launching the command, then replaces the process with it (`syscall.Exec`).
+- Bitwarden session: `BW_SESSION` or the `bw-session.local` cache (600).
+- The tests use fake CLIs placed first in the `PATH`.
 
-## Stratégie de migration
+## Migration strategy
 
-Les 14 scripts de tests bash restent le contrat : le binaire Go doit les faire passer tels quels, commande par commande, avant toute suppression de bash.
+The 14 bash test scripts remain the contract: the Go binary must pass them as they are, command by command, before any bash is removed.
 
-**Le contrat** : 197 des 233 vérifications actuelles testent un comportement (secrets, garde-fou, doctor, MCP, repos, clone, hooks, réglages, purge) et restent valables pour le binaire Go. Elles demandent une seule adaptation mécanique : elles lancent aujourd'hui `bash "$root/bin/dot-…"`, elles passeront par `"$DOT_BIN" <cmd>`, qui choisit l'implémentation testée. Les messages en français font partie du contrat.
+**The contract**: 197 of the current 233 checks test a behavior (secrets, guard, doctor, MCP, repos, clone, hooks, settings, purge) and stay valid for the Go binary. They need a single mechanical change: they currently run `bash "$root/bin/dot-..."`, they will go through `"$DOT_BIN" <cmd>`, which picks the implementation under test. The messages are part of the contract.
 
-Les 36 autres testent l'implémentation bash : elles sont remplacées, pas portées, et ce travail est compté dans les phases 1 et 2.
+The other 36 test the bash implementation: they are replaced, not ported, and this work is counted in phases 1 and 2.
 
-| Tests actuels | Vérifications | Devenir |
+| Current tests | Checks | Fate |
 | --- | --- | --- |
-| `help.sh` | 12 | aide générée par cobra : quelques tests de sortie de `dot --help` ; le test de `dot terms` est gardé |
-| `completion.sh` | 8 | complétion générée par cobra : nouveaux tests sur `dot __complete` |
-| `manifest.sh` | 10 | validation de `dot.json` : mêmes cas, en tests unitaires Go (`internal/manifest`) |
-| `install.sh` | 6 | l'amorce change : un test de bout en bout de l'amorce puis de `dot install` |
-| `prompt.sh` | 1 | bloc shellkit, hors de `dot` : reste dans le dépôt de données |
+| `help.sh` | 12 | help generated by cobra: a few output tests of `dot --help`; the `dot terms` test is kept |
+| `completion.sh` | 8 | completion generated by cobra: new tests on `dot __complete` |
+| `manifest.sh` | 10 | `dot.json` validation: same cases, as Go unit tests (`internal/manifest`) |
+| `install.sh` | 6 | the bootstrap changes: an end-to-end test of the bootstrap, then of `dot install` |
+| `prompt.sh` | 1 | shellkit block, outside `dot`: stays in the data repository |
 
-**Ordre de portage** (du plus isolé au plus central) :
+**Porting order** (from the most isolated to the most central):
 
 1. `clone`, `repos`, `profile`, `whoami`
 2. `secrets`
-3. `guard` (et hooks en une ligne)
+3. `guard` (and one-line hooks)
 4. `settings`, `mcp`
 5. `doctor`
-6. `install`, `pull`, `config`, `uninstall` et le multi-profil, qui n'existent qu'en Go
+6. `install`, `pull`, `config`, `uninstall` and multi-profile, which only exist in Go
 
-**Pendant la transition**, le dépôt `fmatsos/dotfiles` garde son `bin/` bash ; le binaire Go s'installe à côté sous un autre nom (`dot2`) jusqu'à la bascule.
+**During the transition**, the `fmatsos/dotfiles` repository keeps its bash `bin/`; the Go binary is installed next to it under another name (`dot2`) until the switch.
 
-**Bascule de la machine** (une fois, par `dot install` en Go) :
+**Machine switch** (once, by `dot install` in Go):
 
-1. déplacer `~/.config/dotfiles` vers `~/.dot/perso`, avec ses fichiers locaux (`secrets.local`, `forbidden.local`, `bw-session.local`) ;
-2. créer le registre avec `perso` par défaut ;
-3. refaire tous les liens de `~` vers le nouveau chemin (les anciens liens sont remplacés sans sauvegarde puisqu'ils pointaient vers le clone) ;
-4. retirer `bin/`, `.githooks/guard` et `install.sh` du dépôt de données, qui ne garde que `dot.json`, `home/` et ses hooks d'une ligne ;
-5. mettre à jour le README, `CLAUDE.md`, le bloc shellkit et la mémoire, qui citent `~/.config/dotfiles`.
+1. move `~/.config/dotfiles` to `~/.dot/personal`, with its local files (`secrets.local`, `forbidden.local`, `bw-session.local`);
+2. create the registry with `personal` as the default;
+3. redo all the links from `~` to the new path (the old links are replaced without a backup since they pointed into the clone);
+4. remove `bin/`, `.githooks/guard` and `install.sh` from the data repository, which keeps only `dot.json`, `home/` and its one-line hooks;
+5. update the README, `CLAUDE.md`, the shellkit block and the memory, which quote `~/.config/dotfiles`.
 
-## Phasage
+## Phasing
 
-Six phases, chacune livrée et vérifiée avant la suivante ; aucune date n'est fixée, l'ordre seul compte.
+Six phases, each delivered and verified before the next; no date is set, only the order matters.
 
-*Six phases, chacune close par un critère vérifiable.*
+*Six phases, each closed by a verifiable criterion.*
 
 ```mermaid
 flowchart TD
-  P0["Phase 0 : questions tranchées<br/>dot config, nom de transition, dépôt travail, nvm"]
-  G0(["Porte : plan relu et validé, questions cochées"])
-  P1["Phase 1 : squelette fmatsos/dot<br/>modules Go, CI de release, amorce, tests via DOT_BIN"]
-  G1(["Porte : v0.1 installée par l'amorce, sha256 vérifié, CI verte"])
-  P2["Phase 2 : portage des commandes<br/>clone, repos, secrets, guard, settings, mcp, doctor"]
-  G2(["Porte : 197 vérifications de comportement vertes avec le binaire Go"])
-  P3["Phase 3 : multi-profil<br/>install, config, uninstall, pull sur tous les profils, conflits"]
-  G3(["Porte : deux profils factices installés, conflit de lien refusé"])
-  P4["Phase 4 : bascule de la machine<br/>~/.config/dotfiles vers ~/.dot/perso, retrait du bash"]
-  G4(["Porte : install -n identique à l'avant, doctor sans échec"])
-  P5["Phase 5 : profil travail<br/>son dépôt, sa liste interdite, son garde-fou au push"]
-  G5(["Porte : un push perso bloqué sur un terme du travail, et inversement"])
+  P0["Phase 0: questions settled<br/>dot config, transition name, work repository, nvm"]
+  G0(["Gate: plan reviewed and approved, questions checked"])
+  P1["Phase 1: fmatsos/dot skeleton<br/>Go modules, release CI, bootstrap, tests via DOT_BIN"]
+  G1(["Gate: v0.1 installed by the bootstrap, sha256 verified, CI green"])
+  P2["Phase 2: command port<br/>clone, repos, secrets, guard, settings, mcp, doctor"]
+  G2(["Gate: 197 behavior checks green with the Go binary"])
+  P3["Phase 3: multi-profile<br/>install, config, uninstall, pull on all profiles, conflicts"]
+  G3(["Gate: two fake profiles installed, link conflict refused"])
+  P4["Phase 4: machine switch<br/>~/.config/dotfiles to ~/.dot/personal, bash removal"]
+  G4(["Gate: install -n identical to before, doctor without failure"])
+  P5["Phase 5: work profile<br/>its repository, its forbidden list, its guard on push"]
+  G5(["Gate: a personal push blocked on a work term, and the reverse"])
   P0 --> G0 --> P1 --> G1 --> P2 --> G2 --> P3 --> G3 --> P4 --> G4 --> P5 --> G5
 ```
 
-Chaque phase passe par le cycle déjà rodé : consigne numérotée à Codex, revue point par point, tests relancés, puis livraison. La phase 4 est la seule à toucher la machine réelle ; elle se fait à blanc d'abord, comparée à l'état d'avant.
+Each phase goes through the proven cycle: numbered instructions to Codex, point-by-point review, tests rerun, then delivery. Phase 4 is the only one that touches the real machine; it is done as a dry run first, compared with the state before.
 
-## Risques et questions ouvertes
+## Risks and open questions
 
-**Risques**
+**Risks**
 
-| Risque | Parade |
+| Risk | Mitigation |
 | --- | --- |
-| Deux implémentations divergent pendant la transition | les mêmes tests boîte noire pour les deux ; on ne corrige plus le bash qu'en cas de faille |
-| Une fuite pendant la bascule (fichiers locaux copiés, chemins mal résolus) | déplacement et non copie, test à blanc (`-n`) comparé à l'état d'avant, comme pour l'étape 1 |
-| Le garde-fou s'ouvre par erreur pendant le portage | ses tests (liste invalide, noms accentués, scanner absent) passent avant que les hooks n'appellent la version Go |
-| Dépendances Go et chaîne d'approvisionnement | bibliothèque standard en priorité ; chaque dépendance justifiée et figée dans `go.sum` |
-| Release cassée déployée partout | l'amorce et `self-update` figent une version ; revenir en arrière = réinstaller la version précédente |
+| Two implementations diverge during the transition | the same black-box tests for both; bash is only fixed for a vulnerability |
+| A leak during the switch (local files copied, badly resolved paths) | move rather than copy, dry run (`-n`) compared with the state before, as for step 1 |
+| The guard opens by mistake during the port | its tests (invalid list, accented names, missing scanner) pass before the hooks call the Go version |
+| Go dependencies and supply chain | standard library first; each dependency justified and pinned in `go.sum` |
+| A broken release deployed everywhere | the bootstrap and `self-update` pin a version; rolling back = reinstalling the previous version |
 
-**Questions à trancher avant le code**
+**Questions to settle before the code**
 
-- [x] Bibliothèque CLI : tranché, cobra (voir Décisions prises).
-- [ ] `dot config` masque aujourd'hui `git config` transmis au clone : accepté, avec `git -C ~/.dot/<clé>` comme contournement ?
-- [ ] Nom de transition du binaire Go (`dot2`) ou remplacement direct dès la première commande portée ?
-- [ ] Le profil travail : son dépôt existe-t-il déjà, et sur quel hébergement ?
-- [ ] Suppression de nvm : objectif séparé, ou inclus dans la bascule ?
+- [x] CLI library: settled, cobra (see Decisions made).
+- [ ] `dot config` currently hides the `git config` passed to the clone: accepted, with `git -C ~/.dot/<key>` as a workaround?
+- [ ] Transition name of the Go binary (`dot2`) or direct replacement from the first ported command?
+- [ ] The work profile: does its repository already exist, and on which host?
+- [ ] Removing nvm: a separate goal, or part of the switch?
 
-## Avancement
+## Progress
 
-- Phases 1 à 3 : faites. Tous les tests bash portés (`tests/*.sh`) et les tests Go passent.
-- Questions de la phase 0 : le code a avancé avec ces hypothèses, à confirmer.
-  - `dot config` masque `git config` transmis au clone : accepté, `git -C ~/.dot/<clé>` en contournement.
-  - Nom de transition : le binaire se construit sous le nom `dot` ; installer l'exécutable sous `dot2` relève de la phase 4, pas du code.
-  - Dépôt du profil travail et suppression de nvm : non traités ici (phases 4 et 5).
-- Écarts assumés par rapport au bash : le garde-fou et les secrets n'ont plus besoin de `jq` ; l'aide est générée par cobra (plus de `help.awk`) ; les erreurs d'usage sortent en code 2 ; les termes interdits sont des regex RE2 insensibles à la casse (les extensions POSIX/GNU comme les rétro-références sont refusées, en échec fermé).
-- `dot send` est remplacé par `dot push [message]`, et `dot status` (alias `st`) devient une commande à part ; sans `-p`, `pull`, `push`, `status`, `doctor`, `settings` et `mcp` agissent sur tous les profils inscrits, avec `==> <clé>` devant chacun et un échec qui n'arrête pas les autres.
-- Sommes betterleaks figées pour la v1.9.0 (recalculées sur les archives, identiques au `checksums.txt` de la release).
-- Faits depuis : releases signées, amorce `install.sh` (non figée), `dot self-update`, refus d'un nom `dot-<cmd>` revendiqué par deux profils, CI sur macOS, complétion des clés de profil et de `dot config`, `dot backups list|restore`, `dot adopt` (garde-fou du profil cible avant tout déplacement), variantes `home@<os>` et `home@<machine>` résolues avant les liens et les conflits (`settings`, `mcp` et mise lisent encore `home/` seul).
-- Garde-fou durci : un sous-module indexé ne bloque plus le commit (son nom reste contrôlé), un BOM en tête de liste est retiré, un terme qui correspond à la chaîne vide (`a*`, `^`…) est refusé en échec fermé. Angle mort connu : pas de normalisation Unicode, un terme en NFC ne trouve pas un nom en NFD (macOS sans `core.precomposeunicode`).
-- À faire : générer la clé de signature, publier `v0.1.0` puis figer l'amorce, bascule de la machine (phase 4), profil travail (phase 5).
+- Phases 1 to 3: done. All the ported bash tests (`tests/*.sh`) and the Go tests pass.
+- Phase 0 questions: the code moved on with these assumptions, to be confirmed.
+  - `dot config` hides the `git config` passed to the clone: accepted, `git -C ~/.dot/<key>` as a workaround.
+  - Transition name: the binary is built under the name `dot`; installing the executable as `dot2` belongs to phase 4, not to the code.
+  - Work profile repository and nvm removal: not handled here (phases 4 and 5).
+- Accepted differences from the bash: the guard and the secrets no longer need `jq`; help is generated by cobra (no more `help.awk`); usage errors exit with code 2; forbidden terms are case-insensitive RE2 regexes (POSIX/GNU extensions such as backreferences are refused, failing closed).
+- `dot send` is replaced by `dot push [message]`, and `dot status` (alias `st`) becomes a separate command; without `-p`, `pull`, `push`, `status`, `doctor`, `settings` and `mcp` act on all registered profiles, with `==> <key>` in front of each and a failure that does not stop the others.
+- betterleaks sums pinned for v1.9.0 (recomputed on the archives, identical to the release's `checksums.txt`).
+- Done since: signed releases, `install.sh` bootstrap (not pinned), `dot self-update`, refusal of a `dot-<cmd>` name claimed by two profiles, CI on macOS, completion of profile keys and of `dot config`, `dot backups list|restore`, `dot adopt` (target profile guard before any move), `home@<os>` and `home@<machine>` variants resolved before links and conflicts (`settings`, `mcp` and mise still read `home/` only).
+- Guard hardened: an indexed submodule no longer blocks the commit (its name is still checked), a BOM at the start of the list is removed, a term that matches the empty string (`a*`, `^`...) is refused, failing closed. Known blind spot: no Unicode normalization, an NFC term does not find an NFD name (macOS without `core.precomposeunicode`).
+- To do: generate the signing key, publish `v0.1.0` then pin the bootstrap, machine switch (phase 4), work profile (phase 5).

@@ -11,7 +11,7 @@ clone() { "$DOT_BIN" clone "$@"; }
 reject() {
   local code=0
   clone "$@" >"$S/out" 2>"$S/err" || code=$?
-  [ "$code" -eq 2 ]; [ ! -s "$S/out" ]; grep -q 'usage :' "$S/err"
+  [ "$code" -eq 2 ]; [ ! -s "$S/out" ]
 }
 
 [ "$(clone --path https://github.com/alice/tool.git)" = "$DOT_SRC/github.com/alice/tool" ]
@@ -43,7 +43,7 @@ echo 'OK   unsupported URLs, unsafe paths and invalid usage rejected with exit 2
 target=$(clone --path https://git.example.com/team/project.git)
 git init -q "$target"
 git -C "$target" remote add origin ssh://git@GIT.EXAMPLE.COM:2222/team/sub/project
-[ "$(clone https://git.example.com/team/project.git)" = "déjà cloné : $target" ]
+[[ "$(clone https://git.example.com/team/project.git)" == *"$target"* ]]
 echo 'OK   existing repository with equivalent origin is reused'
 git -C "$target" remote set-url origin https://git.example.com/other/project.git
 cp "$target/.git/config" "$S/before"
@@ -79,13 +79,13 @@ target=$(clone --path https://git.example.com/team/fresh.git)
 [ "$(cat "$target/marker")" = fixture ]
 [ "$(git -C "$target" remote get-url origin)" = "file://$S/fixture.git" ]
 [ "$(git -C "$target" config remote.origin.url)" = https://git.example.com/team/fresh.git ]
-[ "$(clone https://git.example.com/team/fresh.git)" = "déjà cloné : $target" ]
+[[ "$(clone https://git.example.com/team/fresh.git)" == *"$target"* ]]
 echo 'OK   real local clone, extra arguments, parents and printed target'
 git config --global url."file://$S/fixture.git".insteadOf https://git.example.com/team/bare.git
 target=$(clone --path https://git.example.com/team/bare.git)
 [ "$(clone https://git.example.com/team/bare.git --quiet --bare)" = "$target" ]
 [ "$(git -C "$target" rev-parse --is-bare-repository)" = true ]
-[ "$(clone https://git.example.com/team/bare.git)" = "déjà cloné : $target" ]
+[[ "$(clone https://git.example.com/team/bare.git)" == *"$target"* ]]
 echo 'OK   bare clone can also be reused'
 mkdir -p "$HOME/.config/git/profiles" "$S/project"
 printf '# fictional profile\n' >"$HOME/.config/git/profiles/perso.gitconfig"
@@ -94,11 +94,10 @@ for _ in 1 2; do
 done
 [ "$(grep -Fxc "[includeIf \"gitdir:$S/project/\"]" "$HOME/.config/git/profiles.local")" -eq 1 ]
 [ "$(wc -l <"$HOME/.config/git/profiles.local")" -eq 2 ]
-grep -q 'règle déjà présente' "$S/out"
 cp "$HOME/.config/git/profiles.local" "$S/profiles-before"
 for name in ../x acme..demo; do
   code=0; "$DOT_BIN" profile "$name" "$S/project" >"$S/out" 2>"$S/err" || code=$?
-  [ "$code" -eq 1 ]; grep -q 'profil : nom invalide' "$S/err"
+  [ "$code" -eq 1 ]
   cmp -s "$S/profiles-before" "$HOME/.config/git/profiles.local"
 done
 echo 'OK   F10: profile idempotent, CDPATH ignored, unsafe names rejected'

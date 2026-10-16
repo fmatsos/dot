@@ -51,7 +51,7 @@ type Options struct {
 	Home         string
 	Profiles     []Profile
 	Err          error
-	Headers      bool // precede each profile with a "profil <clé>" line
+	Headers      bool // precede each profile with a "profile <key>" line
 	SrcRoot      string
 	SandboxRoot  string
 	StatusBudget time.Duration // secrets status timeout; 20 s when zero
@@ -113,7 +113,7 @@ func Run(o Options) []Line {
 		s := &state{p: p}
 		sts[i] = s
 		if o.Headers {
-			c.raw("profil " + p.Key)
+			c.raw("profile " + p.Key)
 		}
 		c.loadManifest(s)
 		c.clone(s)
@@ -144,13 +144,13 @@ func Run(o Options) []Line {
 func (c *checker) loadManifest(s *state) {
 	m, err := manifest.Load(filepath.Join(s.p.Dir, "dot.json"))
 	if err != nil {
-		key := "objet"
+		key := "object"
 		var ke *manifest.KeyError
 		if errors.As(err, &ke) {
 			key = ke.Key
 		}
-		c.add(Fail, "dot.json invalide : clé %s", key)
-		c.add(Warn, "profils et marketplaces ignorés : dot.json invalide")
+		c.add(Fail, "invalid dot.json: key %s", key)
+		c.add(Warn, "profiles and marketplaces skipped: invalid dot.json")
 		return
 	}
 	s.m = m
@@ -195,14 +195,14 @@ func (c *checker) profileFile(path string) string {
 func (c *checker) clone(s *state) {
 	dir := s.p.Dir
 	if _, ok := git(dir, "rev-parse", "--git-dir"); !isDir(filepath.Join(dir, ".git")) || !ok {
-		c.add(Fail, "clone déployé absent : relancer install.sh")
+		c.add(Fail, "deployed clone missing: rerun install.sh")
 		return
 	}
-	c.add(OK, "clone déployé présent")
+	c.add(OK, "deployed clone present")
 	if h, _ := git(dir, "config", "--local", "core.hooksPath"); h == ".githooks" {
-		c.add(OK, "hooks du clone déployé")
+		c.add(OK, "deployed clone hooks")
 	} else {
-		c.add(Fail, "hooks du clone : relancer install.sh")
+		c.add(Fail, "clone hooks: rerun install.sh")
 	}
 	if s.m != nil {
 		name := s.m.DeployProfile
@@ -213,15 +213,15 @@ func (c *checker) clone(s *state) {
 			}
 		}
 		if got, _ := git(dir, "config", "user.email"); expected != "" && got == expected {
-			c.add(OK, "email du clone : profil %s", name)
+			c.add(OK, "clone email: profile %s", name)
 		} else {
-			c.add(Fail, "email du clone : rétablir le profil %s (install.sh)", name)
+			c.add(Fail, "clone email: restore profile %s (install.sh)", name)
 		}
 	}
 	if st, _ := git(dir, "status", "--porcelain=v1", "--untracked-files=all"); st != "" {
-		c.add(Warn, "clone modifié : dot push")
+		c.add(Warn, "clone modified: dot push")
 	} else {
-		c.add(OK, "clone sans changements")
+		c.add(OK, "clone has no changes")
 	}
 	counts, ok := git(dir, "rev-list", "--left-right", "--count", "HEAD...refs/remotes/origin/HEAD")
 	if !ok {
@@ -232,9 +232,9 @@ func (c *checker) clone(s *state) {
 		fmt.Sscan(counts, &ahead, &behind)
 	}
 	if ahead > 0 || behind > 0 {
-		c.add(Warn, "clone : ⇡%d ⇣%d — dot push / dot pull", ahead, behind)
+		c.add(Warn, "clone: ⇡%d ⇣%d — dot push / dot pull", ahead, behind)
 	} else {
-		c.add(OK, "clone sans avance ni retard connus")
+		c.add(OK, "clone neither ahead nor behind, as far as known")
 	}
 }
 
@@ -245,24 +245,24 @@ func (c *checker) gitProfiles(s *state) {
 	for _, pp := range s.m.Profiles {
 		f := c.profileFile(pp.Path)
 		if fi, err := os.Stat(f); err == nil && fi.Mode().IsRegular() && gitFile(f, "user.email") != "" {
-			c.add(OK, "profil %s", pp.Name)
+			c.add(OK, "profile %s", pp.Name)
 		} else {
-			c.add(Fail, "profil %s : fichier absent ou user.email manquant", pp.Name)
+			c.add(Fail, "profile %s: file missing or user.email missing", pp.Name)
 		}
 	}
 }
 
 func (c *checker) homeLinks(s *state) {
 	if !isDir(filepath.Join(s.p.Dir, "home")) {
-		c.add(Fail, "home du clone absent : relancer install.sh")
+		c.add(Fail, "clone home missing: rerun install.sh")
 		return
 	}
 	d := link.Detached(s.p.Dir, c.o.Home)
 	if len(d) == 0 {
-		c.add(OK, "liens home à jour")
+		c.add(OK, "home links up to date")
 		return
 	}
-	c.add(Fail, "%d fichiers détachés : relancer install.sh après réconciliation", len(d))
+	c.add(Fail, "%d detached files: rerun install.sh after reconciling", len(d))
 	for _, p := range d[:min(len(d), 10)] {
 		c.raw("  " + p)
 	}
@@ -270,9 +270,9 @@ func (c *checker) homeLinks(s *state) {
 
 func (c *checker) deadLinks() {
 	if n := link.DeadLinks(c.o.Home); n == 0 {
-		c.add(OK, "aucun lien mort dans ~/.local/bin")
+		c.add(OK, "no dead links in ~/.local/bin")
 	} else {
-		c.add(Fail, "%d liens morts dans ~/.local/bin : relancer install.sh", n)
+		c.add(Fail, "%d dead links in ~/.local/bin: rerun install.sh", n)
 	}
 }
 
@@ -281,11 +281,11 @@ func (c *checker) guard(s *state) {
 	_, err := guard.LoadTerms(cmp.Or(os.Getenv("DOTFILES_FORBIDDEN"), filepath.Join(s.p.Dir, "forbidden.local")))
 	switch {
 	case err == nil:
-		c.add(OK, "garde-fou activé")
+		c.add(OK, "guard enabled")
 	case errors.Is(err, guard.ErrInvalid):
-		c.add(Fail, "garde-fou désactivé : liste de termes invalide, corriger forbidden.local")
+		c.add(Fail, "guard disabled: invalid terms list, fix forbidden.local")
 	default:
-		c.add(Fail, "garde-fou désactivé : restaurer forbidden.local")
+		c.add(Fail, "guard disabled: restore forbidden.local")
 	}
 }
 
@@ -293,11 +293,11 @@ func (c *checker) gitInclude() {
 	out, _ := gitOut("config", "--global", "--get-all", "include.path")
 	for _, p := range strings.Split(out, "\n") {
 		if p == "~/.config/git/profiles.gitconfig" || p == filepath.Join(c.o.Home, ".config", "git", "profiles.gitconfig") {
-			c.add(OK, "profils inclus dans le git config global")
+			c.add(OK, "profiles included in the global git config")
 			return
 		}
 	}
-	c.add(Fail, "profils non inclus : relancer install.sh")
+	c.add(Fail, "profiles not included: rerun install.sh")
 }
 
 // findMise returns the mise binary the machine has: the PATH one, else ~/.local/bin/mise.
@@ -329,10 +329,10 @@ func (c *checker) mise() {
 	}
 	mise := c.findMise()
 	if mise == "" {
-		c.add(Fail, "mise absent : relancer install.sh")
+		c.add(Fail, "mise missing: rerun install.sh")
 		return
 	}
-	c.add(OK, "mise présent")
+	c.add(OK, "mise present")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, mise, "ls", "--missing", "--no-header", "--no-truncate")
@@ -340,7 +340,7 @@ func (c *checker) mise() {
 	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {
-		c.add(Fail, "outils mise invérifiables : vérifier mise ls --missing")
+		c.add(Fail, "mise tools unverifiable: check mise ls --missing")
 		return
 	}
 	var tools []string
@@ -351,9 +351,9 @@ func (c *checker) mise() {
 	}
 	slices.Sort(tools)
 	if tools = slices.Compact(tools); len(tools) == 0 {
-		c.add(OK, "outils mise installés")
+		c.add(OK, "mise tools installed")
 	} else {
-		c.add(Fail, "outils mise manquants : %s — mise install", strings.Join(tools, ","))
+		c.add(Fail, "mise tools missing: %s — mise install", strings.Join(tools, ","))
 	}
 }
 
@@ -364,16 +364,16 @@ func (c *checker) shims() {
 	data := cmp.Or(os.Getenv("MISE_DATA_DIR"),
 		filepath.Join(cmp.Or(os.Getenv("XDG_DATA_HOME"), filepath.Join(c.o.Home, ".local", "share")), "mise"))
 	if slices.Contains(filepath.SplitList(os.Getenv("PATH")), filepath.Join(data, "shims")) {
-		c.add(OK, "shims mise dans PATH")
+		c.add(OK, "mise shims in PATH")
 	} else {
-		c.add(Warn, "shims mise hors PATH : charger ~/.config/mise/shell.sh")
+		c.add(Warn, "mise shims not in PATH: load ~/.config/mise/shell.sh")
 	}
 }
 
 // secrets reports counts only, within a time budget for the vault commands.
 func (c *checker) secrets(s *state) {
 	if _, err := os.Stat(filepath.Join(s.p.Dir, secrets.File)); err != nil {
-		c.add(OK, "aucun secret déclaré")
+		c.add(OK, "no secrets declared")
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.o.StatusBudget)
@@ -390,24 +390,24 @@ func (c *checker) secrets(s *state) {
 			unavailable++
 		}
 	}
-	msg := fmt.Sprintf("secrets : %d lisibles / %d verrouillés / %d indisponibles", readable, locked, unavailable)
+	msg := fmt.Sprintf("secrets: %d readable / %d locked / %d unavailable", readable, locked, unavailable)
 	if err == nil && locked == 0 && unavailable == 0 {
 		c.add(OK, "%s", msg)
 	} else if err != nil {
 		// Status fails only on the mapping file itself (malformed, duplicate NAME): unlocking cannot repair it.
-		c.add(Fail, "secrets.local invalide (%v) : corriger le fichier", err)
+		c.add(Fail, "invalid secrets.local (%v): fix the file", err)
 	} else {
-		c.add(Warn, "%s (statut incomplet ou accès bloqué) : dot secrets unlock", msg)
+		c.add(Warn, "%s (incomplete status or blocked access): dot secrets unlock", msg)
 	}
 }
 
 func (c *checker) repos() {
 	rows, ok, err := repos.Problems(c.o.Home, c.o.SrcRoot, c.o.SandboxRoot)
 	if err == nil && ok {
-		c.add(OK, "identités des dépôts cohérentes")
+		c.add(OK, "repository identities consistent")
 		return
 	}
-	c.add(Fail, "identités des dépôts incohérentes : dot profile / git config user.email")
+	c.add(Fail, "repository identities inconsistent: dot profile / git config user.email")
 	for _, r := range rows {
 		c.raw(r)
 	}

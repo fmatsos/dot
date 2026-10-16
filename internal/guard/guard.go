@@ -42,7 +42,7 @@ func (g *Guard) git(args ...string) *exec.Cmd {
 
 // cmdFail names the failed command; an argument holding a term (a remote name) is masked.
 func (g *Guard) cmdFail(args []string) error {
-	return fail("commande en échec, contrôle impossible : git %s", g.shown(args...))
+	return fail("command failed, cannot check: git %s", g.shown(args...))
 }
 
 // shown joins arguments for a message, masking those that match a term.
@@ -51,7 +51,7 @@ func (g *Guard) shown(args ...string) string {
 	for i, a := range args {
 		out[i] = a
 		if g.Terms.Match(a) {
-			out[i] = "<masqué>"
+			out[i] = "<masked>"
 		}
 	}
 	return strings.Join(out, " ")
@@ -105,7 +105,7 @@ func (g *Guard) hits(prefix byte, args ...string) (bool, error) {
 
 func (g *Guard) leaks(args ...string) error {
 	if g.Scan == nil {
-		return fail("betterleaks indisponible, refus.")
+		return fail("betterleaks unavailable, refusing")
 	}
 	err := g.Scan(args...)
 	var x *exec.ExitError
@@ -113,7 +113,7 @@ func (g *Guard) leaks(args ...string) error {
 	case err == nil:
 		return nil
 	case errors.As(err, &x):
-		return fail("betterleaks a signalé un secret (ou n'a pas pu tourner).")
+		return fail("betterleaks reported a secret (or could not run)")
 	default:
 		return fail("%v", err)
 	}
@@ -147,14 +147,14 @@ func (g *Guard) history(revs ...string) error {
 	if hit, err := g.hits(0, meta...); err != nil {
 		return err
 	} else if hit {
-		return fail("référence interdite dans les métadonnées ou noms de fichiers de : %s", r)
+		return fail("forbidden reference in the metadata or file names of: %s", r)
 	}
 	// --text: binary and -diff files are scanned too (media files excepted); first-parent: a merge shows what it adds.
 	added := append(append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format="}, revs...), notMedia()...)
 	if hit, err := g.hits('+', added...); err != nil {
 		return err
 	} else if hit {
-		return fail("référence interdite dans le contenu ajouté par : %s", r)
+		return fail("forbidden reference in content added by: %s", r)
 	}
 	return g.leaks("git", "--log-opts="+raw, ".")
 }
@@ -163,17 +163,17 @@ func (g *Guard) history(revs ...string) error {
 // files, a changed dot.json, then secrets.
 func (g *Guard) Staged() error {
 	for _, v := range []struct{ name, what string }{
-		{"GIT_AUTHOR_IDENT", "auteur"}, {"GIT_COMMITTER_IDENT", "committer"},
+		{"GIT_AUTHOR_IDENT", "author"}, {"GIT_COMMITTER_IDENT", "committer"},
 	} {
 		if hit, err := g.hits(0, "var", v.name); err != nil {
 			return err
 		} else if hit {
-			return fail("identité %s liée au travail.", v.what)
+			return fail("work-related %s identity", v.what)
 		}
 	}
 	changed, err := g.output("diff", "--cached", "--name-only", "--", "dot.json")
 	if err != nil {
-		return fail("état de dot.json indexé illisible.")
+		return fail("staged dot.json state unreadable")
 	}
 	if len(bytes.TrimSpace(changed)) > 0 {
 		if err := g.checkManifest(); err != nil {
@@ -184,7 +184,7 @@ func (g *Guard) Staged() error {
 	// moved file is just its new name.
 	raw, err := g.output("-c", "core.quotePath=false", "diff", "--cached", "--raw", "-z", "--no-renames", "--diff-filter=d")
 	if err != nil {
-		return fail("liste des fichiers indexés illisible.")
+		return fail("staged file list unreadable")
 	}
 	fields := strings.Split(string(raw), "\x00")
 	var bad strings.Builder
@@ -196,7 +196,7 @@ func (g *Guard) Staged() error {
 		}
 		n++
 		if g.Terms.Match(f) { // the name itself is forbidden text: never printed
-			fmt.Fprintf(&bad, "  <nom masqué> (fichier %d)\n", n)
+			fmt.Fprintf(&bad, "  <masked name> (file %d)\n", n)
 			continue
 		}
 		if strings.Contains(meta, " 160000 ") || isMedia(f) { // a gitlink has no blob here (its URL lives in .gitmodules); media is not read for terms
@@ -211,7 +211,7 @@ func (g *Guard) Staged() error {
 		}
 	}
 	if bad.Len() > 0 {
-		return fail("référence interdite (nom ou contenu) dans :\n%s", strings.TrimSuffix(bad.String(), "\n"))
+		return fail("forbidden reference (name or content) in:\n%s", strings.TrimSuffix(bad.String(), "\n"))
 	}
 	return g.leaks("git", "--staged", ".")
 }
@@ -230,27 +230,27 @@ func printable(s string) string {
 func (g *Guard) checkManifest() error {
 	data, err := g.output("show", ":dot.json")
 	if err != nil {
-		return fail("dot.json indexé illisible, refus.")
+		return fail("staged dot.json unreadable, refusing")
 	}
 	dir, err := os.MkdirTemp("", "dot-guard-")
 	if err != nil {
-		return fail("dot.json indexé : dossier temporaire indisponible, refus.")
+		return fail("staged dot.json: temporary directory unavailable, refusing")
 	}
 	defer os.RemoveAll(dir)
 	p := filepath.Join(dir, "dot.json")
 	if err := os.WriteFile(p, data, 0o600); err != nil {
-		return fail("dot.json indexé illisible, refus.")
+		return fail("staged dot.json unreadable, refusing")
 	}
 	if _, err := manifest.Load(p); err != nil {
-		key := "objet"
+		key := "object"
 		var ke *manifest.KeyError
 		if errors.As(err, &ke) {
 			key = ke.Key
 		}
 		if g.Terms.Match(key) { // a key may itself name a forbidden term
-			key = "masquée"
+			key = "masked"
 		}
-		return fail("dot.json invalide (clé %s) : dot doctor pour le détail, refus.", key)
+		return fail("invalid dot.json (key %s): run dot doctor for details, refusing", key)
 	}
 	return nil
 }
@@ -262,11 +262,11 @@ func (g *Guard) Msg(path string) error {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fail("message de commit illisible, refus.")
+		return fail("commit message unreadable, refusing")
 	}
 	for _, l := range bytes.Split(data, []byte{'\n'}) {
 		if !bytes.HasPrefix(l, []byte{'#'}) && g.Terms.MatchLine(l) {
-			return fail("référence interdite dans le message de commit.")
+			return fail("forbidden reference in the commit message")
 		}
 	}
 	return nil
@@ -295,7 +295,7 @@ func (g *Guard) Push(in io.Reader, remote string) error {
 			continue
 		}
 		if len(f) != 4 {
-			return fail("entrée du hook pre-push invalide, refus.")
+			return fail("invalid pre-push hook input, refusing")
 		}
 		n++
 		lref, lsha, rref, rsha := f[0], f[1], f[2], f[3]
@@ -304,12 +304,12 @@ func (g *Guard) Push(in io.Reader, remote string) error {
 		}
 		if g.Terms.Match(lref + "\n" + rref + "\n") {
 			if g.Terms.Match(lref) { // never print a forbidden name
-				lref = fmt.Sprintf("<nom masqué> (ligne %d)", n)
+				lref = fmt.Sprintf("<masked name> (line %d)", n)
 			}
-			return fail("nom de branche ou de tag interdit : %s", printable(lref))
+			return fail("forbidden branch or tag name: %s", printable(lref))
 		}
 		if !shaRe.MatchString(lsha) || !shaRe.MatchString(rsha) {
-			return fail("entrée du hook pre-push invalide, refus.")
+			return fail("invalid pre-push hook input, refusing")
 		}
 		var err error
 		// New ref, or remote tip unknown locally (force push from a stale clone): check everything
@@ -327,7 +327,7 @@ func (g *Guard) Push(in io.Reader, remote string) error {
 		}
 	}
 	if sc.Err() != nil {
-		return fail("entrée du hook pre-push illisible, refus.")
+		return fail("pre-push hook input unreadable, refusing")
 	}
 	return nil
 }
@@ -337,7 +337,7 @@ func (g *Guard) All() error {
 	if hit, err := g.hits(0, "for-each-ref", "--format=%(refname)"); err != nil {
 		return err
 	} else if hit {
-		return fail("nom de branche ou de tag interdit.")
+		return fail("forbidden branch or tag name")
 	}
 	if err := g.allTags(); err != nil {
 		return err
@@ -345,12 +345,12 @@ func (g *Guard) All() error {
 	if hit, err := g.hits(0, "-c", "core.quotePath=false", "log", "--all", "--format=%an%n%ae%n%cn%n%ce%n%B", "--name-only", "--diff-merges=first-parent"); err != nil {
 		return err
 	} else if hit {
-		return fail("référence interdite dans les métadonnées ou noms de fichiers de l'historique.")
+		return fail("forbidden reference in the metadata or file names of the history")
 	}
 	if hit, err := g.hits('+', append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format=", "--all"}, notMedia()...)...); err != nil {
 		return err
 	} else if hit {
-		return fail("référence interdite dans le contenu de l'historique.")
+		return fail("forbidden reference in the content of the history")
 	}
 	return g.leaks("git", ".")
 }
@@ -376,16 +376,16 @@ func (g *Guard) tags(sha string) error {
 			return err
 		}
 		if g.Terms.Match(string(body)) {
-			return fail("référence interdite dans le tag annoté : %s", sha)
+			return fail("forbidden reference in annotated tag: %s", sha)
 		}
 		first, _, _ := strings.Cut(string(body), "\n")
 		next, ok := strings.CutPrefix(first, "object ")
 		if !ok || !shaRe.MatchString(next) {
-			return fail("tag annoté illisible : %s", sha)
+			return fail("unreadable annotated tag: %s", sha)
 		}
 		sha = next
 	}
-	return fail("chaîne de tags trop profonde pour %s, refus.", start)
+	return fail("tag chain too deep for %s, refusing", start)
 }
 
 // allTags checks every annotated tag of the repository.

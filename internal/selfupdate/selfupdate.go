@@ -70,11 +70,11 @@ func Asset(goos, goarch string) string {
 func publicKey() (ed25519.PublicKey, error) {
 	s := strings.TrimSpace(releaseKey)
 	if s == "" {
-		return nil, errors.New("clé de signature des releases absente de ce binaire : mise à jour refusée")
+		return nil, errors.New("release signing key missing from this binary: update refused")
 	}
 	raw, err := base64.StdEncoding.DecodeString(s)
 	if err != nil || len(raw) != ed25519.PublicKeySize {
-		return nil, errors.New("clé de signature des releases invalide dans ce binaire : mise à jour refusée")
+		return nil, errors.New("release signing key invalid in this binary: update refused")
 	}
 	return ed25519.PublicKey(raw), nil
 }
@@ -103,7 +103,7 @@ func Run(o Options) error {
 	goos, goarch := o.Platform()
 	asset := Asset(goos, goarch)
 	if asset == "" {
-		return fmt.Errorf("plateforme non gérée (%s-%s)", goos, goarch)
+		return fmt.Errorf("unsupported platform (%s-%s)", goos, goarch)
 	}
 	tag := o.Target
 	if tag == "" {
@@ -112,10 +112,10 @@ func Run(o Options) error {
 		}
 	}
 	if !tagRe.MatchString(tag) {
-		return fmt.Errorf("version invalide : %q (attendu vX.Y.Z)", tag)
+		return fmt.Errorf("invalid version: %q (expected vX.Y.Z)", tag)
 	}
 	if tag == o.Current {
-		fmt.Fprintf(o.Out, "dot est déjà en %s\n", tag)
+		fmt.Fprintf(o.Out, "dot is already at %s\n", tag)
 		return nil
 	}
 	exe := o.Exe
@@ -128,21 +128,21 @@ func Run(o Options) error {
 		return err
 	}
 	if o.Dry {
-		fmt.Fprintf(o.Out, "[dry] remplacerait %s (%s) par dot-%s %s, après vérification de la signature\n", exe, o.Current, asset, tag)
+		fmt.Fprintf(o.Out, "[dry] would replace %s (%s) with dot-%s %s, after verifying the signature\n", exe, o.Current, asset, tag)
 		return nil
 	}
 
 	base := strings.TrimRight(o.BaseURL, "/") + "/" + tag + "/"
 	sums, err := download(o.HTTP, base+"SHA256SUMS", maxSmall)
 	if err != nil {
-		return fmt.Errorf("SHA256SUMS : %w", err)
+		return fmt.Errorf("SHA256SUMS: %w", err)
 	}
 	sig, err := download(o.HTTP, base+"SHA256SUMS.sig", maxSmall)
 	if err != nil {
-		return fmt.Errorf("SHA256SUMS.sig : %w", err)
+		return fmt.Errorf("SHA256SUMS.sig: %w", err)
 	}
 	if !ed25519.Verify(key, sums, sig) {
-		return errors.New("signature de SHA256SUMS invalide : abandon")
+		return errors.New("invalid SHA256SUMS signature: aborting")
 	}
 	name := "dot-" + asset
 	want, err := sumFor(sums, name)
@@ -151,29 +151,29 @@ func Run(o Options) error {
 	}
 	data, err := download(o.HTTP, base+name, maxDownload)
 	if err != nil {
-		return fmt.Errorf("%s : %w", name, err)
+		return fmt.Errorf("%s: %w", name, err)
 	}
 	got := sha256.Sum256(data)
 	if hex.EncodeToString(got[:]) != want {
-		return fmt.Errorf("%s : checksum invalide, abandon", name)
+		return fmt.Errorf("%s: invalid checksum, aborting", name)
 	}
 	if err := replace(exe, data); err != nil {
 		return err
 	}
-	fmt.Fprintf(o.Out, "dot mis à jour : %s → %s (%s)\n", o.Current, tag, exe)
+	fmt.Fprintf(o.Out, "dot updated: %s → %s (%s)\n", o.Current, tag, exe)
 	return nil
 }
 
 func latest(o Options) (string, error) {
 	b, err := download(o.HTTP, o.APIURL, maxSmall)
 	if err != nil {
-		return "", fmt.Errorf("dernière release introuvable : %w", err)
+		return "", fmt.Errorf("latest release not found: %w", err)
 	}
 	var r struct {
 		Tag string `json:"tag_name"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil || r.Tag == "" {
-		return "", errors.New("dernière release introuvable : réponse illisible")
+		return "", errors.New("latest release not found: unreadable response")
 	}
 	return r.Tag, nil
 }
@@ -190,13 +190,13 @@ func sumFor(sums []byte, name string) (string, error) {
 		}
 		return strings.ToLower(f[0]), nil
 	}
-	return "", fmt.Errorf("%s absent de SHA256SUMS : abandon", name)
+	return "", fmt.Errorf("%s missing from SHA256SUMS: aborting", name)
 }
 
 func download(c *http.Client, url string, limit int64) ([]byte, error) {
 	resp, err := c.Get(url)
 	if err != nil {
-		return nil, errors.New("téléchargement impossible")
+		return nil, errors.New("download failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -204,7 +204,7 @@ func download(c *http.Client, url string, limit int64) ([]byte, error) {
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil || int64(len(data)) > limit {
-		return nil, errors.New("téléchargement invalide")
+		return nil, errors.New("invalid download")
 	}
 	return data, nil
 }

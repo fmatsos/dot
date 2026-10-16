@@ -63,7 +63,7 @@ func Splice(text, blk string) (string, error) {
 	if i := find(begin, 0); i >= 0 {
 		j := find(end, i+1)
 		if j < 0 {
-			return "", errors.New("bloc dot sans marqueur de fin (" + end + ")")
+			return "", errors.New("dot block without end marker (" + end + ")")
 		}
 		return strings.Join(lines[:i], "") + blk + strings.Join(lines[j+1:], ""), nil
 	}
@@ -102,7 +102,7 @@ func Ensure(o Options) error {
 		fi, err := os.Lstat(path)
 		switch {
 		case err == nil && fi.Mode()&os.ModeSymlink != 0:
-			fmt.Fprintf(o.Err, "  shell : ~/%s est un lien, bloc dot non écrit (shellkit : relance son install.sh)\n", s.file)
+			fmt.Fprintf(o.Err, "  shell: ~/%s is a link, dot block not written (shellkit: rerun its install.sh)\n", s.file)
 			continue
 		case err != nil && !errors.Is(err, os.ErrNotExist):
 			return err
@@ -121,12 +121,12 @@ func Ensure(o Options) error {
 		}
 		text, err := Splice(string(old), block(s.loop, o.Nodes))
 		if err != nil {
-			return fmt.Errorf("~/%s : %w", s.file, err)
+			return fmt.Errorf("~/%s: %w", s.file, err)
 		}
 		if text == string(old) {
 			continue
 		}
-		fmt.Fprintf(o.Out, "  shell : bloc dot écrit dans ~/%s\n", s.file)
+		fmt.Fprintf(o.Out, "  shell: dot block written in ~/%s\n", s.file)
 		if o.Dry {
 			continue
 		}

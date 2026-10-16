@@ -13,12 +13,12 @@ import (
 
 // ErrAbsent and ErrInvalid tell the two ways a list can be refused; neither carries a pattern.
 var (
-	ErrAbsent  = errors.New("absente ou vide")
-	ErrInvalid = errors.New("invalide ou illisible")
+	ErrAbsent  = errors.New("absent or empty")
+	ErrInvalid = errors.New("invalid or unreadable")
 )
 
 // ErrMatchesEmpty is an ErrInvalid: some pattern matches the empty string, hence every line.
-var ErrMatchesEmpty = fmt.Errorf("%w : un terme correspond à la chaîne vide, donc à tout (a*, ^, x?…)", ErrInvalid)
+var ErrMatchesEmpty = fmt.Errorf("%w: a term matches the empty string, hence everything (a*, ^, x?…)", ErrInvalid)
 
 // Terms matches text line by line against case-insensitive extended regular expressions.
 // A nil *Terms matches nothing (secrets-only mode).

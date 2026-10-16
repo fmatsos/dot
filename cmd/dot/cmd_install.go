@@ -54,18 +54,18 @@ func targetProfiles(env *Env) ([]install.Profile, error) {
 func newInstallCmd(env *Env) *cobra.Command {
 	var dry bool
 	cmd := &cobra.Command{
-		Use:   "install [url] [-p <clé>] [-n]",
-		Short: "Clone un profil dans ~/.dot/<clé>, l'inscrit et l'installe (sans url : réinstalle)",
-		Long: "Avec une url : clone partiel dans ~/.dot/<clé> (clé : -p, sinon le nom du dépôt), inscription au registre\n" +
-			"(le premier profil devient le défaut), puis installation. Sans url : réinstalle les profils inscrits.\n\n" +
-			"Installation : identité git du clone, liens de home/ dans ~ et de bin/ dans ~/.local/bin (les fichiers\n" +
-			"existants vont dans ~/.local/state/dotfiles/backup/<date>/), purge des sauvegardes, outils, modules du\n" +
-			"manifeste. Deux profils qui lient le même fichier : refus avant toute écriture. Idempotent.\n\n" +
-			"$DOTFILES_TOOLS=0 saute les outils (mise, nvm, plugins Codex) ; $DOTFILES_BACKUP_DAYS règle la rétention\n" +
-			"des sauvegardes (défaut 30, 0 garde tout). -n n'écrit rien : il affiche ce qui changerait.",
+		Use:   "install [url] [-p <key>] [-n]",
+		Short: "Clone a profile into ~/.dot/<key>, register and install it (without url: reinstall)",
+		Long: "With a url: partial clone into ~/.dot/<key> (key: -p, else the repository name), registration in the registry\n" +
+			"(the first profile becomes the default), then installation. Without url: reinstall the registered profiles.\n\n" +
+			"Installation: git identity of the clone, links from home/ into ~ and from bin/ into ~/.local/bin (existing\n" +
+			"files go to ~/.local/state/dotfiles/backup/<date>/), backup purge, tools, manifest\n" +
+			"modules. Two profiles linking the same file: refused before any write. Idempotent.\n\n" +
+			"$DOTFILES_TOOLS=0 skips the tools (mise, nvm, Codex plugins); $DOTFILES_BACKUP_DAYS sets the backup\n" +
+			"retention (default 30, 0 keeps everything). -n writes nothing: it shows what would change.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
-				return usagef("usage : dot install [<url>] [-p <clé>] [-n]")
+				return usagef("usage: dot install [<url>] [-p <key>] [-n]")
 			}
 			return nil
 		},
@@ -88,6 +88,6 @@ func newInstallCmd(env *Env) *cobra.Command {
 			return installErr(in.Reinstall(batch))
 		},
 	}
-	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "affiche ce qui changerait sans rien écrire")
+	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "show what would change without writing anything")
 	return cmd
 }

@@ -20,14 +20,14 @@ var (
 	packageRe = regexp.MustCompile(`^(@[A-Za-z0-9._-]+/)?[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._+-]*$`)
 )
 
-// KeyError names the first offending key; "objet" stands for an unreadable or non-object file.
+// KeyError names the first offending key; "object" stands for an unreadable or non-object file.
 type KeyError struct {
 	File string
 	Key  string
 }
 
 func (e *KeyError) Error() string {
-	return fmt.Sprintf("manifest : %s : clé %s invalide ou fichier absent", e.File, e.Key)
+	return fmt.Sprintf("manifest: %s: key %s invalid or file missing", e.File, e.Key)
 }
 
 type ProfilePath struct {
@@ -60,7 +60,7 @@ type Manifest struct {
 func Load(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, &KeyError{File: path, Key: "objet"}
+		return nil, &KeyError{File: path, Key: "object"}
 	}
 	m, key := parse(data)
 	if key != "" {
@@ -162,14 +162,14 @@ func parse(data []byte) (*Manifest, string) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	var doc json.RawMessage
 	if err := dec.Decode(&doc); err != nil {
-		return nil, "objet"
+		return nil, "object"
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, "objet"
+		return nil, "object"
 	}
 	root, ok := parseObject(doc)
 	if !ok {
-		return nil, "objet"
+		return nil, "object"
 	}
 	if k := root.unknown("", "repo", "deploy", "profiles", "deployProfile", "marketplace", "nvm", "modules"); k != "" {
 		return nil, k

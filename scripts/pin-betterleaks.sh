@@ -8,8 +8,8 @@
 #   ASSET_PATTERN='bl_%s_%s_%s.tar.gz' scripts/pin-betterleaks.sh 1.9.0   (version, os, arch)
 set -euo pipefail
 
-version=${1:?usage : scripts/pin-betterleaks.sh <version>}
-[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version invalide : $version" >&2; exit 2; }
+version=${1:?usage: scripts/pin-betterleaks.sh <version>}
+[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid version: $version" >&2; exit 2; }
 pattern=${ASSET_PATTERN:-betterleaks_%s_%s_%s.tar.gz}
 base=https://github.com/betterleaks/betterleaks/releases/download/v$version
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
@@ -21,6 +21,6 @@ for p in "linux-x64 linux x64" "linux-arm64 linux arm64" "macos-x64 darwin x64" 
   read -r key os arch <<<"$p"
   # shellcheck disable=SC2059 # The pattern is a printf format on purpose.
   name=$(printf "$pattern" "$version" "$os" "$arch")
-  curl -fsSL --proto '=https' -o "$tmp/$name" "$base/$name" || { echo "téléchargement impossible : $base/$name" >&2; exit 1; }
+  curl -fsSL --proto '=https' -o "$tmp/$name" "$base/$name" || { echo "download failed: $base/$name" >&2; exit 1; }
   printf '\t\t"%s": {Name: "%s", SHA256: "%s"},\n' "$key" "$name" "$(sha256 "$tmp/$name")"
 done

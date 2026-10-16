@@ -41,7 +41,7 @@ type ToolsRequest struct {
 }
 
 // ErrReported marks a failure the Installer already printed (modules): the caller only sets the exit code.
-var ErrReported = errors.New("échec déjà signalé")
+var ErrReported = errors.New("failure already reported")
 
 const includePath = "~/.config/git/profiles.gitconfig" // literal value: git expands it itself
 
@@ -112,7 +112,7 @@ func (in *Installer) load(p Profile) (loaded, error) {
 		l.Name, _ = gitText("config", "-f", file, "user.name")
 		l.Email, _ = gitText("config", "-f", file, "user.email")
 		if l.Name == "" || l.Email == "" {
-			return loaded{}, fmt.Errorf("profil %s : user.name et user.email requis (%s)", m.DeployProfile, file)
+			return loaded{}, fmt.Errorf("profile %s: user.name and user.email required (%s)", m.DeployProfile, file)
 		}
 	}
 	return l, nil
@@ -152,7 +152,7 @@ func (in *Installer) install(batch, all []Profile, lenient bool, commit func() e
 		if !lenient {
 			return e
 		}
-		fmt.Fprintf(in.Err, "install %s : %v\n", p.Key, e)
+		fmt.Fprintf(in.Err, "install %s: %v\n", p.Key, e)
 		failed = append(failed, p.Key)
 		return nil
 	}
@@ -321,7 +321,7 @@ func (in *Installer) modules(done []loaded, all []Profile) error {
 			err = crontab.Run(o)
 		}
 		if err != nil {
-			fmt.Fprintf(in.Err, "%s : %v\n", name, err)
+			fmt.Fprintf(in.Err, "%s: %v\n", name, err)
 			return ErrReported
 		}
 	}
@@ -336,7 +336,7 @@ func (in *Installer) Pull(batch []Profile) error {
 	for _, p := range batch {
 		in.header(batch, p)
 		if err := pull(p.Dir, in.Out, in.Err); err != nil {
-			fmt.Fprintf(in.Err, "pull %s : %v\n", p.Key, err)
+			fmt.Fprintf(in.Err, "pull %s: %v\n", p.Key, err)
 			failed = append(failed, p.Key)
 			continue
 		}
@@ -354,7 +354,7 @@ func (in *Installer) Pull(batch []Profile) error {
 		failed = append(failed, f...)
 	}
 	if len(failed) > 0 {
-		fmt.Fprintf(in.Err, "échec : %s\n", strings.Join(failed, ", "))
+		fmt.Fprintf(in.Err, "failed: %s\n", strings.Join(failed, ", "))
 		return ErrReported
 	}
 	return nil

@@ -26,12 +26,12 @@ var (
 func newWhoamiCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:                   "whoami",
-		Short:                 "Identité git en vigueur ici, et le fichier qui la fixe",
+		Short:                 "Git identity in effect here, and the file that sets it",
 		DisableFlagsInUseLine: true,
 		Args:                  exactArgs(0, "dot whoami"),
 		RunE: func(*cobra.Command, []string) error {
 			if err := runWithStdio(env, exec.Command("git", "config", "--show-origin", "user.email")); err != nil {
-				fmt.Fprintln(env.Stderr, "aucun email : useConfigOnly bloquera les commits ici")
+				fmt.Fprintln(env.Stderr, "no email: useConfigOnly will block commits here")
 			}
 			return runWithStdio(env, exec.Command("git", "var", "GIT_AUTHOR_IDENT"))
 		},
@@ -40,18 +40,18 @@ func newWhoamiCmd(env *Env) *cobra.Command {
 
 func newProfileCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
-		Use:   "profile <nom> <dossier/|url-du-remote>",
-		Short: "Applique un profil git à un dossier ou un remote",
-		Long: "Applique un profil git à un dossier ou un remote.\n\n" +
-			"Écrit la règle includeIf dans ~/.config/git/profiles.local (jamais versionné). Le profil est " +
-			"~/.config/git/profiles/<nom>.gitconfig ou <nom>.local. Le fichier peut fixer dotfiles.profile = <nom> : " +
-			"dot repos vérifie alors son email.",
-		Example: "  dot profile demo ~/sandbox/essai/\n  dot profile demo 'git@github.com:moi/**'",
-		Args:    exactArgs(2, "dot profile <nom> <dossier/|url-du-remote>"),
+		Use:   "profile <name> <directory/|remote-url>",
+		Short: "Apply a git profile to a directory or a remote",
+		Long: "Apply a git profile to a directory or a remote.\n\n" +
+			"Writes the includeIf rule in ~/.config/git/profiles.local (never versioned). The profile is " +
+			"~/.config/git/profiles/<name>.gitconfig or <name>.local. The file may set dotfiles.profile = <name>: " +
+			"dot repos then checks its email.",
+		Example: "  dot profile demo ~/sandbox/trial/\n  dot profile demo 'git@github.com:me/**'",
+		Args:    exactArgs(2, "dot profile <name> <directory/|remote-url>"),
 		RunE: func(_ *cobra.Command, args []string) error {
 			name, target := args[0], args[1]
 			if !profileName.MatchString(name) || strings.Contains(name, "..") {
-				return fmt.Errorf("profil : nom invalide")
+				return fmt.Errorf("profile: invalid name")
 			}
 			profiles := filepath.Join(env.Home, ".config", "git", "profiles")
 			file := filepath.Join(profiles, name+".gitconfig")
@@ -59,7 +59,7 @@ func newProfileCmd(env *Env) *cobra.Command {
 				file = filepath.Join(profiles, name+".local")
 			}
 			if fi, err := os.Stat(file); err != nil || !fi.Mode().IsRegular() {
-				return fmt.Errorf("profil introuvable : ~/.config/git/profiles/%s.{gitconfig,local}", name)
+				return fmt.Errorf("profile not found: ~/.config/git/profiles/%s.{gitconfig,local}", name)
 			}
 			var cond string
 			if remoteGlob.MatchString(target) {
@@ -71,7 +71,7 @@ func newProfileCmd(env *Env) *cobra.Command {
 					return err
 				}
 				if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
-					return fmt.Errorf("profile : dossier introuvable : %s", target)
+					return fmt.Errorf("profile: directory not found: %s", target)
 				}
 				cond = "gitdir:" + d + "/"
 			}
@@ -80,9 +80,9 @@ func newProfileCmd(env *Env) *cobra.Command {
 			want := shortHome(env.Home, file)
 			if path, found := rulePath(rules, header); found {
 				if path != want {
-					return fmt.Errorf("profile : une règle existe déjà pour %s vers %s : la retirer de ~/.config/git/profiles.local", cond, cmp.Or(path, "(sans path)"))
+					return fmt.Errorf("profile: a rule already exists for %s to %s: remove it from ~/.config/git/profiles.local", cond, cmp.Or(path, "(no path)"))
 				}
-				_, err := fmt.Fprintf(env.Stdout, "règle déjà présente : %s → %s\n", cond, name)
+				_, err := fmt.Fprintf(env.Stdout, "rule already present: %s → %s\n", cond, name)
 				return err
 			}
 			f, err := os.OpenFile(rules, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -96,7 +96,7 @@ func newProfileCmd(env *Env) *cobra.Command {
 			if werr != nil {
 				return werr
 			}
-			_, err = fmt.Fprintf(env.Stdout, "règle ajoutée : %s → %s\n", cond, name)
+			_, err = fmt.Fprintf(env.Stdout, "rule added: %s → %s\n", cond, name)
 			return err
 		},
 	}

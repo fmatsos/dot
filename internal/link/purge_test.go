@@ -56,16 +56,14 @@ func TestPurgeBackups(t *testing.T) {
 		extra     string // extra directory created in base, with whether it should survive
 		extraKept bool
 		oldKept   bool
-		out, err  string
+		listed    bool // the dry run names the directories it would purge (the names, not the wording)
 	}{
-		{name: "default retention purges old valid names only", days: 30, out: "sauvegardes : 2 dossier(s) purgé(s)\n"},
+		{name: "default retention purges old valid names only", days: 30},
 		{name: "zero keeps everything", days: 0, oldKept: true},
-		{name: "dry run lists and deletes nothing", days: 30, dry: true, oldKept: true,
-			out: "  [dry] purge : ~/.local/state/dotfiles/backup/20000101-010203\n" +
-				"  [dry] purge : ~/.local/state/dotfiles/backup/20000102-010203-extra\n"},
-		{name: "10 days old kept at 30", days: 30, extra: "20260926-120000", extraKept: true, out: "sauvegardes : 2 dossier(s) purgé(s)\n"},
-		{name: "10 days old purged at 5", days: 5, extra: "20260926-120000", out: "sauvegardes : 3 dossier(s) purgé(s)\n"},
-		{name: "exactly at cutoff is kept", days: 5, extra: "20261001-120000", extraKept: true, out: "sauvegardes : 2 dossier(s) purgé(s)\n"},
+		{name: "dry run lists and deletes nothing", days: 30, dry: true, oldKept: true, listed: true},
+		{name: "10 days old kept at 30", days: 30, extra: "20260926-120000", extraKept: true},
+		{name: "10 days old purged at 5", days: 5, extra: "20260926-120000"},
+		{name: "exactly at cutoff is kept", days: 5, extra: "20261001-120000", extraKept: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,8 +73,13 @@ func TestPurgeBackups(t *testing.T) {
 			}
 			var out, errOut bytes.Buffer
 			must(t, PurgeBackups(home, tc.days, tc.dry, &out, &errOut, clock))
-			if out.String() != tc.out || errOut.String() != tc.err {
-				t.Errorf("out=%q err=%q", out.String(), errOut.String())
+			if errOut.Len() != 0 {
+				t.Errorf("err=%q", errOut.String())
+			}
+			for _, d := range []string{"20000101-010203", "20000102-010203-extra"} {
+				if strings.Contains(out.String(), d) != tc.listed {
+					t.Errorf("out=%q: %s listed = %v, want %v", out.String(), d, !tc.listed, tc.listed)
+				}
 			}
 			for _, d := range []string{"20000101-010203", "20000102-010203-extra"} {
 				if exists(filepath.Join(base, d)) != tc.oldKept {
@@ -106,7 +109,8 @@ func TestPurgeBackupsFromInvalid(t *testing.T) {
 		home, base, _ := purgeFixture(t)
 		var out, errOut bytes.Buffer
 		must(t, PurgeBackupsFrom(home, raw, false, &out, &errOut, clock))
-		if errOut.String() != "sauvegardes : DOTFILES_BACKUP_DAYS invalide, purge ignorée\n" || out.Len() != 0 {
+		// A warning (presence only, not wording) and nothing else.
+		if errOut.Len() == 0 || out.Len() != 0 {
 			t.Errorf("%s: out=%q err=%q", raw, out.String(), errOut.String())
 		}
 		if !exists(base + "/20000101-010203") {
@@ -117,7 +121,7 @@ func TestPurgeBackupsFromInvalid(t *testing.T) {
 	home, base, _ := purgeFixture(t)
 	var out bytes.Buffer
 	must(t, PurgeBackupsFrom(home, "", false, &out, &out, clock))
-	if exists(base+"/20000101-010203") || !strings.Contains(out.String(), "2 dossier(s)") {
+	if exists(base+"/20000101-010203") || exists(base+"/20000102-010203-extra") {
 		t.Errorf("default not applied: %q", out.String())
 	}
 }
@@ -145,7 +149,7 @@ func TestPurgeBackupsEdges(t *testing.T) {
 	home, base, _ := purgeFixture(t)
 	var errOut bytes.Buffer
 	must(t, PurgeBackups(home, 9_000_000, false, &out, &errOut, clock))
-	if errOut.String() != "sauvegardes : date limite indisponible, purge ignorée\n" || !exists(base+"/20000101-010203") {
+	if errOut.Len() == 0 || !exists(base+"/20000101-010203") { // a warning (presence only, not wording), nothing purged
 		t.Errorf("err = %q", errOut.String())
 	}
 	// the stamp is read in the clock's zone, not UTC

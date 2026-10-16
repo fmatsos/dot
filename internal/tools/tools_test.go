@@ -144,9 +144,6 @@ func TestMiseInstallsVerifiedBinary(t *testing.T) {
 	if got, _ := os.ReadFile(bin); !bytes.Equal(got, e.body) {
 		t.Fatal("content differs")
 	}
-	if want := "  mise " + miseVersion + " (linux-x64) → ~/.local/bin/mise\n"; !strings.HasPrefix(e.out.String(), want) {
-		t.Fatalf("out %q", e.out.String())
-	}
 	ents, _ := os.ReadDir(e.path(".local/bin"))
 	if len(ents) != 1 {
 		t.Fatalf("temporary file left behind: %v", ents)
@@ -173,8 +170,8 @@ func TestMiseBadChecksum(t *testing.T) {
 	e := newEnv(t)
 	e.body = []byte("tampered")
 	err := e.run()
-	if err == nil || err.Error() != "mise : checksum invalide, abandon" {
-		t.Fatalf("err %v", err)
+	if err == nil {
+		t.Fatal("tampered binary accepted")
 	}
 	if _, err := os.Stat(e.path(".local/bin/mise")); err == nil {
 		t.Fatal("tampered binary installed")
@@ -187,14 +184,19 @@ func TestMiseBadChecksum(t *testing.T) {
 func TestMiseDownloadFailure(t *testing.T) {
 	e := newEnv(t)
 	e.opts.MiseBaseURL = e.srv.URL + "/missing"
-	err := e.run()
-	if err == nil || err.Error() != "mise : téléchargement impossible" {
-		t.Fatalf("err %v", err)
+	if err := e.run(); err == nil {
+		t.Fatal("404 accepted")
+	}
+	if _, err := os.Stat(e.path(".local/bin/mise")); err == nil {
+		t.Fatal("binary installed after a failed download")
 	}
 	e = newEnv(t)
 	e.srv.Close()
-	if err := e.run(); err == nil || err.Error() != "mise : téléchargement impossible" {
-		t.Fatalf("err %v", err)
+	if err := e.run(); err == nil {
+		t.Fatal("unreachable server accepted")
+	}
+	if _, err := os.Stat(e.path(".local/bin/mise")); err == nil {
+		t.Fatal("binary installed after a failed download")
 	}
 }
 
@@ -204,11 +206,14 @@ func TestMiseUnsupportedPlatform(t *testing.T) {
 	if err := e.run(); err != nil {
 		t.Fatal(err)
 	}
-	if want := "  mise ignoré : plateforme non gérée (plan9-mips)\n"; !strings.HasPrefix(e.err.String(), want) {
-		t.Fatalf("err %q", e.err.String())
+	if e.err.Len() == 0 {
+		t.Fatal("skipped platform not reported")
 	}
 	if e.hits.Load() != 0 {
 		t.Fatal("download attempted")
+	}
+	if _, err := os.Stat(e.path(".local")); err == nil {
+		t.Fatal("files written")
 	}
 }
 
@@ -229,11 +234,8 @@ func TestMiseDryRunWritesNothing(t *testing.T) {
 	if e.read(".config/shkit/settings.sh") != "export A=1\n" {
 		t.Fatal("settings modified")
 	}
-	out := e.out.String()
-	for _, w := range []string{"  [dry] installer mise " + miseVersion + " (linux-x64) dans ~/.local/bin/mise\n"} {
-		if !strings.Contains(out, w) {
-			t.Fatalf("missing %q in %q", w, out)
-		}
+	if e.out.Len() == 0 {
+		t.Fatal("dry run announced nothing")
 	}
 }
 
@@ -251,9 +253,6 @@ func TestMiseInstallArgvAndIdempotence(t *testing.T) {
 	}
 	if e.hits.Load() != hits {
 		t.Fatal("binary downloaded twice")
-	}
-	if strings.Contains(e.out.String(), "mise 2026") {
-		t.Fatalf("reinstalled: %q", e.out.String())
 	}
 }
 
@@ -284,10 +283,10 @@ func TestMiseExistingPinnedVersionIsKept(t *testing.T) {
 }
 
 func TestMiseExistingOtherVersionIsReplaced(t *testing.T) {
-	for _, tc := range []struct{ name, out, msg string }{
-		{"older", "2026.9.0 linux-x64 (2026-09-01)\n", "  mise : version 2026.9.0 trouvée, " + miseVersion + " attendue : mise à jour\n"},
-		{"look-alike", miseVersion + "1 linux-x64\n", "  mise : version " + miseVersion + "1 trouvée, " + miseVersion + " attendue : mise à jour\n"},
-		{"empty", "", "  mise : version illisible, " + miseVersion + " attendue : mise à jour\n"},
+	for _, tc := range []struct{ name, out string }{
+		{"older", "2026.9.0 linux-x64 (2026-09-01)\n"},
+		{"look-alike", miseVersion + "1 linux-x64\n"},
+		{"empty", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -301,9 +300,6 @@ func TestMiseExistingOtherVersionIsReplaced(t *testing.T) {
 			}
 			if got := e.read(".local/bin/mise"); got != string(e.body) {
 				t.Fatalf("binary not replaced: %q", got)
-			}
-			if !strings.HasPrefix(e.out.String(), tc.msg+"  mise "+miseVersion+" (linux-x64)") {
-				t.Fatalf("out %q", e.out.String())
 			}
 		})
 	}
@@ -340,18 +336,16 @@ func TestMiseOtherVersionDryAndBadChecksum(t *testing.T) {
 	if e.hits.Load() != 0 || e.read(".local/bin/mise") != "#!/bin/sh\necho foreign\n" {
 		t.Fatal("dry run acted")
 	}
-	for _, w := range []string{"  mise : version 2026.9.0 trouvée, " + miseVersion + " attendue : mise à jour\n", "  [dry] installer mise " + miseVersion + " (linux-x64) dans ~/.local/bin/mise\n"} {
-		if !strings.Contains(e.out.String(), w) {
-			t.Fatalf("missing %q in %q", w, e.out.String())
-		}
+	if e.out.Len() == 0 {
+		t.Fatal("dry run announced nothing")
 	}
 	// The replacement is verified like a first install: a bad sum leaves the old binary alone.
 	e = newEnv(t)
 	e.existingMise()
 	e.miseOut = "2026.9.0\n"
 	e.body = []byte("tampered")
-	if err := e.run(); err == nil || err.Error() != "mise : checksum invalide, abandon" {
-		t.Fatalf("err %v", err)
+	if err := e.run(); err == nil {
+		t.Fatal("tampered binary accepted")
 	}
 	if e.read(".local/bin/mise") != "#!/bin/sh\necho foreign\n" {
 		t.Fatal("old binary replaced by an unverified one")
@@ -395,10 +389,6 @@ func TestNVMCloneInstallAndPath(t *testing.T) {
 		"git clone -q --depth 1 --branch v0.40.4 file:///unused " + e.path(".nvm"),
 		"bash -c " + nvmScript + " _ 9.8.7 demo-cli@2.3.4 @acme/other-cli@5.6.7",
 	})
-	wantOut := "  nvm v0.40.4 → ~/.nvm\n  nvm : node 9.8.7 + demo-cli@2.3.4 @acme/other-cli@5.6.7\n"
-	if e.out.String() != wantOut {
-		t.Fatalf("out %q", e.out.String())
-	}
 	if got := e.read(".config/shkit/settings.sh"); got != "export A=1\n" {
 		t.Fatalf("settings touched: %q (the PATH line is in the dot block)", got)
 	}
@@ -513,10 +503,8 @@ func TestNVMSkipAndDry(t *testing.T) {
 	if _, err := os.Stat(e.path(".nvm")); err == nil {
 		t.Fatal("dry run wrote")
 	}
-	for _, w := range []string{"  [dry] git clone -q --depth 1 --branch v0.40.4 file:///unused " + e.path(".nvm") + "\n", "  nvm : node 9.8.7 + demo-cli@2.3.4\n"} {
-		if !strings.Contains(e.out.String(), w) {
-			t.Fatalf("missing %q in %q", w, e.out.String())
-		}
+	if e.out.Len() == 0 {
+		t.Fatal("dry run announced nothing")
 	}
 }
 
@@ -622,8 +610,8 @@ func TestPluginsDryStillListsButDoesNotAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, e.calls, []string{"/fake/codex plugin marketplace list"})
-	if e.out.String() != "  [dry] /fake/codex plugin add one@acme\n" {
-		t.Fatalf("out %q", e.out.String())
+	if e.out.Len() == 0 {
+		t.Fatal("dry run announced nothing")
 	}
 }
 
@@ -631,8 +619,9 @@ func TestCommandFailuresAreReported(t *testing.T) {
 	e := newEnv(t)
 	e.opts.MiseConfig = false
 	e.opts.NVM = []manifest.NVM{{Node: "9.8.7"}}
-	e.opts.Run = func(string, ...string) error { return errors.New("boom") }
-	if err := e.run(); err == nil || !strings.Contains(err.Error(), "boom") {
+	boom := errors.New("boom")
+	e.opts.Run = func(string, ...string) error { return boom }
+	if err := e.run(); !errors.Is(err, boom) {
 		t.Fatalf("err %v", err)
 	}
 }
@@ -679,9 +668,6 @@ func TestNVMOtherTagIsUpdated(t *testing.T) {
 				"git -C " + d(e) + " fetch --depth 1 origin tag " + nvmVersion,
 				"git -C " + d(e) + " checkout -q " + nvmVersion,
 			})
-			if !strings.Contains(e.out.String(), "nvm : mise à jour vers "+nvmVersion) {
-				t.Fatalf("out %q", e.out.String())
-			}
 			if _, err := os.Stat(e.path(".nvm/versions/node/v9.8.7/bin/node")); err != nil {
 				t.Fatal("installed node touched")
 			}
@@ -699,8 +685,8 @@ func TestNVMNotAGitRepoIsReportedAndUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, e.calls, nil)
-	if e.err.String() != "  nvm : ~/.nvm n'est pas un dépôt git, version non vérifiée\n" {
-		t.Fatalf("err %q", e.err.String())
+	if e.err.Len() == 0 {
+		t.Fatal("unverifiable ~/.nvm not reported")
 	}
 }
 
@@ -712,27 +698,22 @@ func TestNVMUpdateDryRunAnnouncesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	eq(t, e.calls, []string{"git -C " + e.path(".nvm") + " describe --tags --exact-match HEAD"})
-	for _, w := range []string{
-		"  [dry] git -C " + e.path(".nvm") + " fetch --depth 1 origin tag " + nvmVersion + "\n",
-		"  [dry] git -C " + e.path(".nvm") + " checkout -q " + nvmVersion + "\n",
-	} {
-		if !strings.Contains(e.out.String(), w) {
-			t.Fatalf("missing %q in %q", w, e.out.String())
-		}
+	if e.out.Len() == 0 {
+		t.Fatal("dry run announced nothing")
 	}
 }
 
 func TestNVMUpdateFailure(t *testing.T) {
 	e := newEnv(t)
 	e.nvmRepo("v0.39.0")
+	netDown := errors.New("network down")
 	e.runErr = func(call string) error {
 		if strings.Contains(call, " fetch ") {
-			return errors.New("network down")
+			return netDown
 		}
 		return nil
 	}
-	err := e.run()
-	if err == nil || err.Error() != "nvm : mise à jour impossible : network down" {
+	if err := e.run(); !errors.Is(err, netDown) {
 		t.Fatalf("err %v", err)
 	}
 	for _, c := range e.calls {

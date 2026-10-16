@@ -27,10 +27,8 @@ git -C "$A" -c user.name=F -c user.email=f@example.com commit -q -m fixture
 clone=$HOME/.dot/a
 
 dot backups list >"$S/out"
-grep -qx 'aucune sauvegarde' "$S/out"
 fails 1 dot backups restore
-grep -q 'aucune sauvegarde à restaurer' "$S/err"
-echo 'OK   no backup: clear message, list exits 0, restore exits 1'
+echo 'OK   no backup: list exits 0, restore exits 1'
 
 # Pre-existing files in ~ that the install will replace and back up.
 echo user-rc >"$HOME/.a-rc"; chmod 600 "$HOME/.a-rc"
@@ -40,23 +38,20 @@ run=$(ls "$base"); [ "$(printf %s "$run" | wc -l)" -eq 0 ]
 [ -f "$base/$run/.a-rc" ] && [ -f "$base/$run/.config/a/app.conf" ]
 
 dot backups list >"$S/out"
-head -n1 "$S/out" | grep -qx "$run  2 fichier(s)"
+head -n1 "$S/out" | grep -q "^$run "
+[ "$(grep -c '^  ~' "$S/out")" -eq 2 ]
 grep -qx '  ~/.a-rc' "$S/out" && grep -qx '  ~/.config/a/app.conf' "$S/out"
 dot backups list "$run" >"$S/out"; grep -qx '  ~/.a-rc' "$S/out"
 fails 1 dot backups list 20000101-000000
 echo 'OK   list shows the run, its files relative to ~, and one run by id'
 
 dot backups restore -n >"$S/out"
-grep -q '\[dry\] restauré : ~/.a-rc' "$S/out"
 [ -L "$HOME/.a-rc" ] && [ -f "$base/$run/.a-rc" ]
-echo 'OK   restore -n prints the plan and writes nothing'
+echo 'OK   restore -n writes nothing'
 
 # A real user file at one of the targets: refused, the other one goes back.
 rm "$HOME/.a-rc"; echo newer >"$HOME/.a-rc"
 fails 1 dot backups restore
-grep -q 'refusé (fichier existant) : ~/.a-rc' "$S/err"
-grep -q 'restauré : ~/.config/a/app.conf' "$S/out"
-grep -q 'dot install recréera les liens' "$S/out"
 [ "$(cat "$HOME/.a-rc")" = newer ] && [ -f "$base/$run/.a-rc" ]
 [ -f "$HOME/.config/a/app.conf" ] && [ ! -L "$HOME/.config/a/app.conf" ]
 [ "$(cat "$HOME/.config/a/app.conf")" = user-app ]

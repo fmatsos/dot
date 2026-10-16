@@ -5,14 +5,14 @@ set -euo pipefail
 refs=$(mktemp); trap 'rm -f "$refs"' EXIT
 cat >"$refs"
 blocked() {
-  echo 'Push bloqué par le garde-fou anti-fuite ; git push --no-verify le contourne une fois.' >&2
+  echo 'Push blocked by the leak guard; git push --no-verify bypasses it once.' >&2
   exit 1
 }
-command -v dot >/dev/null || { echo "Garde-fou introuvable : dot n'est pas dans le PATH" >&2; blocked; }
+command -v dot >/dev/null || { echo "Guard not found: dot is not in the PATH" >&2; blocked; }
 # `git config dotfiles.guard secrets` in a repo that names a client on purpose (a CV site):
 # betterleaks only, no forbidden terms.
 mode=$(git config --get dotfiles.guard || true)
-case $mode in '' | secrets) ;; *) echo "dotfiles.guard inconnu : $mode (seul « secrets » existe)" >&2; blocked ;; esac
+case $mode in '' | secrets) ;; *) echo "unknown dotfiles.guard: $mode (only \"secrets\" exists)" >&2; blocked ;; esac
 DOTFILES_GUARD=$mode dot guard push "$@" <"$refs" || blocked
 # --git-path hooks follows core.hooksPath and would point back to this script.
 hook=$(git rev-parse --path-format=absolute --git-common-dir)/hooks/pre-push

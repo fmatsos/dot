@@ -43,7 +43,7 @@ func TestStagedAwkwardFileNamesCleanPass(t *testing.T) {
 	} {
 		t.Run(printable(name), func(t *testing.T) {
 			dir := repo(t)
-			stage(t, dir, name, "propre\n")
+			stage(t, dir, name, "clean\n")
 			if err := staged(t, dir); err != nil {
 				t.Fatalf("%v", err)
 			}
@@ -57,12 +57,12 @@ func TestStagedAwkwardFileNamesWithTermContent(t *testing.T) {
 			dir := repo(t)
 			stage(t, dir, name, "tenant AcmeCorp\n")
 			err := staged(t, dir)
-			wantFailure(t, err, "référence interdite (nom ou contenu) dans")
+			wantFailure(t, err, printable(name))
 			if strings.Contains(strings.ToLower(err.Error()), "acmecorp") {
-				t.Fatalf("le terme est affiché : %v", err)
+				t.Fatalf("the term is shown: %v", err)
 			}
 			if strings.Contains(err.Error(), "\t") || strings.Count(err.Error(), "\n") != 1 {
-				t.Fatalf("caractère de contrôle du nom affiché : %q", err.Error())
+				t.Fatalf("control character of the name shown: %q", err.Error())
 			}
 		})
 	}
@@ -71,11 +71,11 @@ func TestStagedAwkwardFileNamesWithTermContent(t *testing.T) {
 func TestStagedTermOnlyInFileName(t *testing.T) {
 	for _, name := range []string{"notes-acmecorp.txt", "acmecorp/x.txt", "ok\nacmecorp.txt"} {
 		dir := repo(t)
-		stage(t, dir, name, "propre\n")
+		stage(t, dir, name, "clean\n")
 		err := staged(t, dir)
-		wantFailure(t, err, "<nom masqué>")
+		wantCause(t, err, "<masked name>")
 		if strings.Contains(err.Error(), "acmecorp") {
-			t.Fatalf("%q : nom interdit affiché", name)
+			t.Fatalf("%q: forbidden name shown", name)
 		}
 	}
 }
@@ -88,10 +88,10 @@ func TestUnicodeNormalizationBlindSpot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !terms.Match("cafécorp") {
-		t.Fatal("NFC contre NFC doit correspondre")
+		t.Fatal("NFC against NFC must match")
 	}
 	if terms.Match("cafécorp") {
-		t.Fatal("la normalisation est désormais gérée : retirer ce test d'angle mort")
+		t.Fatal("normalization is now handled: remove this blind-spot test")
 	}
 }
 
@@ -101,7 +101,7 @@ func TestStagedDeletionAndRename(t *testing.T) {
 	// Deleting a forbidden file adds nothing: allowed.
 	git(t, dir, "rm", "-q", "old-acmecorp.txt")
 	if err := staged(t, dir); err != nil {
-		t.Fatalf("suppression : %v", err)
+		t.Fatalf("deletion: %v", err)
 	}
 	git(t, dir, "reset", "-q", "--hard")
 
@@ -112,12 +112,12 @@ func TestStagedDeletionAndRename(t *testing.T) {
 
 	// A clean file renamed to a forbidden name is refused by name.
 	git(t, dir, "mv", "a.txt", "acmecorp.txt")
-	wantFailure(t, staged(t, dir), "<nom masqué>")
+	wantCause(t, staged(t, dir), "<masked name>")
 	git(t, dir, "reset", "-q", "--hard")
 
 	git(t, dir, "mv", "a.txt", "b.txt")
 	if err := staged(t, dir); err != nil {
-		t.Fatalf("renommage propre : %v", err)
+		t.Fatalf("clean rename: %v", err)
 	}
 }
 
@@ -129,7 +129,7 @@ func TestStagedBinaryAndLargeFiles(t *testing.T) {
 	git(t, dir, "rm", "-q", "--cached", "-f", "f.bin")
 
 	filler := strings.Repeat("x", 1023) + "\n"
-	stage(t, dir, "big.txt", strings.Repeat(filler, 6*1024)+"fin AcmeCorp")
+	stage(t, dir, "big.txt", strings.Repeat(filler, 6*1024)+"end AcmeCorp")
 	wantFailure(t, staged(t, dir), "big.txt")
 	git(t, dir, "rm", "-q", "--cached", "-f", "big.txt")
 	stage(t, dir, "oneline.txt", strings.Repeat("y", 5<<20)+"AcmeCorp")
@@ -137,7 +137,7 @@ func TestStagedBinaryAndLargeFiles(t *testing.T) {
 	git(t, dir, "rm", "-q", "--cached", "-f", "oneline.txt")
 	stage(t, dir, "bigclean.txt", strings.Repeat(filler, 6*1024))
 	if err := staged(t, dir); err != nil {
-		t.Fatalf("gros fichier propre : %v", err)
+		t.Fatalf("large clean file: %v", err)
 	}
 }
 
@@ -146,7 +146,7 @@ func TestTermSplitAcrossLinesDoesNotMatch(t *testing.T) {
 	dir := repo(t)
 	stage(t, dir, "split.txt", "acme\ncorp\n")
 	if err := staged(t, dir); err != nil {
-		t.Fatalf("documenté : un terme coupé par un saut de ligne ne correspond pas : %v", err)
+		t.Fatalf("documented: a term split by a newline does not match: %v", err)
 	}
 }
 
@@ -158,21 +158,21 @@ func TestStagedGitlinkNeitherCrashesNorIsOpened(t *testing.T) {
 	// A gitlink: a mode 160000 entry whose commit is not in this repository.
 	git(t, dir, "update-index", "--add", "--cacheinfo", "160000,"+subSha+",vendor/lib")
 	if err := staged(t, dir); err != nil {
-		t.Fatalf("un gitlink ne doit pas bloquer le commit : %v", err)
+		t.Fatalf("a gitlink must not block the commit: %v", err)
 	}
 	// Its name is still checked.
 	git(t, dir, "update-index", "--add", "--cacheinfo", "160000,"+subSha+",acmecorp-lib")
-	wantFailure(t, staged(t, dir), "<nom masqué>")
+	wantCause(t, staged(t, dir), "<masked name>")
 }
 
 func TestStagedUnbornBranch(t *testing.T) {
 	dir := unborn(t)
 	if err := staged(t, dir); err != nil {
-		t.Fatalf("index vide : %v", err)
+		t.Fatalf("empty index: %v", err)
 	}
-	stage(t, dir, "a.txt", "propre\n")
+	stage(t, dir, "a.txt", "clean\n")
 	if err := staged(t, dir); err != nil {
-		t.Fatalf("branche sans commit : %v", err)
+		t.Fatalf("branch without commit: %v", err)
 	}
 	stage(t, dir, "b.txt", "AcmeCorp\n")
 	wantFailure(t, staged(t, dir), "b.txt")
@@ -181,7 +181,7 @@ func TestStagedUnbornBranch(t *testing.T) {
 func TestStagedDetachedHead(t *testing.T) {
 	dir := repo(t)
 	git(t, dir, "checkout", "-q", "--detach")
-	stage(t, dir, "ok.txt", "propre\n")
+	stage(t, dir, "ok.txt", "clean\n")
 	if err := staged(t, dir); err != nil {
 		t.Fatal(err)
 	}
@@ -191,19 +191,19 @@ func TestStagedDetachedHead(t *testing.T) {
 
 func TestStagedNotARepositoryFailsClosed(t *testing.T) {
 	if err := staged(t, t.TempDir()); err == nil {
-		t.Fatal("hors dépôt : doit échouer")
+		t.Fatal("outside a repository: must fail")
 	}
 }
 
 func TestAllOnUnbornAndDetached(t *testing.T) {
 	// Nothing to log on an unborn branch: whatever the outcome, a refusal must name the command.
 	if err := newGuard(t, unborn(t), &scans{}).All(); err != nil {
-		wantFailure(t, err, "commande en échec")
+		wantFailure(t, err, "")
 	}
 	dir := repo(t)
 	git(t, dir, "checkout", "-q", "--detach")
 	commit(t, dir, "d.txt", "AcmeCorp\n", "detached")
-	wantFailure(t, newGuard(t, dir, &scans{}).All(), "contenu")
+	wantCause(t, newGuard(t, dir, &scans{}).All(), "content")
 }
 
 func TestPushNewBranchDeletionAndMalformed(t *testing.T) {
@@ -216,23 +216,27 @@ func TestPushNewBranchDeletionAndMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(s.calls) != 1 || s.calls[0][1] != "--log-opts="+head+" --not --remotes=origin" {
-		t.Fatalf("scanner : %v", s.calls)
+		t.Fatalf("scanner: %v", s.calls)
 	}
 	// Deletion: local sha all zeros; the remote sha is not even looked at. Nothing is sent, nothing scanned.
 	s.calls = nil
 	for _, rsha := range []string{head, zeros, "nothex"} {
 		if err := g.Push(strings.NewReader("(delete) "+zeros+" refs/heads/n "+rsha+"\n"), "origin"); err != nil {
-			t.Fatalf("suppression %q : %v", rsha, err)
+			t.Fatalf("deletion %q: %v", rsha, err)
 		}
 	}
 	if len(s.calls) != 0 {
-		t.Fatalf("une suppression ne doit rien scanner : %v", s.calls)
+		t.Fatalf("a deletion must scan nothing: %v", s.calls)
 	}
+	s.calls = nil
 	for _, bad := range []string{"zz" + head[2:], head[:39]} {
-		wantFailure(t, g.Push(strings.NewReader("refs/heads/n "+bad+" refs/heads/n "+zeros+"\n"), ""), "invalide")
+		wantFailure(t, g.Push(strings.NewReader("refs/heads/n "+bad+" refs/heads/n "+zeros+"\n"), ""), "")
 	}
-	wantFailure(t, g.Push(strings.NewReader("a b c\n"), ""), "invalide")
-	wantFailure(t, g.Push(strings.NewReader("a b c d e\n"), ""), "invalide")
+	wantFailure(t, g.Push(strings.NewReader("a b c\n"), ""), "")
+	wantFailure(t, g.Push(strings.NewReader("a b c d e\n"), ""), "")
+	if len(s.calls) != 0 {
+		t.Fatalf("malformed input: the scanner must not run: %v", s.calls)
+	}
 }
 
 func TestPushDetachedHeadSource(t *testing.T) {
@@ -240,7 +244,7 @@ func TestPushDetachedHeadSource(t *testing.T) {
 	git(t, dir, "checkout", "-q", "--detach")
 	bad := commit(t, dir, "d.txt", "AcmeCorp\n", "detached")
 	line := "HEAD " + bad + " refs/heads/n " + strings.Repeat("0", 40) + "\n"
-	wantFailure(t, newGuard(t, dir, &scans{}).Push(strings.NewReader(line), "origin"), "contenu")
+	wantCause(t, newGuard(t, dir, &scans{}).Push(strings.NewReader(line), "origin"), "content")
 }
 
 func TestPushRemoteNameNeverWidensTheScope(t *testing.T) {
@@ -250,7 +254,7 @@ func TestPushRemoteNameNeverWidensTheScope(t *testing.T) {
 	for _, remote := range []string{"or*", "o[r]", "a b", "o\\x", "o\nx"} {
 		s := &scans{}
 		if err := newGuard(t, dir, s).Push(strings.NewReader(line), remote); err != nil {
-			t.Fatalf("%q : %v", remote, err)
+			t.Fatalf("%q: %v", remote, err)
 		}
 		if got := s.calls[0][1]; got != "--log-opts="+head+" --not --remotes" {
 			t.Errorf("%q : %s", remote, got)
@@ -268,35 +272,35 @@ func TestMsgBodyAndTrailer(t *testing.T) {
 		return p
 	}
 	for name, body := range map[string]string{
-		"sujet":        "AcmeCorp fix\n",
-		"corps":        "fix\n\ncontexte AcmeCorp ici\n",
+		"subject":      "AcmeCorp fix\n",
+		"body":         "fix\n\ncontext AcmeCorp here\n",
 		"trailer":      "fix\n\nReviewed-by: AcmeCorp Bot <b@x.org>\n",
 		"trailer CRLF": "fix\r\n\r\nCo-Authored-By: acmecorp\r\n",
-		"sans newline": "fix\n\nSigned-off-by: acmecorp",
-		"# collé":      "fix\n\n#AcmeCorp commenté puis\nAcmeCorp\n",
+		"no newline":   "fix\n\nSigned-off-by: acmecorp",
+		"# glued":      "fix\n\n#AcmeCorp commented then\nAcmeCorp\n",
 	} {
 		err := g.Msg(write(body))
-		wantFailure(t, err, "message de commit")
+		wantFailure(t, err, "")
 		if strings.Contains(strings.ToLower(err.Error()), "acmecorp") {
-			t.Errorf("%s : terme affiché", name)
+			t.Errorf("%s: term shown", name)
 		}
 	}
 	for name, body := range map[string]string{
-		"vide":            "",
-		"propre":          "fix\n\nSigned-off-by: T <t@example.org>\n",
-		"commentaire git": "fix\n# AcmeCorp dans un commentaire\n",
+		"empty":       "",
+		"clean":       "fix\n\nSigned-off-by: T <t@example.org>\n",
+		"git comment": "fix\n# AcmeCorp in a comment\n",
 	} {
 		if err := g.Msg(write(body)); err != nil {
 			t.Errorf("%s : %v", name, err)
 		}
 	}
-	wantFailure(t, g.Msg(filepath.Join(t.TempDir(), "absent")), "illisible")
-	wantFailure(t, g.Msg(t.TempDir()), "illisible")
+	wantFailure(t, g.Msg(filepath.Join(t.TempDir(), "absent")), "")
+	wantFailure(t, g.Msg(t.TempDir()), "")
 }
 
 func TestMsgNilTermsInSecretsMode(t *testing.T) {
 	if err := (&Guard{Stderr: &bytes.Buffer{}}).Msg("/nonexistent"); err != nil {
-		t.Fatal("mode secrets : aucun terme à contrôler")
+		t.Fatal("secrets mode: no term to check")
 	}
 }
 

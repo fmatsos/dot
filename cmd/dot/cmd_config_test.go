@@ -19,7 +19,7 @@ func TestConfigListAndGet(t *testing.T) {
 	for key, val := range map[string]string{"default": "perso", "profiles.acmecorp.repo": "https://example.com/a.git"} {
 		out.Reset()
 		if code := execute(env, []string{"config", "get", key}); code != 0 || out.String() != val+"\n" {
-			t.Fatalf("get %s : code %d, %q", key, code, out)
+			t.Fatalf("get %s: code %d, %q", key, code, out)
 		}
 	}
 }
@@ -33,7 +33,7 @@ func TestConfigListEmptyRegistry(t *testing.T) {
 
 func TestConfigGetUnknownKeyIsUsage(t *testing.T) {
 	env, _, errb := testEnv(t)
-	if code := execute(env, []string{"config", "get", "nope"}); code != 2 || !strings.HasPrefix(errb.String(), "dot : clé inconnue : nope") {
+	if code := execute(env, []string{"config", "get", "nope"}); code != 2 {
 		t.Fatalf("code %d, %q", code, errb)
 	}
 }
@@ -45,20 +45,20 @@ func TestConfigSetCreatesRegistryAtomically(t *testing.T) {
 	}
 	r, err := env.Registry()
 	if err != nil || r.Default != "perso" || len(r.Profiles) != 1 {
-		t.Fatalf("registre = %+v, %v", r, err)
+		t.Fatalf("registry = %+v, %v", r, err)
 	}
 	fi, _ := os.Stat(env.RegistryPath())
 	if fi.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v", fi.Mode().Perm())
 	}
 	if code := execute(env, []string{"config", "set", "profiles.acmecorp.repo", "https://example.com/a.git"}); code != 0 {
-		t.Fatal("ajout refusé")
+		t.Fatal("add refused")
 	}
 	if code := execute(env, []string{"config", "set", "default", "acmecorp"}); code != 0 {
-		t.Fatal("default refusé")
+		t.Fatal("default refused")
 	}
 	if r, _ := env.Registry(); r.Default != "acmecorp" || strings.Join(r.Keys(), ",") != "perso,acmecorp" {
-		t.Fatalf("registre = %+v", r)
+		t.Fatalf("registry = %+v", r)
 	}
 }
 
@@ -75,51 +75,58 @@ func TestConfigSetRejectsInvalid(t *testing.T) {
 	} {
 		errb.Reset()
 		if code := execute(env, append([]string{"config", "set"}, args...)); code == 0 {
-			t.Errorf("%v accepté", args)
+			t.Errorf("%v accepted", args)
 		}
 	}
 	if after, _ := os.ReadFile(env.RegistryPath()); string(before) != string(after) {
-		t.Fatal("registre modifié par un refus")
+		t.Fatal("registry modified by a refusal")
 	}
 }
 
 func TestConfigUnset(t *testing.T) {
 	env, _, errb := testEnv(t)
 	writeRegistry(t, env, twoProfiles)
-	if code := execute(env, []string{"config", "unset", "profiles.perso.repo"}); code != 1 || !strings.Contains(errb.String(), "profil par défaut") {
-		t.Fatalf("défaut retiré : code %d, %q", code, errb)
+	before, _ := os.ReadFile(env.RegistryPath())
+	if code := execute(env, []string{"config", "unset", "profiles.perso.repo"}); code != 1 {
+		t.Fatalf("default removed: code %d, %q", code, errb)
+	}
+	if after, _ := os.ReadFile(env.RegistryPath()); string(before) != string(after) {
+		t.Fatal("registry modified by a refusal")
 	}
 	if err := os.MkdirAll(env.ProfileDirFor("acmecorp"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	errb.Reset()
-	if code := execute(env, []string{"config", "unset", "profiles.acmecorp.repo"}); code != 1 || !strings.Contains(errb.String(), "encore installé") {
-		t.Fatalf("profil installé retiré : code %d, %q", code, errb)
+	if code := execute(env, []string{"config", "unset", "profiles.acmecorp.repo"}); code != 1 {
+		t.Fatalf("installed profile removed: code %d, %q", code, errb)
+	}
+	if after, _ := os.ReadFile(env.RegistryPath()); string(before) != string(after) {
+		t.Fatal("registry modified by a refusal")
 	}
 	if err := os.Remove(env.ProfileDirFor("acmecorp")); err != nil {
 		t.Fatal(err)
 	}
 	if code := execute(env, []string{"config", "unset", "profiles.acmecorp.repo"}); code != 0 {
-		t.Fatal("retrait refusé")
+		t.Fatal("removal refused")
 	}
 	if r, _ := env.Registry(); strings.Join(r.Keys(), ",") != "perso" {
-		t.Fatalf("registre = %+v", r)
+		t.Fatalf("registry = %+v", r)
 	}
 	if code := execute(env, []string{"config", "unset", "default"}); code != 1 {
-		t.Fatal("default retiré avec un profil")
+		t.Fatal("default removed with a profile")
 	}
 	if code := execute(env, []string{"config", "unset", "profiles.perso.repo"}); code != 0 {
-		t.Fatal("dernier profil non retiré")
+		t.Fatal("last profile not removed")
 	}
 	if r, _ := env.Registry(); r.Default != "" || len(r.Profiles) != 0 {
-		t.Fatalf("registre = %+v", r)
+		t.Fatalf("registry = %+v", r)
 	}
 }
 
 func TestConfigRefusesInvalidRegistry(t *testing.T) {
 	env, _, errb := testEnv(t)
 	writeRegistry(t, env, `{"profiles":{"a":{"repo":""}}}`)
-	if code := execute(env, []string{"config", "list"}); code != 1 || !strings.HasPrefix(errb.String(), "dot : registre : ") {
+	if code := execute(env, []string{"config", "list"}); code != 1 {
 		t.Fatalf("code %d, %q", code, errb)
 	}
 }

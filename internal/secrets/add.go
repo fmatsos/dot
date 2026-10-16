@@ -11,7 +11,7 @@ import (
 )
 
 // ErrMalformed means the NAME or the reference given to Add is not a valid mapping.
-var ErrMalformed = errors.New("NOM ou référence mal formé")
+var ErrMalformed = errors.New("malformed NAME or reference")
 
 // Add registers NAME=ref in secrets.local. An existing manager item is reused (created is false,
 // input is never called); otherwise input supplies the value, the item is created, read back and
@@ -26,7 +26,7 @@ func (s *Store) Add(ctx context.Context, name, ref string, input func() (string,
 			return false, err
 		}
 		if _, err := Lookup(ms, name); err == nil {
-			return false, fmt.Errorf("%s : NAME déjà enregistré", name)
+			return false, fmt.Errorf("%s: NAME already registered", name)
 		}
 	}
 	m := Mapping{name, ref}
@@ -36,14 +36,14 @@ func (s *Store) Add(ctx context.Context, name, ref string, input func() (string,
 	}
 	if !exists {
 		if m.HasField() {
-			return false, errors.New("élément ou champ introuvable : un champ #nom se lit, il ne se crée pas")
+			return false, errors.New("item or field not found: a #field is read, never created")
 		}
 		value, err := input()
 		if err != nil {
 			return false, err
 		}
 		if value == "" {
-			return false, errors.New("valeur vide")
+			return false, errors.New("empty value")
 		}
 		if err := s.create(ctx, m, value); err != nil {
 			return false, err
@@ -51,10 +51,10 @@ func (s *Store) Add(ctx context.Context, name, ref string, input func() (string,
 		// Compare in memory: neither the value nor a manager's error reaches the terminal.
 		back, err := s.Read(ctx, m)
 		if err != nil {
-			return false, errors.New("élément créé mais non enregistré : relecture impossible")
+			return false, errors.New("item created but not registered: read back failed")
 		}
 		if back != value {
-			return false, errors.New("élément créé mais non enregistré : valeur différente à la relecture")
+			return false, errors.New("item created but not registered: different value on read back")
 		}
 	}
 	return !exists, s.register(m)
@@ -72,7 +72,7 @@ func (s *Store) exists(ctx context.Context, m Mapping) (bool, error) {
 			Name string `json:"name"`
 		}
 		if err != nil || json.Unmarshal(out, &items) != nil {
-			return false, errors.New("Bitwarden : recherche impossible")
+			return false, errors.New("Bitwarden: search failed")
 		}
 		switch {
 		case len(items) == 0:
@@ -80,7 +80,7 @@ func (s *Store) exists(ctx context.Context, m Mapping) (bool, error) {
 		case len(items) == 1 && items[0].Name == m.Item():
 			return true, nil
 		}
-		return false, errors.New("Bitwarden : recherche ambiguë pour bw get, choisis un nom plus précis")
+		return false, errors.New("Bitwarden: ambiguous search for bw get, choose a more specific name")
 	}
 	if _, err := s.run(ctx, nil, nil, "pass-cli", "info"); err != nil {
 		return false, ErrPassLoggedOut
@@ -100,7 +100,7 @@ func (s *Store) template(ctx context.Context, extra []string, set func(doc map[s
 	dec.UseNumber() // keep the template's other numbers verbatim
 	var doc map[string]any
 	if err := dec.Decode(&doc); err != nil || doc == nil {
-		return nil, errors.New("modèle illisible")
+		return nil, errors.New("unreadable template")
 	}
 	set(doc)
 	var buf bytes.Buffer
@@ -137,7 +137,7 @@ func (s *Store) create(ctx context.Context, m Mapping, value string) error {
 			}
 		}
 		if err != nil {
-			return errors.New("Bitwarden : création impossible")
+			return errors.New("Bitwarden: creation failed")
 		}
 		return nil
 	}
@@ -149,7 +149,7 @@ func (s *Store) create(ctx context.Context, m Mapping, value string) error {
 		_, err = s.run(ctx, nil, bytes.NewReader(raw), "pass-cli", "item", "create", "login", "--vault-name", m.Vault(), "--from-template", "-")
 	}
 	if err != nil {
-		return errors.New("Proton Pass : création impossible")
+		return errors.New("Proton Pass: creation failed")
 	}
 	return nil
 }

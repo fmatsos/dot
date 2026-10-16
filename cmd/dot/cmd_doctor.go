@@ -12,13 +12,13 @@ func init() { register(newDoctorCmd) }
 func newDoctorCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Bilan local des dotfiles, sans écriture ni fetch",
-		Long: "dot doctor — bilan local des dotfiles, sans écriture, fetch ni saisie interactive.\n\n" +
-			"Vérifie déploiement, liens, garde-fou, outils, secrets, plugins et identités git :\n" +
-			"✓ sain, ! avertissement avec piste de correction, ✗ échec (code 1).\n" +
-			"L'avance et le retard git viennent du dernier fetch. Aucune valeur de secret affichée.\n" +
-			"Sans -p, tous les profils inscrits sont vérifiés dans l'ordre du registre, chacun sous\n" +
-			"une ligne « profil <clé> » ; les vérifications de la machine ne passent qu'une fois.",
+		Short: "Local health check of the dotfiles, without writes or fetch",
+		Long: "dot doctor — local health check of the dotfiles, without writes, fetch or interactive input.\n\n" +
+			"Checks deployment, links, guard, tools, secrets, plugins and git identities:\n" +
+			"✓ healthy, ! warning with a hint to fix it, ✗ failure (exit code 1).\n" +
+			"Git ahead and behind counts come from the last fetch. No secret value is shown.\n" +
+			"Without -p, every registered profile is checked in registry order, each under\n" +
+			"a \"profile <key>\" line; the machine checks run only once.",
 		DisableFlagsInUseLine: true,
 		Args:                  exactArgs(0, "dot doctor"),
 		RunE: func(*cobra.Command, []string) error {

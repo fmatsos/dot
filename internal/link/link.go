@@ -28,7 +28,7 @@ type Link struct {
 type NoHomeError struct{ Dir string }
 
 func (e *NoHomeError) Error() string {
-	return fmt.Sprintf("rien à lier : %s/home absent (dry run sans clone ?)", e.Dir)
+	return fmt.Sprintf("nothing to link: %s/home missing (dry run without clone?)", e.Dir)
 }
 
 // ModuleSources are the home/ files merged across profiles by `dot settings`, `dot mcp`
@@ -198,7 +198,7 @@ func (l *Linker) dropModuleLinks() error {
 			if abs, _ := filepath.Abs(d); !inLayerAt(t, abs, rel) {
 				continue
 			}
-			fmt.Fprintf(l.Out, "  lien retiré : %s\n", Tilde(l.Home, dst))
+			fmt.Fprintf(l.Out, "  link removed: %s\n", Tilde(l.Home, dst))
 			if err := l.run("rm -f "+dst, func() error { return os.Remove(dst) }); err != nil {
 				return err
 			}
@@ -223,7 +223,7 @@ func (l *Linker) deadLinks(dir string) error {
 		if t, _ := os.Readlink(p); !strings.HasPrefix(t, dir+"/bin/") {
 			continue
 		}
-		fmt.Fprintf(l.Out, "  lien mort retiré : %s\n", Tilde(l.Home, p))
+		fmt.Fprintf(l.Out, "  dead link removed: %s\n", Tilde(l.Home, p))
 		if err := l.run("rm -f "+p, func() error { return os.Remove(p) }); err != nil {
 			return err
 		}
@@ -239,7 +239,7 @@ func (l *Linker) one(dir string, k Link) error {
 	}
 	if rerr == nil && inProfile(t, dir) {
 		// A dot link to another layer or a moved file: re-point it, there is nothing to back up.
-		fmt.Fprintf(l.Out, "  lien : %s%s\n", Tilde(l.Home, k.Dst), layerNote(k))
+		fmt.Fprintf(l.Out, "  link: %s%s\n", Tilde(l.Home, k.Dst), layerNote(k))
 		if err := l.run("rm -f "+k.Dst, func() error { return os.Remove(k.Dst) }); err != nil {
 			return err
 		}
@@ -247,7 +247,7 @@ func (l *Linker) one(dir string, k Link) error {
 	}
 	fi, err := os.Lstat(k.Dst)
 	if err == nil && fi.IsDir() {
-		fmt.Fprintf(l.Err, "  ignoré (dossier existant) : %s\n", k.Dst)
+		fmt.Fprintf(l.Err, "  skipped (existing directory): %s\n", k.Dst)
 		return nil
 	}
 	if err == nil {
@@ -258,7 +258,7 @@ func (l *Linker) one(dir string, k Link) error {
 			}
 		}
 		if !(fi.Mode().IsRegular() && sameContent(k.Src, k.Dst)) {
-			fmt.Fprintf(l.Out, "  sauvegarde : %s → %s/\n", Tilde(l.Home, k.Dst), Tilde(l.Home, l.Backup))
+			fmt.Fprintf(l.Out, "  backup: %s → %s/\n", Tilde(l.Home, k.Dst), Tilde(l.Home, l.Backup))
 		}
 		rel, _ := filepath.Rel(l.Home, k.Dst)
 		to := filepath.Join(l.Backup, rel)
@@ -269,7 +269,7 @@ func (l *Linker) one(dir string, k Link) error {
 			return err
 		}
 	}
-	fmt.Fprintf(l.Out, "  lien : %s%s\n", Tilde(l.Home, k.Dst), layerNote(k))
+	fmt.Fprintf(l.Out, "  link: %s%s\n", Tilde(l.Home, k.Dst), layerNote(k))
 	if err := l.mkdirAll(filepath.Dir(k.Dst)); err != nil {
 		return err
 	}
@@ -315,7 +315,7 @@ func multiProfile(home string) bool {
 func Drift(dir, home string) []string {
 	d := Detached(dir, home)
 	for i, p := range d {
-		d[i] = "détaché (plus un lien, à réconcilier) : " + p
+		d[i] = "detached (no longer a link, to reconcile): " + p
 	}
 	return d
 }
@@ -412,11 +412,11 @@ func (l *Linker) orphanLinks(dir string, plan []Link) error {
 		if serr == nil && slices.Contains(activeLayers(), top) {
 			continue // still provided here (a module source in multi mode is dropped elsewhere)
 		}
-		msg := "lien retiré"
+		msg := "link removed"
 		if serr != nil {
-			msg = "lien mort retiré"
+			msg = "dead link removed"
 		}
-		fmt.Fprintf(l.Out, "  %s : %s\n", msg, Tilde(l.Home, p))
+		fmt.Fprintf(l.Out, "  %s: %s\n", msg, Tilde(l.Home, p))
 		if err := l.run("rm -f "+p, func() error { return os.Remove(p) }); err != nil {
 			return err
 		}
@@ -449,7 +449,7 @@ func Unlink(dir, home string, out io.Writer) error {
 		if err := os.Remove(p); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  lien retiré : %s\n", Tilde(home, p))
+		fmt.Fprintf(out, "  link removed: %s\n", Tilde(home, p))
 		for d := filepath.Dir(p); strings.HasPrefix(d, home+"/") && removeEmptyDir(d); d = filepath.Dir(d) {
 		}
 	}

@@ -28,11 +28,11 @@ func termsPath(env *Env) (string, error) {
 	}
 	key, err := gitConfigGet("dotfiles.profile")
 	if err != nil {
-		return "", errors.New("dotfiles.profile illisible")
+		return "", errors.New("dotfiles.profile unreadable")
 	}
 	if key != "" {
 		if !profileKeyRe.MatchString(key) {
-			return "", errors.New("dotfiles.profile invalide")
+			return "", errors.New("dotfiles.profile invalid")
 		}
 		return filepath.Join(env.ProfileDirFor(key), "forbidden.local"), nil
 	}
@@ -64,12 +64,12 @@ func guardMode(env *Env) (string, error) {
 	if mode == "" {
 		var err error
 		if mode, err = gitConfigGet("dotfiles.guard"); err != nil {
-			return "", errors.New("dotfiles.guard illisible, refus.")
+			return "", errors.New("dotfiles.guard unreadable, refused")
 		}
 		src = "dotfiles.guard"
 	}
 	if mode != "" && mode != "secrets" {
-		return "", fmt.Errorf("%s : valeur inconnue, refus.", src)
+		return "", fmt.Errorf("%s: unknown value, refused", src)
 	}
 	return mode, nil
 }
@@ -86,16 +86,16 @@ func newGuard(env *Env) (*guard.Guard, error) {
 	}
 	path, err := termsPath(env)
 	if err != nil {
-		return nil, fmt.Errorf("liste de termes interdits introuvable (%v), refus.", err)
+		return nil, fmt.Errorf("forbidden terms list not found (%v), refused", err)
 	}
 	if g.Terms, err = guard.LoadTerms(path); err != nil {
 		if errors.Is(err, guard.ErrAbsent) {
-			return nil, fmt.Errorf("liste de termes interdits absente ou vide (%s), refus.", path)
+			return nil, fmt.Errorf("forbidden terms list missing or empty (%s), refused", path)
 		}
 		if errors.Is(err, guard.ErrMatchesEmpty) {
-			return nil, fmt.Errorf("liste de termes interdits invalide (%s) : un terme correspond à la chaîne vide, donc à tout (a*, ^, x?…), refus.", path)
+			return nil, fmt.Errorf("forbidden terms list invalid (%s): a term matches the empty string, hence everything (a*, ^, x?…), refused", path)
 		}
-		return nil, fmt.Errorf("liste de termes interdits invalide ou illisible (%s), refus.", path)
+		return nil, fmt.Errorf("forbidden terms list invalid or unreadable (%s), refused", path)
 	}
 	return g, nil
 }
@@ -115,7 +115,7 @@ func scanner(env *Env) func(args ...string) error {
 		err := c.Run()
 		var x *exec.ExitError
 		if err != nil && !errors.As(err, &x) {
-			return errors.New("betterleaks : lancement impossible")
+			return errors.New("betterleaks: cannot run")
 		}
 		return err
 	}
@@ -142,30 +142,30 @@ func newGuardCmd(env *Env) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "guard",
-		Short: "Garde-fou anti-fuite : secrets et références interdites",
-		Long: "Garde-fou anti-fuite des hooks git et de la CI : secrets (betterleaks) et références au travail\n" +
-			"(termes d'une liste locale, jamais versionnée). Échoue fermé : liste absente, vide ou invalide,\n" +
-			"commande git en échec ou scanner indisponible bloquent. Ne rapporte que des noms de fichiers,\n" +
-			"de branches, de tags ou des commits, jamais le texte trouvé.\n\n" +
-			"Les images et polices (png, jpg, gif, webp, avif, heic, ico, woff, woff2) ne sont pas lues pour les termes : leurs\n" +
-			"octets ne sont pas du texte. Leurs noms le sont, et betterleaks les lit. Tout autre binaire est lu.\n\n" +
-			"Liste des termes : des expressions étendues insensibles à la casse (syntaxe RE2), une par ligne ;\n" +
-			"les lignes vides et celles qui commencent par # sont ignorées. Les opérateurs GNU échappés\n" +
-			"(\\| \\+ \\? \\{ \\( \\)) et les drapeaux coupant la casse ((?-i)) sont refusés. Ordre de résolution :\n" +
-			"  1. $DOTFILES_FORBIDDEN, le fichier de la liste ;\n" +
-			"  2. <profil>/forbidden.local, où le dossier du profil est, dans cet ordre :\n" +
-			"     a. $DOTFILES_DEPLOY, s'il est défini ;\n" +
-			"     b. ~/.dot/<p>, où <p> est « git config dotfiles.profile » du dépôt courant ;\n" +
-			"     c. sinon le profil ciblé : -p, $DOT_PROFILE, puis le profil par défaut du registre.\n\n" +
-			"$DOTFILES_GUARD=secrets, ou « git config dotfiles.guard secrets » du dépôt courant, ignore les termes\n" +
-			"(betterleaks seul) : pour un dépôt qui cite un employeur volontairement. L'environnement prime ;\n" +
-			"toute autre valeur est refusée.\n\n" +
-			"Scanner : $DOT_BETTERLEAKS (exécutable, pour les tests), sinon la copie figée\n" +
-			"~/.cache/dot/betterleaks-<version>/betterleaks, téléchargée et vérifiée par sha256 (somme compilée).\n\n" +
-			"Les hooks d'un dépôt tiennent en une ligne : exec dot guard staged.",
+		Short: "Leak guard: secrets and forbidden references",
+		Long: "Leak guard for git hooks and CI: secrets (betterleaks) and work references\n" +
+			"(terms from a local list, never versioned). Fails closed: a missing, empty or invalid list,\n" +
+			"a failing git command or an unavailable scanner all block. Reports only names of files,\n" +
+			"branches, tags or commits, never the text found.\n\n" +
+			"Images and fonts (png, jpg, gif, webp, avif, heic, ico, woff, woff2) are not read for terms: their\n" +
+			"bytes are not text. Their names are, and betterleaks reads them. Any other binary is read.\n\n" +
+			"Terms list: case-insensitive extended expressions (RE2 syntax), one per line;\n" +
+			"blank lines and lines starting with # are ignored. Escaped GNU operators\n" +
+			"(\\| \\+ \\? \\{ \\( \\)) and flags that turn case-insensitivity off ((?-i)) are rejected. Resolution order:\n" +
+			"  1. $DOTFILES_FORBIDDEN, the list file;\n" +
+			"  2. <profile>/forbidden.local, where the profile directory is, in this order:\n" +
+			"     a. $DOTFILES_DEPLOY, if set;\n" +
+			"     b. ~/.dot/<p>, where <p> is \"git config dotfiles.profile\" of the current repository;\n" +
+			"     c. otherwise the targeted profile: -p, $DOT_PROFILE, then the registry's default profile.\n\n" +
+			"$DOTFILES_GUARD=secrets, or \"git config dotfiles.guard secrets\" of the current repository, skips the terms\n" +
+			"(betterleaks only): for a repository that cites an employer on purpose. The environment wins;\n" +
+			"any other value is rejected.\n\n" +
+			"Scanner: $DOT_BETTERLEAKS (executable, for tests), otherwise the pinned copy\n" +
+			"~/.cache/dot/betterleaks-<version>/betterleaks, downloaded and verified by sha256 (compiled-in sum).\n\n" +
+			"A repository's hooks fit on one line: exec dot guard staged.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return usagef("commande inconnue : guard %s", args[0])
+				return usagef("unknown command: guard %s", args[0])
 			}
 			return nil
 		},
@@ -174,19 +174,19 @@ func newGuardCmd(env *Env) *cobra.Command {
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:   "staged",
-			Short: "Contrôle l'index avant un commit (identité, fichiers, secrets)",
+			Short: "Check the index before a commit (identity, files, secrets)",
 			Args:  exactArgs(0, "dot guard staged"),
 			RunE:  run(func(g *guard.Guard, _ []string) error { return g.Staged() }),
 		},
 		&cobra.Command{
-			Use:   "msg <fichier>",
-			Short: "Contrôle un message de commit",
-			Args:  exactArgs(1, "dot guard msg <fichier>"),
+			Use:   "msg <file>",
+			Short: "Check a commit message",
+			Args:  exactArgs(1, "dot guard msg <file>"),
 			RunE:  run(func(g *guard.Guard, a []string) error { return g.Msg(a[0]) }),
 		},
 		&cobra.Command{
-			Use:   "push [distant url]",
-			Short: "Contrôle un push (lit sur stdin les lignes du hook pre-push)",
+			Use:   "push [remote url]",
+			Short: "Check a push (reads the pre-push hook lines on stdin)",
 			Args:  cobra.ArbitraryArgs, // git hands the hook the remote name and URL: only the name is used
 			RunE: run(func(g *guard.Guard, a []string) error {
 				remote := ""
@@ -198,7 +198,7 @@ func newGuardCmd(env *Env) *cobra.Command {
 		},
 		&cobra.Command{
 			Use:   "all",
-			Short: "Contrôle toutes les refs et tout l'historique",
+			Short: "Check all refs and the whole history",
 			Args:  exactArgs(0, "dot guard all"),
 			RunE:  run(func(g *guard.Guard, _ []string) error { return g.All() }),
 		},

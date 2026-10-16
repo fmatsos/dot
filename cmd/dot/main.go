@@ -31,7 +31,7 @@ func usagef(format string, a ...any) error { return usageError{fmt.Sprintf(forma
 func exactArgs(n int, usage string) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) != n {
-			return usagef("usage : %s", usage)
+			return usagef("usage: %s", usage)
 		}
 		return nil
 	}
@@ -40,14 +40,14 @@ func exactArgs(n int, usage string) cobra.PositionalArgs {
 func newRoot(env *Env) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "dot",
-		Short:         "dot installe et entretient un ou plusieurs profils de dotfiles",
-		Long:          "dot installe et entretient un ou plusieurs profils de dotfiles : liens dans ~, garde-fou contre les fuites, secrets, serveurs MCP et réglages.\n\nUn profil est un dépôt de données cloné dans ~/.dot/<clé>, inscrit dans ~/.dot/profiles.json.",
+		Short:         "dot installs and maintains one or more dotfiles profiles",
+		Long:          "dot installs and maintains one or more dotfiles profiles: links in ~, leak guard, secrets, MCP servers and settings.\n\nA profile is a data repository cloned into ~/.dot/<key> and registered in ~/.dot/profiles.json.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return usagef("commande inconnue : %s", args[0])
+				return usagef("unknown command: %s", args[0])
 			}
 			return nil
 		},
@@ -58,16 +58,16 @@ func newRoot(env *Env) *cobra.Command {
 	root.SetErr(env.Stderr)
 	root.SetVersionTemplate("dot {{.Version}}\n")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err.Error()} })
-	root.PersistentFlags().StringVarP(&env.Profile, "profile", "p", "", "profil visé (sinon $DOT_PROFILE, puis le profil par défaut)")
+	root.PersistentFlags().StringVarP(&env.Profile, "profile", "p", "", "target profile (else $DOT_PROFILE, then the default profile)")
 	root.RegisterFlagCompletionFunc("profile", completeProfileKeys(env))
 	root.InitDefaultHelpFlag()
-	root.Flags().Lookup("help").Usage = "affiche l'aide"
+	root.Flags().Lookup("help").Usage = "show the help"
 	root.InitDefaultVersionFlag()
-	root.Flags().Lookup("version").Usage = "affiche la version"
+	root.Flags().Lookup("version").Usage = "show the version"
 	for _, f := range constructors {
 		root.AddCommand(f(env))
 	}
-	frenchHelp(env, root)
+	setupHelp(env, root)
 	return root
 }
 
@@ -91,27 +91,27 @@ func execute(env *Env, args []string) int {
 	var x exitError
 	if errors.As(err, &x) {
 		if x.msg != "" {
-			fmt.Fprintf(env.Stderr, "dot : %s\n", x.msg)
+			fmt.Fprintf(env.Stderr, "dot: %s\n", x.msg)
 		}
 		return x.code
 	}
 	var u usageError
 	if errors.As(err, &u) {
-		if strings.HasPrefix(u.msg, "usage :") {
+		if strings.HasPrefix(u.msg, "usage:") {
 			fmt.Fprintln(env.Stderr, u.msg)
 		} else {
-			fmt.Fprintf(env.Stderr, "dot : %s\n", u.msg)
+			fmt.Fprintf(env.Stderr, "dot: %s\n", u.msg)
 		}
 		return 2
 	}
-	fmt.Fprintf(env.Stderr, "dot : %v\n", err)
+	fmt.Fprintf(env.Stderr, "dot: %v\n", err)
 	return 1
 }
 
 func main() {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "dot : dossier personnel introuvable ($HOME)")
+		fmt.Fprintln(os.Stderr, "dot: home directory not found ($HOME)")
 		os.Exit(1)
 	}
 	os.Exit(execute(&Env{Home: home, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}, os.Args[1:]))

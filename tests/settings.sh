@@ -36,10 +36,10 @@ mapfile -t backups < <(find "$HOME/.local/state/dotfiles/backup" -name settings.
 [ "${#backups[@]}" -eq 1 ]; cmp -s "$S/before" "${backups[0]}"
 echo 'OK   original settings backed up intact'
 cp "$HOME/.claude/settings.json" "$S/after"
-[ "$(settings)" = 'settings: à jour' ]
+settings >"$S/out"
 cmp -s "$S/after" "$HOME/.claude/settings.json"
 [ "$(find "$HOME/.local/state/dotfiles/backup" -name settings.json | wc -l)" -eq 1 ]
-echo 'OK   second run: settings: à jour, no write or new backup'
+echo 'OK   second run: no write or new backup'
 if settings --invalid >"$S/out" 2>&1; then exit 1; fi
 printf 'invalid json\n' >"$HOME/.claude/settings.json"
 cp "$HOME/.claude/settings.json" "$S/invalid"
@@ -61,8 +61,9 @@ rm -r "$HOME/.claude"
 "$DOT_BIN" -p perso settings >"$S/out"
 jq -e '.env == {GENERIC_PREF:"base"} and (has("language") | not)' "$HOME/.claude/settings.json" >/dev/null
 echo 'OK   -p targets a single profile'
+cp "$HOME/.claude/settings.json" "$S/before-empty"
 rm -r "$HOME/.dot"
 if settings >"$S/out" 2>"$S/err"; then exit 1; fi
-grep -q 'aucun profil inscrit' "$S/err"
-echo 'OK   empty registry without DOTFILES_DEPLOY: clear error'
+cmp -s "$S/before-empty" "$HOME/.claude/settings.json"
+echo 'OK   empty registry without DOTFILES_DEPLOY: fails, settings untouched'
 echo '== 11 OK, 0 FAIL'

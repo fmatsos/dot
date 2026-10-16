@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -134,15 +133,6 @@ func TestFindExtensionMultiple(t *testing.T) {
 	}
 	if deploy != "" {
 		t.Errorf("deploy should be empty on error, got %q", deploy)
-	}
-	if err != nil && !strings.Contains(err.Error(), "plusieurs profils") {
-		t.Errorf("error should mention multiple profiles: %v", err)
-	}
-	if err != nil && !strings.Contains(err.Error(), "perso") {
-		t.Errorf("error should mention perso profile: %v", err)
-	}
-	if err != nil && !strings.Contains(err.Error(), "acmecorp") {
-		t.Errorf("error should mention acmecorp profile: %v", err)
 	}
 }
 

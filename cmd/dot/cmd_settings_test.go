@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -30,9 +29,15 @@ func TestSettingsMergesEveryProfileInRegistryOrder(t *testing.T) {
 	if string(got) != "{\n  \"a\": 1,\n  \"theme\": \"acme\"\n}\n" {
 		t.Fatalf("settings.json = %s", got)
 	}
-	out.Reset()
-	if code := execute(env, []string{"settings"}); code != 0 || out.String() != "settings: à jour\n" {
+	// Second run: nothing to change, the file is left as it is.
+	fi, _ := os.Stat(filepath.Join(env.Home, ".claude", "settings.json"))
+	if code := execute(env, []string{"settings"}); code != 0 {
 		t.Fatalf("code %d, %q", code, out)
+	}
+	again, _ := os.ReadFile(filepath.Join(env.Home, ".claude", "settings.json"))
+	fi2, _ := os.Stat(filepath.Join(env.Home, ".claude", "settings.json"))
+	if string(again) != string(got) || !fi2.ModTime().Equal(fi.ModTime()) {
+		t.Fatalf("settings.json rewritten: %s", again)
 	}
 }
 
@@ -51,13 +56,13 @@ func TestSettingsProfileFlagTargetsOne(t *testing.T) {
 
 func TestSettingsErrors(t *testing.T) {
 	env, _, errb := testEnv(t)
-	if code := execute(env, []string{"settings"}); code != 1 || !strings.Contains(errb.String(), "aucun profil inscrit") {
-		t.Fatalf("registre vide : code %d, %q", code, errb)
+	if code := execute(env, []string{"settings"}); code != 1 {
+		t.Fatalf("empty registry: code %d, %q", code, errb)
 	}
 	if code := execute(env, []string{"settings", "--invalid"}); code != 2 {
-		t.Fatalf("option inconnue : code %d", code)
+		t.Fatalf("unknown option: code %d", code)
 	}
-	if code := execute(env, []string{"settings", "extra"}); code != 2 || !strings.Contains(errb.String(), "usage : dot settings [-n]") {
-		t.Fatalf("argument en trop : code %d, %q", code, errb)
+	if code := execute(env, []string{"settings", "extra"}); code != 2 {
+		t.Fatalf("extra argument: code %d, %q", code, errb)
 	}
 }

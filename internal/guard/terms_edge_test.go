@@ -13,11 +13,11 @@ func TestParseTermsBOM(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !terms.Match("AcmeCorp") || !terms.Match("globex") {
-		t.Error("le premier terme d'une liste avec BOM doit correspondre")
+		t.Error("the first term of a list with a BOM must match")
 	}
 	// A BOM then a comment, alone: still an empty list, refused.
 	if _, err := ParseTerms([]byte("\xef\xbb\xbf# note\n")); !errors.Is(err, ErrAbsent) {
-		t.Errorf("BOM + commentaire : %v", err)
+		t.Errorf("BOM + comment: %v", err)
 	}
 }
 
@@ -30,14 +30,14 @@ func TestParseTermsEmptyMatchRefused(t *testing.T) {
 				t.Errorf("%q : %v, %v", in, terms, err)
 			}
 			if err != nil && strings.Contains(err.Error(), "acmecorp") {
-				t.Errorf("%q : l'erreur cite l'expression", in)
+				t.Errorf("%q: the error quotes the pattern", in)
 			}
 		}
 	}
 	// Non-empty-matching patterns that look similar stay valid.
 	for _, p := range []string{"a+", "a*b", "^a", "a$", "(acme)?corp"} {
 		if _, err := ParseTerms([]byte(p + "\n")); err != nil {
-			t.Errorf("%q devrait rester valide : %v", p, err)
+			t.Errorf("%q should stay valid: %v", p, err)
 		}
 	}
 }
@@ -49,11 +49,11 @@ func TestParseTermsTrailingWhitespaceIsPartOfThePattern(t *testing.T) {
 		t.Fatal(err)
 	}
 	if terms.Match("acmecorp") || !terms.Match("acmecorp x") {
-		t.Error("l'espace final fait partie du motif")
+		t.Error("the trailing space is part of the pattern")
 	}
 	// A line of whitespace only, and a comment indented, are ignored.
 	if _, err := ParseTerms([]byte(" \t \n \t# note\n")); !errors.Is(err, ErrAbsent) {
-		t.Errorf("espaces et commentaire indenté : %v", err)
+		t.Errorf("whitespace and indented comment: %v", err)
 	}
 }
 
@@ -64,14 +64,14 @@ func TestParseTermsCommentOnlyAtLineStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !terms.Match("x acme#corp") || terms.Match("acme") {
-		t.Error("# au milieu d'une ligne est littéral")
+		t.Error("# mid-line is literal")
 	}
 }
 
 func TestParseTermsInvalidAmongValidFailsClosed(t *testing.T) {
 	for _, in := range []string{"acmecorp\n[unclosed\n", "[unclosed\nacmecorp\n", "acmecorp\r\n(\r\n", "acmecorp\nx{2,1}\n"} {
 		if terms, err := ParseTerms([]byte(in)); err == nil {
-			t.Errorf("%q devrait être refusé (%v)", in, terms)
+			t.Errorf("%q should be refused (%v)", in, terms)
 		}
 	}
 }
@@ -79,6 +79,6 @@ func TestParseTermsInvalidAmongValidFailsClosed(t *testing.T) {
 func TestLoadTermsUnreadablePathFailsClosed(t *testing.T) {
 	// A directory is not a list.
 	if _, err := LoadTerms(t.TempDir()); err == nil {
-		t.Fatal("un dossier n'est pas une liste")
+		t.Fatal("a directory is not a list")
 	}
 }

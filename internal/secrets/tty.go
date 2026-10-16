@@ -47,6 +47,6 @@ func PromptHidden(prompt string) (string, error) {
 	case <-sig:
 		_ = term.Restore(fd, state)
 		fmt.Fprintln(tty)
-		return "", errors.New("interrompu")
+		return "", errors.New("interrupted")
 	}
 }

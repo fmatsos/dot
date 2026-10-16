@@ -23,21 +23,21 @@ func usageIfKey(err error) error {
 func newConfigCmd(env *Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Lit et modifie le registre des profils (~/.dot/profiles.json)",
-		Long: "Lit et modifie le registre des profils (~/.dot/profiles.json).\n\n" +
-			"Clés : default, profiles.<clé>.repo",
+		Short: "Read and edit the profile registry (~/.dot/profiles.json)",
+		Long: "Read and edit the profile registry (~/.dot/profiles.json).\n\n" +
+			"Keys: default, profiles.<key>.repo",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return usagef("commande inconnue : config %s", args[0])
+				return usagef("unknown command: config %s", args[0])
 			}
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	getCmd := &cobra.Command{
-		Use:   "get <clé>",
-		Short: "Affiche une valeur",
-		Args:  exactArgs(1, "dot config get <clé>"),
+		Use:   "get <key>",
+		Short: "Show a value",
+		Args:  exactArgs(1, "dot config get <key>"),
 		RunE: func(_ *cobra.Command, args []string) error {
 			r, err := env.Registry()
 			if err != nil {
@@ -54,9 +54,9 @@ func newConfigCmd(env *Env) *cobra.Command {
 	getCmd.ValidArgsFunction = completeConfigKeys(env)
 
 	unsetCmd := &cobra.Command{
-		Use:   "unset <clé>",
-		Short: "Retire une valeur (un profil encore installé est refusé)",
-		Args:  exactArgs(1, "dot config unset <clé>"),
+		Use:   "unset <key>",
+		Short: "Remove a value (a profile still installed is refused)",
+		Args:  exactArgs(1, "dot config unset <key>"),
 		RunE: func(_ *cobra.Command, args []string) error {
 			r, err := env.Registry()
 			if err != nil {
@@ -64,7 +64,7 @@ func newConfigCmd(env *Env) *cobra.Command {
 			}
 			if p, ok := registry.ProfileKey(args[0]); ok && slices.Contains(r.Keys(), p) {
 				if _, err := os.Stat(env.ProfileDirFor(p)); err == nil {
-					return fmt.Errorf("le profil %s est encore installé (%s) : le désinstaller avant de l'oublier", p, env.ProfileDirFor(p))
+					return fmt.Errorf("profile %s is still installed (%s): uninstall it before forgetting it", p, env.ProfileDirFor(p))
 				}
 			}
 			if err := r.Unset(args[0]); err != nil {
@@ -78,7 +78,7 @@ func newConfigCmd(env *Env) *cobra.Command {
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:   "list",
-			Short: "Affiche le registre (JSON)",
+			Short: "Show the registry (JSON)",
 			Args:  exactArgs(0, "dot config list"),
 			RunE: func(*cobra.Command, []string) error {
 				r, err := env.Registry()
@@ -95,9 +95,9 @@ func newConfigCmd(env *Env) *cobra.Command {
 		},
 		getCmd,
 		&cobra.Command{
-			Use:   "set <clé> <valeur>",
-			Short: "Écrit une valeur validée, de façon atomique",
-			Args:  exactArgs(2, "dot config set <clé> <valeur>"),
+			Use:   "set <key> <value>",
+			Short: "Write a validated value, atomically",
+			Args:  exactArgs(2, "dot config set <key> <value>"),
 			RunE: func(_ *cobra.Command, args []string) error {
 				r, err := env.Registry()
 				if err != nil {

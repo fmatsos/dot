@@ -68,10 +68,10 @@ func Platform() string {
 func (r Release) Ensure(cacheRoot, platform string, client *http.Client) (string, error) {
 	a, ok := r.Assets[platform]
 	if !ok {
-		return "", fmt.Errorf("betterleaks : plateforme non supportée (%s)", platform)
+		return "", fmt.Errorf("betterleaks: unsupported platform (%s)", platform)
 	}
 	if a.SHA256 == "" {
-		return "", fmt.Errorf("betterleaks : empreinte non figée pour %s", platform)
+		return "", fmt.Errorf("betterleaks: sha256 not pinned for %s", platform)
 	}
 	dir := filepath.Join(cacheRoot, "betterleaks-"+r.Version)
 	bin := filepath.Join(dir, "betterleaks")
@@ -91,26 +91,26 @@ func (r Release) fetch(client *http.Client, a Asset, dir, bin string) error {
 	url := strings.TrimRight(r.BaseURL, "/") + "/v" + r.Version + "/" + a.Name
 	resp, err := client.Get(url)
 	if err != nil {
-		return fmt.Errorf("betterleaks : téléchargement impossible (%s)", a.Name)
+		return fmt.Errorf("betterleaks: download failed (%s)", a.Name)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("betterleaks : téléchargement refusé (%s, HTTP %d)", a.Name, resp.StatusCode)
+		return fmt.Errorf("betterleaks: download refused (%s, HTTP %d)", a.Name, resp.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxArchive+1))
 	if err != nil || len(data) > maxArchive {
-		return fmt.Errorf("betterleaks : archive illisible ou trop grande (%s)", a.Name)
+		return fmt.Errorf("betterleaks: archive unreadable or too large (%s)", a.Name)
 	}
 	sum := sha256.Sum256(data)
 	if !strings.EqualFold(hex.EncodeToString(sum[:]), a.SHA256) {
-		return fmt.Errorf("betterleaks : empreinte sha256 inattendue pour %s, refus", a.Name)
+		return fmt.Errorf("betterleaks: unexpected sha256 for %s, refusing", a.Name)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("betterleaks : %w", err)
+		return fmt.Errorf("betterleaks: %w", err)
 	}
 	tmp, err := os.CreateTemp(dir, ".betterleaks-*")
 	if err != nil {
-		return fmt.Errorf("betterleaks : %w", err)
+		return fmt.Errorf("betterleaks: %w", err)
 	}
 	defer os.Remove(tmp.Name()) // no-op once renamed
 	err = extract(data, tmp)
@@ -118,13 +118,13 @@ func (r Release) fetch(client *http.Client, a Asset, dir, bin string) error {
 		err = cerr
 	}
 	if err != nil {
-		return fmt.Errorf("betterleaks : %w", err)
+		return fmt.Errorf("betterleaks: %w", err)
 	}
 	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
-		return fmt.Errorf("betterleaks : %w", err)
+		return fmt.Errorf("betterleaks: %w", err)
 	}
 	if err := os.Rename(tmp.Name(), bin); err != nil {
-		return fmt.Errorf("betterleaks : %w", err)
+		return fmt.Errorf("betterleaks: %w", err)
 	}
 	return nil
 }
@@ -133,23 +133,23 @@ func (r Release) fetch(client *http.Client, a Asset, dir, bin string) error {
 func extract(archive []byte, dst io.Writer) error {
 	zr, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
-		return errors.New("archive illisible")
+		return errors.New("archive unreadable")
 	}
 	tr := tar.NewReader(zr)
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
-			return errors.New("binaire absent de l'archive")
+			return errors.New("binary missing from the archive")
 		}
 		if err != nil {
-			return errors.New("archive illisible")
+			return errors.New("archive unreadable")
 		}
 		if h.Typeflag != tar.TypeReg || path.Base(h.Name) != "betterleaks" {
 			continue
 		}
 		n, err := io.Copy(dst, io.LimitReader(tr, maxBinary+1))
 		if err != nil || n > maxBinary {
-			return errors.New("binaire illisible ou trop grand")
+			return errors.New("binary unreadable or too large")
 		}
 		return nil
 	}

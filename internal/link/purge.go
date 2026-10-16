@@ -15,7 +15,7 @@ import (
 const DefaultBackupDays = 30
 
 // ErrBackupDays is the invalid DOTFILES_BACKUP_DAYS warning (printed on stderr, purge skipped).
-var ErrBackupDays = errors.New("sauvegardes : DOTFILES_BACKUP_DAYS invalide, purge ignorée")
+var ErrBackupDays = errors.New("backups: invalid DOTFILES_BACKUP_DAYS, purge skipped")
 
 var (
 	digitsRe = regexp.MustCompile(`^[0-9]+$`)
@@ -60,7 +60,7 @@ func PurgeBackups(home string, days int, dry bool, out, errOut io.Writer, now fu
 	n := now()
 	cutoff := n.AddDate(0, 0, -days)
 	if cutoff.Year() < 1 || cutoff.After(n) { // calendar overflow
-		fmt.Fprintln(errOut, "sauvegardes : date limite indisponible, purge ignorée")
+		fmt.Fprintln(errOut, "backups: cutoff date unavailable, purge skipped")
 		return nil
 	}
 	entries, err := os.ReadDir(base)
@@ -79,14 +79,14 @@ func PurgeBackups(home string, days int, dry bool, out, errOut io.Writer, now fu
 		}
 		p := filepath.Join(base, name)
 		if dry {
-			fmt.Fprintf(out, "  [dry] purge : %s\n", Tilde(home, p))
+			fmt.Fprintf(out, "  [dry] purge: %s\n", Tilde(home, p))
 		} else if err := os.RemoveAll(p); err != nil {
 			return err
 		}
 		count++
 	}
 	if count > 0 && !dry {
-		fmt.Fprintf(out, "sauvegardes : %d dossier(s) purgé(s)\n", count)
+		fmt.Fprintf(out, "backups: %d director(y/ies) purged\n", count)
 	}
 	return nil
 }

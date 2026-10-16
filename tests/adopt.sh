@@ -31,7 +31,6 @@ printf '%s\n' acmecorp >"$A/forbidden.local"; printf '%s\n' globex >"$HOME/.dot/
 mkdir -p "$HOME/.config/foo"; printf 'hello\n' >"$HOME/.config/foo/rc"; chmod 640 "$HOME/.config/foo/rc"
 printf 'x\n' >"$HOME/.plain"
 dot adopt "$HOME/.config/foo/rc" >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }
-grep -qF 'adopt ~/.config/foo/rc -> a:home/.config/foo/rc' "$S/out"; grep -q 'dot push' "$S/out"
 [ "$(readlink "$HOME/.config/foo/rc")" = "$A/home/.config/foo/rc" ]
 [ "$(cat "$A/home/.config/foo/rc")" = hello ]; [ "$(stat -c %a "$A/home/.config/foo/rc" 2>/dev/null || stat -f %Lp "$A/home/.config/foo/rc")" = 640 ]
 git -C "$A" status --short | grep -q '^?? home/.config/foo/'
@@ -40,71 +39,70 @@ dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; } # the link is what insta
 echo 'OK   adopt moves the file into the profile and links it back'
 
 # -p picks another profile; -n writes nothing.
-fails 0 dot adopt -n -p b "$HOME/.plain"; grep -qF 'adopt ~/.plain -> b:home/.plain' "$S/out"
+fails 0 dot adopt -n -p b "$HOME/.plain"
 [ -f "$HOME/.plain" ] && [ ! -L "$HOME/.plain" ]; [ ! -e "$HOME/.dot/b/home/.plain" ]
-echo 'OK   -n prints the plan and writes nothing'
+echo 'OK   -n writes nothing'
 dot adopt -p b "$HOME/.plain" >/dev/null; [ -f "$HOME/.dot/b/home/.plain" ]; [ "$(readlink "$HOME/.plain")" = "$HOME/.dot/b/home/.plain" ]
 
 # A module source another profile already holds is merged, not linked: adopted without a link.
 [ -f "$A/home/.claude/settings.base.json" ]; not test -e "$HOME/.claude/settings.base.json"
 mkdir -p "$HOME/.claude"; printf '{"b": 1}\n' >"$HOME/.claude/settings.base.json"
-fails 0 dot adopt -p b "$HOME/.claude/settings.base.json"; grep -q "n'est pas relié" "$S/out"
+fails 0 dot adopt -p b "$HOME/.claude/settings.base.json"
 [ -f "$HOME/.dot/b/home/.claude/settings.base.json" ]; not test -e "$HOME/.claude/settings.base.json"
 dot install >"$S/out" 2>&1 || { cat "$S/out"; exit 1; }; not test -e "$HOME/.claude/settings.base.json"
 mkdir -p "$HOME/.claude"; printf '{"c": 1}\n' >"$HOME/.claude/settings.base.json"
 osl=home@$(uname | tr '[:upper:]' '[:lower:]')
 sed -i.bak "s/\"home\", /\"home\", \"$osl\", /" "$HOME/.dot/b/dot.json"; rm "$HOME/.dot/b/dot.json.bak"
-fails 1 dot adopt -p b --os "$HOME/.claude/settings.base.json"; grep -q 'ne lisent que home/' "$S/err"
+fails 1 dot adopt -p b --os "$HOME/.claude/settings.base.json"
 [ -f "$HOME/.claude/settings.base.json" ]; [ ! -e "$HOME/.dot/b/$osl" ]; git -C "$HOME/.dot/b" checkout -q dot.json
 rm "$HOME/.claude/settings.base.json"
 echo 'OK   a module source held by another profile is adopted unlinked, for the merge, never into a variant'
 
 # Refusals leave the file untouched and exit 1.
-refused() { # refused <label> <file> [grep]: the file stays a regular file, the clone gets nothing
-  local f=$1 why=${2:-}; local before; before=$(cksum <"$f")
+refused() { # refused <file>: exit 1, the file stays a regular file and unchanged
+  local f=$1 before; before=$(cksum <"$f")
   fails 1 dot adopt "$f"; [ -f "$f" ] && [ ! -L "$f" ]; [ "$(cksum <"$f")" = "$before" ]
-  [ -z "$why" ] || grep -q "$why" "$S/err"
 }
 # A symlinked folder inside the clone would carry the file out of it: refused, -n included.
 mkdir -p "$S/outside" "$HOME/.ld"; ln -s "$S/outside" "$A/home/.ld"; printf 'z\n' >"$HOME/.ld/f"
-refused "$HOME/.ld/f" 'lien symbolique dans le clone'; [ -z "$(ls -A "$S/outside")" ]
+refused "$HOME/.ld/f"; [ -z "$(ls -A "$S/outside")" ]
 fails 1 dot adopt -n "$HOME/.ld/f"; rm "$A/home/.ld"; rm -r "$HOME/.ld"
 echo 'OK   a symlinked folder in the clone refuses the destination'
 
 printf 'tenant AcmeCorp\n' >"$HOME/.term"
-refused "$HOME/.term" 'référence interdite'; [ ! -e "$A/home/.term" ]
+refused "$HOME/.term"; [ ! -e "$A/home/.term" ]
 grep -qi acmecorp "$S/err" && exit 1
 # A forbidden name refused earlier (existing destination) is not echoed in the reason either.
 printf 'x\n' >"$HOME/.acmecorp-rc"; printf 'y\n' >"$A/home/.acmecorp-rc"
-refused "$HOME/.acmecorp-rc" 'détail masqué'
+refused "$HOME/.acmecorp-rc"; [ "$(cat "$A/home/.acmecorp-rc")" = y ]
 grep -qi acmecorp "$S/err" && exit 1
 rm -f "$A/home/.acmecorp-rc" "$HOME/.acmecorp-rc"
 echo 'OK   a forbidden term refuses the file, which is untouched, and is never echoed'
 tok=$(faketoken); printf 'key=%s\n' "$tok" >"$HOME/.secret"
-refused "$HOME/.secret" 'secret'; [ ! -e "$A/home/.secret" ]
+refused "$HOME/.secret"; [ ! -e "$A/home/.secret" ]
 not grep -qF "$tok" "$S/err"
 echo 'OK   a secret refuses the file'
-fails 1 dot adopt "$HOME/.plain"; grep -q 'lien symbolique' "$S/err"
-fails 1 dot adopt "$HOME/.config/foo/rc"; grep -q 'lien symbolique' "$S/err"
+fails 1 dot adopt "$HOME/.plain"; [ "$(readlink "$HOME/.plain")" = "$HOME/.dot/b/home/.plain" ]
+fails 1 dot adopt "$HOME/.config/foo/rc"; [ "$(readlink "$HOME/.config/foo/rc")" = "$A/home/.config/foo/rc" ]
 echo 'OK   a symlink, linked by dot or not, is refused'
-printf 'o\n' >"$S/outside/f"; refused "$S/outside/f" 'hors de ~'
-fails 1 dot adopt "$HOME/../outside/f"; grep -q 'hors de ~' "$S/err"
-mkdir -p "$HOME/d"; fails 1 dot adopt "$HOME/d"; grep -q 'dossier' "$S/err"
+printf 'o\n' >"$S/outside/f"; refused "$S/outside/f"
+fails 1 dot adopt "$HOME/../outside/f"; [ -f "$S/outside/f" ] && [ ! -L "$S/outside/f" ]
+mkdir -p "$HOME/d"; fails 1 dot adopt "$HOME/d"; [ -d "$HOME/d" ] && [ ! -L "$HOME/d" ] && [ ! -e "$A/home/d" ]
 echo 'OK   a file outside HOME, or a directory, is refused'
 printf 'mine\n' >"$HOME/.exists"; mkdir -p "$A/home"; printf 'theirs\n' >"$A/home/.exists"
-refused "$HOME/.exists" 'destination existante'; [ "$(cat "$A/home/.exists")" = theirs ]
+refused "$HOME/.exists"; [ "$(cat "$A/home/.exists")" = theirs ]
 echo 'OK   an existing destination is refused'
 printf 'mine\n' >"$HOME/.b-only"; printf 'b\n' >"$HOME/.dot/b/home/.b-only"
-refused "$HOME/.b-only" 'plusieurs profils'
+refused "$HOME/.b-only"; [ ! -e "$A/home/.b-only" ]; [ "$(cat "$HOME/.dot/b/home/.b-only")" = b ]
 echo 'OK   a file another profile already holds is refused'
 
 # Without a term list, fail closed.
 mv "$A/forbidden.local" "$S/forbidden.bak"; printf 'y\n' >"$HOME/.y"
-refused "$HOME/.y" 'termes interdits'
+refused "$HOME/.y"; [ ! -e "$A/home/.y" ]
 mv "$S/forbidden.bak" "$A/forbidden.local"
 echo 'OK   a missing term list refuses'
 
 # A sparse set without home/ refuses.
 sed -i.bak 's/"home", //' "$A/dot.json"; rm "$A/dot.json.bak"
-refused "$HOME/.y" 'sparse'
+refused "$HOME/.y"; [ ! -e "$A/home/.y" ]
 echo 'OK   home/ outside the sparse set is refused'

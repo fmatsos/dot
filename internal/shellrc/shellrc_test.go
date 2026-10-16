@@ -44,7 +44,7 @@ func run(t *testing.T, home string, dry bool, have ...string) (out, errw string)
 				return n, nil
 			}
 		}
-		return "", errors.New("absent")
+		return "", errors.New("not found")
 	}
 	if err := Ensure(Options{Home: home, Dry: dry, Out: &o, Err: &e, LookPath: look}); err != nil {
 		t.Fatal(err)
@@ -78,8 +78,16 @@ func TestEnsure(t *testing.T) {
 	if fi, _ := os.Stat(bash); fi.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %v", fi.Mode())
 	}
-	if out, _ := run(t, home, false, "zsh", "bash"); out != "" {
-		t.Fatalf("second run rewrote: %q", out)
+	// Second run: both files are left exactly as they are.
+	zi, _ := os.Stat(zsh)
+	bi, _ := os.Stat(bash)
+	run(t, home, false, "zsh", "bash")
+	z2, _ := os.ReadFile(zsh)
+	b2, _ := os.ReadFile(bash)
+	zi2, _ := os.Stat(zsh)
+	bi2, _ := os.Stat(bash)
+	if string(z2) != string(z) || string(b2) != string(b) || !zi2.ModTime().Equal(zi.ModTime()) || !bi2.ModTime().Equal(bi.ModTime()) {
+		t.Fatal("second run rewrote a file")
 	}
 }
 
@@ -92,8 +100,11 @@ func TestEnsureSkipsSymlink(t *testing.T) {
 	if got, _ := os.ReadFile(target); string(got) != "shellkit\n" {
 		t.Fatalf("written through the link: %q", got)
 	}
-	if !strings.Contains(errw, "est un lien") {
-		t.Fatalf("no warning: %q", errw)
+	if fi, err := os.Lstat(filepath.Join(home, ".zshrc")); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link was replaced: %v", err)
+	}
+	if errw == "" { // presence only, not wording: the skip is reported
+		t.Fatal("no warning")
 	}
 }
 

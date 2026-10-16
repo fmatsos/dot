@@ -51,11 +51,11 @@ func Parse(data []byte) (map[string]any, error) {
 		return nil, err
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return nil, errors.New("JSON invalide")
+		return nil, errors.New("invalid JSON")
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		return nil, errors.New("objet JSON attendu")
+		return nil, errors.New("JSON object expected")
 	}
 	return m, nil
 }
@@ -102,13 +102,13 @@ func Run(o Options) error {
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("%s illisible ou invalide (%v)", tilde(p), cleanErr(err))
+			return fmt.Errorf("%s unreadable or invalid (%v)", tilde(p), cleanErr(err))
 		}
 		base = Merge(base, m)
 		found++
 	}
 	if found == 0 {
-		return errors.New("aucun settings.base.json trouvé")
+		return errors.New("no settings.base.json found")
 	}
 	target := filepath.Join(o.Home, ".claude", "settings.json")
 	oldText, newText := "{}\n", ""
@@ -117,7 +117,7 @@ func Run(o Options) error {
 		exists = true
 		cur, err := readObject(target)
 		if err != nil {
-			return fmt.Errorf("%s illisible ou invalide (%v)", tilde(target), cleanErr(err))
+			return fmt.Errorf("%s unreadable or invalid (%v)", tilde(target), cleanErr(err))
 		}
 		if oldText, err = Normalize(cur); err != nil {
 			return err
@@ -133,7 +133,7 @@ func Run(o Options) error {
 		}
 	}
 	if exists && oldText == newText {
-		fmt.Fprintln(o.Out, "settings: à jour")
+		fmt.Fprintln(o.Out, "settings: up to date")
 		return nil
 	}
 	io.WriteString(o.Out, Diff("settings.json", "settings.json+base", oldText, newText))
@@ -145,19 +145,19 @@ func Run(o Options) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(o.Out, "settings : sauvegarde → %s/.claude/settings.json\n", tilde(dir))
+		fmt.Fprintf(o.Out, "settings: backup → %s/.claude/settings.json\n", tilde(dir))
 	}
 	if err := writeAtomic(target, []byte(newText)); err != nil {
 		return err
 	}
-	fmt.Fprintln(o.Out, "settings : mis à jour")
+	fmt.Fprintln(o.Out, "settings: updated")
 	return nil
 }
 
 func cleanErr(err error) string {
 	var se *json.SyntaxError
 	if errors.As(err, &se) {
-		return "JSON invalide"
+		return "invalid JSON"
 	}
 	var pe *os.PathError
 	if errors.As(err, &pe) {
@@ -166,7 +166,7 @@ func cleanErr(err error) string {
 	return err.Error()
 }
 
-// Backup copies Home/<rel> to ~/.local/state/dotfiles/backup/<AAAAMMJJ-HHMMSS>-<random>/<rel>
+// Backup copies Home/<rel> to ~/.local/state/dotfiles/backup/<YYYYMMDD-HHMMSS>-<random>/<rel>
 // (private directories, mode and mtime kept like cp -p) and returns the backup directory.
 func Backup(home, rel string, now time.Time) (string, error) {
 	parent := filepath.Join(home, ".local", "state", "dotfiles", "backup")

@@ -19,7 +19,7 @@ func TestPath(t *testing.T) {
 		{"https://git.example.com/team/pro.ject", root + "/git.example.com/team/pro.ject"},
 	} {
 		if got, err := Path(tc.url, root); err != nil || got != tc.want {
-			t.Errorf("Path(%q) = %q, %v (attendu %q)", tc.url, got, err, tc.want)
+			t.Errorf("Path(%q) = %q, %v (want %q)", tc.url, got, err, tc.want)
 		}
 	}
 }
@@ -36,7 +36,7 @@ func TestPathRejects(t *testing.T) {
 		"https://git.example.com/team/project\n",
 	} {
 		if got, err := Path(url, "/r"); !errors.Is(err, ErrInvalidURL) || got != "" {
-			t.Errorf("Path(%q) = %q, %v : rejet attendu", url, got, err)
+			t.Errorf("Path(%q) = %q, %v: rejection expected", url, got, err)
 		}
 	}
 }
@@ -52,7 +52,7 @@ func fixture(t *testing.T, name string) (env []string, root string) {
 		cmd := exec.Command("git", args...)
 		cmd.Env = env
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v : %v\n%s", args, err, out)
+			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
 	seed := filepath.Join(s, "seed")
@@ -74,13 +74,13 @@ func TestCloneAndReuse(t *testing.T) {
 	o := Options{Root: root, Env: env, Args: []string{"--quiet", "--no-hardlinks"}}
 	target, reused, err := Clone(url, o)
 	if err != nil || reused || target != filepath.Join(root, "git.example.com/team/fresh") {
-		t.Fatalf("clone : %q, %v, %v", target, reused, err)
+		t.Fatalf("clone: %q, %v, %v", target, reused, err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(target, "marker")); string(b) != "fixture\n" {
 		t.Fatalf("marker = %q", b)
 	}
 	if again, reused, err := Clone(url, Options{Root: root, Env: env}); err != nil || !reused || again != target {
-		t.Fatalf("second run : %q, %v, %v", again, reused, err)
+		t.Fatalf("second run: %q, %v, %v", again, reused, err)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestCloneBareIsReused(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, reused, err := Clone(url, Options{Root: root, Env: env}); err != nil || !reused {
-		t.Fatalf("bare : %v, %v (%s)", reused, err, target)
+		t.Fatalf("bare: %v, %v (%s)", reused, err, target)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestCloneOccupied(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, ".git")); err == nil {
-		t.Fatal(".git créé")
+		t.Fatal(".git created")
 	}
 }
 

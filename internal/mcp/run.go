@@ -75,9 +75,9 @@ func readSource(path string) (map[string]any, error) {
 }
 
 // Run renders the shared servers into every installed tool: it validates both sources, reads the
-// three tool states, prints the plan ("<outil> : <action> <serveur>" or "<outil> : à jour"), then
+// three tool states, prints the plan ("<tool>: <action> <server>" or "<tool>: up to date"), then
 // applies it unless DryRun. Nothing is written or called before the whole validation passed.
-// Errors are plain messages; the caller prefixes them with "mcp : ".
+// Errors are plain messages; the caller prefixes them with "mcp: ".
 func Run(o Options) error {
 	if o.LookPath == nil {
 		o.LookPath = exec.LookPath
@@ -97,7 +97,7 @@ func Run(o Options) error {
 	local := map[string]any{}
 	if _, err := os.Stat(filepath.Join(dir, "servers.local.json")); err == nil {
 		if local, err = readSource(filepath.Join(dir, "servers.local.json")); err != nil {
-			return errors.New("servers.local.json invalide")
+			return errors.New("invalid servers.local.json")
 		}
 	}
 	desired, err := Convert(shared, local, owners, filepath.Join(o.Home, ".local", "bin", "dot"))
@@ -117,10 +117,10 @@ func Run(o Options) error {
 		claudeState = Entries{}
 		if data, err := os.ReadFile(filepath.Join(o.Home, ".claude.json")); err == nil {
 			if claudeState, err = ClaudeEntries(data); err != nil {
-				return errors.New("configuration Claude illisible")
+				return errors.New("unreadable Claude configuration")
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return errors.New("configuration Claude illisible")
+			return errors.New("unreadable Claude configuration")
 		}
 		steps = append(steps, Plan("claude", want, claudeState)...)
 	}
@@ -131,7 +131,7 @@ func Run(o Options) error {
 			codexState, err = CodexEntries(data)
 		}
 		if err != nil {
-			return errors.New("configuration Codex illisible")
+			return errors.New("unreadable Codex configuration")
 		}
 		steps = append(steps, Plan("codex", want, codexState)...)
 	}
@@ -140,15 +140,15 @@ func Run(o Options) error {
 	if _, err := o.LookPath("opencode"); err == nil {
 		present["opencode"] = true
 		if st, err := os.Lstat(openTarget); err == nil && st.Mode()&os.ModeSymlink != 0 {
-			return errors.New("config.json OpenCode doit être un fichier local, pas un lien")
+			return errors.New("OpenCode config.json must be a local file, not a link")
 		}
 		openOld = map[string]any{}
 		if data, err := os.ReadFile(openTarget); err == nil {
 			if openOld, err = ParseOpenCode(data); err != nil {
-				return errors.New("configuration OpenCode illisible")
+				return errors.New("unreadable OpenCode configuration")
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return errors.New("configuration OpenCode illisible")
+			return errors.New("unreadable OpenCode configuration")
 		}
 		openNew = RenderOpenCode(openOld, desired)
 		// Compare the tool's full generated entries; every other key and server stays as is.
@@ -166,12 +166,12 @@ func Run(o Options) error {
 		changed := false
 		for _, s := range steps {
 			if s.Tool == tool {
-				fmt.Fprintf(o.Out, "%s : %s %s\n", tool, s.Action, s.Name)
+				fmt.Fprintf(o.Out, "%s: %s %s\n", tool, s.Action, s.Name)
 				changed = true
 			}
 		}
 		if !changed {
-			fmt.Fprintf(o.Out, "%s : à jour\n", tool)
+			fmt.Fprintf(o.Out, "%s: up to date\n", tool)
 		}
 	}
 	if o.DryRun {
@@ -205,18 +205,18 @@ func sharedSources(o Options, owners []Owner, linked string) ([]Source, error) {
 			}
 			m, err := readSource(p.Servers)
 			if err != nil {
-				return nil, errors.New("servers.json invalide ou absent")
+				return nil, errors.New("servers.json invalid or missing")
 			}
 			out = append(out, Source{m, &owners[i]})
 		}
 		if len(out) == 0 {
-			return nil, errors.New("servers.json invalide ou absent")
+			return nil, errors.New("servers.json invalid or missing")
 		}
 		return out, nil
 	}
 	m, err := readSource(linked)
 	if err != nil {
-		return nil, errors.New("servers.json invalide ou absent")
+		return nil, errors.New("servers.json invalid or missing")
 	}
 	return []Source{{Servers: m}}, nil
 }
@@ -228,16 +228,16 @@ func (o Options) apply(s Step, srv *Server) error {
 		_, err := o.Exec(s.Tool, args...)
 		return err
 	}
-	if s.Action != "ajout" {
+	if s.Action != "add" {
 		args := []string{"mcp", "remove", s.Name}
 		if s.Tool == "claude" {
 			args = []string{"mcp", "remove", "-s", "user", s.Name}
 		}
 		if run(args...) != nil {
-			return fmt.Errorf("%s : retrait impossible (%s)", label, s.Name)
+			return fmt.Errorf("%s: cannot remove (%s)", label, s.Name)
 		}
 	}
-	if s.Action == "retrait" {
+	if s.Action == "remove" {
 		return nil
 	}
 	var args []string
@@ -254,7 +254,7 @@ func (o Options) apply(s Step, srv *Server) error {
 		args = append(append(args, "--", srv.Command), srv.Args...)
 	}
 	if run(args...) != nil {
-		return fmt.Errorf("%s : ajout impossible (%s)", label, s.Name)
+		return fmt.Errorf("%s: cannot add (%s)", label, s.Name)
 	}
 	return nil
 }

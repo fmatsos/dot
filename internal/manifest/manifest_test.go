@@ -43,7 +43,7 @@ func TestLoadValid(t *testing.T) {
 		Modules:       []string{"settings", "mcp"},
 	}
 	if !reflect.DeepEqual(m, want) {
-		t.Fatalf("manifeste = %+v, want %+v", m, want)
+		t.Fatalf("manifest = %+v, want %+v", m, want)
 	}
 }
 
@@ -53,7 +53,7 @@ func TestLoadOptionalBlocksAbsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m.Marketplace != nil || m.NVM != nil || len(m.Modules) != 0 {
-		t.Fatalf("blocs optionnels présents : %+v", m)
+		t.Fatalf("optional blocks present: %+v", m)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestLoadKeepsProfileOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m.Profiles[0].Name != "zeta" || m.Profiles[1].Name != "alpha" {
-		t.Fatalf("ordre perdu : %+v", m.Profiles)
+		t.Fatalf("order lost: %+v", m.Profiles)
 	}
 }
 
@@ -157,29 +157,29 @@ func TestLoadRejects(t *testing.T) {
 		_, err := Load(path)
 		var ke *KeyError
 		if !errors.As(err, &ke) || ke.Key != c.key {
-			t.Errorf("%s : err = %v", c.key, err)
+			t.Errorf("%s: err = %v", c.key, err)
 			continue
 		}
-		if want := "manifest : " + path + " : clé " + c.key + " invalide ou fichier absent"; err.Error() != want {
-			t.Errorf("message = %q, want %q", err.Error(), want)
+		if ke.File != path {
+			t.Errorf("%s: file = %q, want %q", c.key, ke.File, path)
 		}
 	}
 }
 
 func TestLoadRejectsMalformedFiles(t *testing.T) {
 	for name, content := range map[string]string{
-		"tableau":        `[]`,
+		"array":          `[]`,
 		"null":           `null`,
-		"scalaire":       `42`,
-		"vide":           ``,
-		"tronqué":        `{`,
+		"scalar":         `42`,
+		"empty":          ``,
+		"truncated":      `{`,
 		"deux documents": valid + valid,
-		"déchets":        valid + ` x`,
+		"trailing junk":  valid + ` x`,
 	} {
 		_, err := Load(writeFile(t, content))
 		var ke *KeyError
-		if !errors.As(err, &ke) || ke.Key != "objet" {
-			t.Errorf("%s : err = %v", name, err)
+		if !errors.As(err, &ke) || ke.Key != "object" {
+			t.Errorf("%s: err = %v", name, err)
 		}
 	}
 }
@@ -188,7 +188,7 @@ func TestLoadMissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "dot.json")
 	_, err := Load(path)
 	var ke *KeyError
-	if !errors.As(err, &ke) || ke.Key != "objet" || ke.File != path {
+	if !errors.As(err, &ke) || ke.Key != "object" || ke.File != path {
 		t.Fatalf("err = %v", err)
 	}
 }

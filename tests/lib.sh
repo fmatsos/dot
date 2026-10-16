@@ -6,7 +6,7 @@ if [ -z "${DOT_BIN:-}" ]; then
   _lib_dir=${TMPDIR:-/tmp}/dot-test-bin-$(id -u)-$(printf %s "$_lib_root" | cksum | cut -d" " -f1)
   mkdir -p -m 700 "$_lib_dir"
   _lib_tmp=$_lib_dir/dot.$$
-  (cd "$_lib_root" && CGO_ENABLED=0 go build -trimpath -o "$_lib_tmp" ./cmd/dot) || { echo "build de dot impossible" >&2; exit 1; }
+  (cd "$_lib_root" && CGO_ENABLED=0 go build -trimpath -o "$_lib_tmp" ./cmd/dot) || { echo "cannot build dot" >&2; exit 1; }
   mv -f "$_lib_tmp" "$_lib_dir/dot"
   DOT_BIN=$_lib_dir/dot
   unset _lib_root _lib_dir _lib_tmp

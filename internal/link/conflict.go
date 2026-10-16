@@ -24,9 +24,9 @@ type ConflictError struct {
 
 func (e *ConflictError) Error() string {
 	var b strings.Builder
-	b.WriteString("installation refusée : fichier lié par plusieurs profils")
+	b.WriteString("install refused: file linked by several profiles")
 	for _, c := range e.Conflicts {
-		fmt.Fprintf(&b, "\n  %s :", Tilde(e.Home, c.Dst))
+		fmt.Fprintf(&b, "\n  %s:", Tilde(e.Home, c.Dst))
 		for i := range c.Keys {
 			fmt.Fprintf(&b, " %s (%s)", c.Keys[i], c.Srcs[i])
 		}
@@ -43,7 +43,7 @@ func Conflicts(home string, profiles []Profile) ([]Conflict, error) {
 	for _, p := range profiles {
 		plan, err := PlanFor(p.Dir, home, len(profiles) > 1)
 		if err != nil {
-			return nil, fmt.Errorf("profil %s : %w", p.Key, err)
+			return nil, fmt.Errorf("profile %s: %w", p.Key, err)
 		}
 		for _, k := range plan {
 			c := byDst[k.Dst]

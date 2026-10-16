@@ -13,13 +13,13 @@ func newMcpCmd(env *Env) *cobra.Command {
 	var dry bool
 	cmd := &cobra.Command{
 		Use:   "mcp [-n]",
-		Short: "Partage les serveurs MCP entre Claude Code, Codex et OpenCode",
-		Long: "Applique la liste partagée ~/.config/mcp/servers.json et les changements locaux (-n : aperçu).\n\n" +
-			"~/.config/mcp/servers.local.json (facultatif) : un serveur local remplace celui du même nom ;\n" +
-			"null le retire. Les secrets restent des noms : dot secrets run les lit seulement au démarrage\n" +
-			"du serveur. OpenCode lit le fichier généré ~/.config/opencode/config.json, fusionné avec ses\n" +
-			"fichiers versionnés. Tant que servers.json n'est pas lié dans ~, la source est celle des profils\n" +
-			"(tous, dans l'ordre du registre, sans -p).",
+		Short: "Share the MCP servers between Claude Code, Codex and OpenCode",
+		Long: "Apply the shared list ~/.config/mcp/servers.json and the local changes (-n: preview).\n\n" +
+			"~/.config/mcp/servers.local.json (optional): a local server replaces the one with the same name;\n" +
+			"null removes it. Secrets stay names: dot secrets run reads them only when the server\n" +
+			"starts. OpenCode reads the generated file ~/.config/opencode/config.json, merged with its\n" +
+			"versioned files. As long as servers.json is not linked into ~, the source is the profiles'\n" +
+			"(all of them, in registry order, without -p).",
 		Args: exactArgs(0, "dot mcp [-n]"),
 		RunE: func(*cobra.Command, []string) error {
 			dirs, multi, err := targetProfileDirs(env)
@@ -42,6 +42,6 @@ func newMcpCmd(env *Env) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "affiche le plan sans rien écrire ni appeler d'outil")
+	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "show the plan without writing anything or calling a tool")
 	return cmd
 }

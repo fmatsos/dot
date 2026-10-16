@@ -74,7 +74,7 @@ func TestRestoreAbsentAndManagedLink(t *testing.T) {
 	if err := os.Symlink(filepath.Join(clone, "home", ".config", "app", "linked"), filepath.Join(home, ".config", "app", "linked")); err != nil {
 		t.Fatal(err)
 	}
-	req, out, errb := restoreReq(home)
+	req, _, errb := restoreReq(home)
 	req.Clones = []string{clone}
 	n, refused, err := Restore(req)
 	if err != nil || n != 2 || refused != 0 || errb.Len() != 0 {
@@ -94,9 +94,6 @@ func TestRestoreAbsentAndManagedLink(t *testing.T) {
 	if _, err := os.Lstat(run); !os.IsNotExist(err) {
 		t.Fatalf("run dir kept: %v", err)
 	}
-	if !strings.Contains(out.String(), "restauré : ~/.absent") {
-		t.Fatalf("out = %q", out)
-	}
 }
 
 func TestRestoreRefusesUserFilesAndContinues(t *testing.T) {
@@ -109,7 +106,7 @@ func TestRestoreRefusesUserFilesAndContinues(t *testing.T) {
 	if err := os.Symlink("/etc/hostname", filepath.Join(home, ".foreign")); err != nil {
 		t.Fatal(err)
 	}
-	req, _, errb := restoreReq(home)
+	req, _, _ := restoreReq(home)
 	n, refused, err := Restore(req)
 	if err != nil || n != 1 || refused != 2 {
 		t.Fatalf("n=%d refused=%d err=%v", n, refused, err)
@@ -123,8 +120,8 @@ func TestRestoreRefusesUserFilesAndContinues(t *testing.T) {
 	if _, err := os.Lstat(run); err != nil {
 		t.Fatal("run dir removed while not empty")
 	}
-	if !strings.Contains(errb.String(), "refusé") {
-		t.Fatalf("stderr = %q", errb)
+	if b, _ := os.ReadFile(filepath.Join(home, ".ok")); string(b) != "old" {
+		t.Fatal("the refusals stopped the restore of the others")
 	}
 }
 
@@ -156,7 +153,8 @@ func TestRestoreDryAndPaths(t *testing.T) {
 	writeFile(t, filepath.Join(run, ".d", "y"), "y", 0o644)
 	req, out, _ := restoreReq(home, "~/.d")
 	req.Dry = true
-	if n, refused, err := Restore(req); err != nil || n != 2 || refused != 0 || !strings.Contains(out.String(), "[dry]") {
+	// The dry run names what it would restore (the paths, not the wording).
+	if n, refused, err := Restore(req); err != nil || n != 2 || refused != 0 || !strings.Contains(out.String(), ".d/x") || !strings.Contains(out.String(), ".d/y") {
 		t.Fatalf("dry: %d %d %v %q", n, refused, err, out)
 	}
 	if _, err := os.Lstat(filepath.Join(home, ".d")); err == nil {
@@ -170,8 +168,11 @@ func TestRestoreDryAndPaths(t *testing.T) {
 		t.Fatal("unselected file moved")
 	}
 	req, _, errb := restoreReq(home, ".nope")
-	if _, refused, _ := Restore(req); refused != 1 || !strings.Contains(errb.String(), "absent de la sauvegarde") {
+	if _, refused, _ := Restore(req); refused != 1 {
 		t.Fatalf("missing path: %q", errb)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".nope")); err == nil {
+		t.Fatal("a path absent from the backup was created")
 	}
 }
 

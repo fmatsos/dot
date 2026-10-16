@@ -119,10 +119,12 @@ get_is() {
   printf '%s' "$2" >"$S/expected"
   [ "$rc" -eq 0 ] && cmp -s "$S/expected" "$S/out"
 }
-unknown_fails() { [ "$rc" -ne 0 ] && grep -q 'UNKNOWN : NAME inconnu' "$S/err"; }
+# An unknown NAME fails with 1 before any manager is asked: the manager argv log does not grow.
+unknown_fails() { [ "$rc" -eq 1 ] && [ "$(wc -l <"$FAKE_LOG")" -eq "$log_lines" ]; }
+# message kept: the status report line is the only observable of a locked vs readable item (needs --json)
 locked_status() {
-  [ "$rc" -eq 0 ] && grep -Fxq 'CHAT_TOKEN (bw) : verrouillé' "$S/out" &&
-    grep -Fxq 'API_TOKEN (pass) : lisible' "$S/out"
+  [ "$rc" -eq 0 ] && grep -Fxq 'CHAT_TOKEN (bw): locked' "$S/out" &&
+    grep -Fxq 'API_TOKEN (pass): readable' "$S/out"
 }
 no_values() { ! grep -Eq 'fake-(xoxc|api|session)-' "$1"; }
 printf 'fake-master-789\n' >"$S/master"
@@ -141,7 +143,7 @@ if command -v script >/dev/null; then
   check 'unlock caches only the session' cmp -s "$S/expected" "$DOTFILES_DEPLOY/bw-session.local"
   check 'unlock replaces old cache with private permissions' test "$(stat -c '%a' "$DOTFILES_DEPLOY/bw-session.local" 2>/dev/null || stat -f %Lp "$DOTFILES_DEPLOY/bw-session.local")" = 600
   check 'unlock never prints the session' no_values "$S/tty"
-  check 'unlock prompts for the master password' grep -q 'Mot de passe maître Bitwarden' "$S/tty"
+  check 'unlock hands the master password to bw through --passwordenv' grep -Eq '^bw <unlock> <--passwordenv> <[A-Za-z_]+>' "$FAKE_LOG"
   check 'unlock never echoes the master password' no_master "$S/tty"
   check 'master password never in argv' no_master "$FAKE_LOG"
 fi
@@ -178,13 +180,14 @@ BASH
 invoke run MULTI_TOKEN -- bash "$S/multi"
 check 'run keeps inner newlines and CR of a multi-line value, strips one final newline' test "$rc" -eq 0
 check 'multi-line value never in argv' no_values "$FAKE_LOG"
+log_lines=$(wc -l <"$FAKE_LOG")
 invoke get UNKNOWN
 check 'unknown NAME fails clearly' unknown_fails
 
 export FAKE_BW_STATUS=locked
 invoke get CHAT_TOKEN
 check 'locked bw: exit 3' test "$rc" -eq 3
-check 'locked bw: unlock instruction' grep -Fxq 'Bitwarden verrouillé : lance « dot secrets unlock »' "$S/err"
+check 'locked bw: no value on stdout' test ! -s "$S/out"
 invoke status
 check 'status reports locked bw and readable pass' locked_status
 export FAKE_BW_STATUS=unauthenticated
@@ -205,7 +208,8 @@ invoke run CHAT_TOKEN EMPTY_PASS -- bash -c 'exit 42'
 check 'run aborts when a value is empty' test "$rc" -eq 1
 invoke status
 check 'status succeeds even for unreadable items' test "$rc" -eq 0
-check 'status lists backend/readability' grep -Fxq 'CHAT_TOKEN (bw) : lisible' "$S/out"
+# message kept: same status report line, only observable of readability (needs --json)
+check 'status lists backend/readability' grep -Fxq 'CHAT_TOKEN (bw): readable' "$S/out"
 check 'status never prints a value' no_values "$S/out"
 
 cp "$DOTFILES_DEPLOY/secrets.local" "$S/mapping"
@@ -214,13 +218,14 @@ for line in 'BAD=bw:' 'BAD=pass:/Title' 'BAD=pass:Vault/' 'BAD=other:Title' 'not
   printf '%s\n' "$line" >>"$DOTFILES_DEPLOY/secrets.local"
   invoke get CHAT_TOKEN
   check 'malformed/duplicate mapping fails' test "$rc" -ne 0
-  check 'malformed mapping does not echo contents' grep -q '^secret : ligne [0-9]' "$S/err"
+  check 'malformed mapping exits 1 with no value on stdout' test "$rc" -eq 1 -a ! -s "$S/out"
+  check 'malformed mapping does not echo contents' not grep -Fq -- "$line" "$S/err"
 done
 for bad in $'CRLF_TOKEN=bw:Chat login\r' $'\xef\xbb\xbfBOM_TOKEN=bw:Chat login' 'BAD-NAME=bw:Chat login' '1BAD=bw:Chat login' 'SECRET_IN_REF=bw:' 'CHAT_TOKEN=pass:Vault/Dup'; do
   cp "$S/mapping" "$DOTFILES_DEPLOY/secrets.local"
   printf '%s\n' "$bad" >>"$DOTFILES_DEPLOY/secrets.local"
   invoke get CHAT_TOKEN
-  check 'CRLF/BOM/invalid name/duplicate: refused, line number only' grep -Eq '^secret : ligne [0-9]+ ' "$S/err"
+  check 'CRLF/BOM/invalid name/duplicate: refused with exit 1 and no value on stdout' test "$rc" -eq 1 -a ! -s "$S/out"
   check 'edge mapping: no value or item name echoed' test "$(grep -c 'Chat login\|Vault/Dup' "$S/err")" -eq 0
 done
 cp "$S/mapping" "$DOTFILES_DEPLOY/secrets.local"
@@ -230,7 +235,7 @@ check 'missing mapping file fails' test "$rc" -ne 0
 invoke lock
 check 'lock works without mapping file and removes cache' lock_clean
 invoke
-check 'no arguments prints usage' grep -q '^dot secrets — ' "$S/out"
+check 'no arguments prints usage and succeeds' test "$rc" -eq 0 -a -s "$S/out"
 
 # Creation uses only stdin/scoped jq env. Assertions never echo fixture values on failure.
 printf '%s' fake-session-123 >"$DOTFILES_DEPLOY/bw-session.local"
@@ -267,14 +272,14 @@ rm "$FAKE_STDIN/bw.create"
 invoke add EXISTING_TOKEN 'bw:Existing BW' </dev/null
 check 'one exact bw match reused without input' test "$rc" -eq 0
 check 'existing bw item never created' test ! -e "$FAKE_STDIN/bw.create"
-check 'reuse reported' grep -q 'élément existant réutilisé' "$S/out"
+check 'reused item registers its reference' grep -Fxq 'EXISTING_TOKEN="bw:Existing BW"' "$DOTFILES_DEPLOY/secrets.local"
 export FAKE_BW_MATCHES=0
 for mode in ambiguous near; do
   export FAKE_BW_SEARCH=$mode
   cp "$DOTFILES_DEPLOY/secrets.local" "$S/before-add"
   invoke add AMBIGUOUS_TOKEN bw:ACME </dev/null
   check "F6: $mode bw search refused before input" test "$rc" -eq 1
-  check 'ambiguous search explains bw get and specific naming' grep -q 'recherche ambiguë pour bw get.*nom plus précis' "$S/err"
+  check 'ambiguous search refused after the bw search call' grep -Fxq 'bw <list> <items> <--search> <ACME>' "$FAKE_LOG"
   check 'ambiguous search never creates' test ! -e "$FAKE_STDIN/bw.create"
   check 'ambiguous search leaves mapping unchanged' cmp -s "$S/before-add" "$DOTFILES_DEPLOY/secrets.local"
 done
@@ -283,7 +288,7 @@ export FAKE_PASS_STATUS=logged-out
 : >"$FAKE_LOG"
 invoke add LOGGED_OUT_TOKEN 'pass:Personal/Logged out' </dev/null
 check 'F8: logged-out pass exits 3 before input' test "$rc" -eq 3
-check 'pass login instruction' grep -Fxq 'Proton Pass : non connecté (pass-cli login)' "$S/err"
+check 'logged-out pass: no value on stdout' test ! -s "$S/out"
 check 'pass probe precedes any item or create call' test "$(cat "$FAKE_LOG")" = 'pass-cli <info>'
 check 'logged-out pass leaves mapping unchanged' cmp -s "$S/before-add" "$DOTFILES_DEPLOY/secrets.local"
 unset FAKE_PASS_STATUS
@@ -303,7 +308,7 @@ for backend in bw pass; do
     invoke add UNREGISTERED_TOKEN "$ref" <"$S/value"
     check 'failed/differing readback exits 1' test "$rc" -eq 1
     check 'failed/differing readback leaves mapping unchanged' cmp -s "$S/before-add" "$DOTFILES_DEPLOY/secrets.local"
-    check 'created but not registered reported' grep -q 'élément créé mais non enregistré' "$S/err"
+    check 'item was created in the manager but not registered' test -e "$FAKE_STORE/$backend-Unregistered $mode"
   done
 done
 unset FAKE_READBACK

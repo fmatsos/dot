@@ -35,8 +35,8 @@ const twoProfiles = `{"default":"perso","profiles":{"perso":{"repo":"https://exa
 
 func TestProfileDirResolution(t *testing.T) {
 	env, _, _ := testEnv(t)
-	if _, err := env.ProfileDir(); err == nil || !strings.Contains(err.Error(), "aucun profil inscrit") {
-		t.Fatalf("registre vide : err = %v", err)
+	if _, err := env.ProfileDir(); err == nil {
+		t.Fatalf("empty registry: err = %v", err)
 	}
 	writeRegistry(t, env, twoProfiles)
 	want := func(key string) string { return filepath.Join(env.Home, ".dot", key) }
@@ -44,17 +44,17 @@ func TestProfileDirResolution(t *testing.T) {
 		t.Helper()
 		got, err := env.ProfileDir()
 		if err != nil || got != want(key) {
-			t.Fatalf("%s : %q, %v (attendu %q)", label, got, err, want(key))
+			t.Fatalf("%s: %q, %v (want %q)", label, got, err, want(key))
 		}
 	}
-	check("défaut", "perso")
+	check("default", "perso")
 	t.Setenv("DOT_PROFILE", "acmecorp")
 	check("DOT_PROFILE", "acmecorp")
 	env.Profile = "perso"
-	check("-p l'emporte", "perso")
+	check("-p wins", "perso")
 	env.Profile = "ghost"
-	if _, err := env.ProfileDir(); err == nil || !strings.Contains(err.Error(), "profil inconnu : ghost") {
-		t.Fatalf("clé inconnue : err = %v", err)
+	if _, err := env.ProfileDir(); err == nil {
+		t.Fatalf("unknown key: err = %v", err)
 	}
 }
 
@@ -75,7 +75,7 @@ func TestProfileDirInvalidRegistry(t *testing.T) {
 	env, _, _ := testEnv(t)
 	writeRegistry(t, env, `{"nope":1}`)
 	if _, err := env.ProfileDir(); err == nil {
-		t.Fatal("registre invalide accepté")
+		t.Fatal("invalid registry accepted")
 	}
 }
 

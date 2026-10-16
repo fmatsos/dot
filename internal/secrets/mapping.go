@@ -15,7 +15,7 @@ import (
 const File = "secrets.local"
 
 // ErrNoFile means secrets.local is missing or unreadable.
-var ErrNoFile = errors.New("fichier secrets.local absent ou illisible")
+var ErrNoFile = errors.New("secrets.local file missing or unreadable")
 
 // Mapping binds an environment variable name to a backend reference.
 type Mapping struct {
@@ -111,11 +111,11 @@ func Parse(data []byte) ([]Mapping, error) {
 		name, ref, ok := strings.Cut(line, "=")
 		ref = unquote(ref)
 		if !ok || !Valid(name, ref) {
-			return nil, fmt.Errorf("ligne %d mal formée", i+1)
+			return nil, fmt.Errorf("line %d malformed", i+1)
 		}
 		for _, old := range ms {
 			if old.Name == name {
-				return nil, fmt.Errorf("ligne %d : NAME en double", i+1)
+				return nil, fmt.Errorf("line %d: duplicate NAME", i+1)
 			}
 		}
 		ms = append(ms, Mapping{name, ref})
@@ -156,5 +156,5 @@ func Lookup(ms []Mapping, name string) (Mapping, error) {
 			return m, nil
 		}
 	}
-	return Mapping{}, fmt.Errorf("%s : NAME inconnu", name)
+	return Mapping{}, fmt.Errorf("%s: unknown NAME", name)
 }

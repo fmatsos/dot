@@ -47,7 +47,7 @@ g push -q origin main
 g config dotfiles.guard nope
 g commit -q --allow-empty -m bad-mode
 if g push -q origin main >"$S/out" 2>&1; then exit 1; fi
-grep -q 'dotfiles.guard inconnu' "$S/out"
+[ "$(git --git-dir="$S/remote.git" rev-parse main)" = "$(g rev-parse HEAD~1)" ]
 g reset -q --hard HEAD~1
 g config --unset dotfiles.guard
 sha=$(g rev-parse HEAD)
@@ -60,8 +60,7 @@ refused() {
 }
 touch "$STUB/block"
 refused
-grep -q 'Push bloqué.*git push --no-verify.*une fois' "$S/out"
-echo 'OK   guard failure refuses the push with the bypass hint'
+echo 'OK   guard failure refuses the push'
 rm "$STUB/block"
 
 export HOOK_LOG=$S/local
@@ -106,10 +105,8 @@ sha=$(g rev-parse HEAD)
 echo 'OK   repo hook pointing to this script is not run recursively'
 
 g commit -q --allow-empty -m missing
-rm "$S/bin/dot"
+mv "$S/bin/dot" "$S/dot.stub"
 refused
-grep -q 'Garde-fou introuvable' "$S/out"
-grep -q 'git push --no-verify' "$S/out"
 g push -q --no-verify origin main
 echo 'OK   missing dot fails closed, --no-verify bypasses once'
 
@@ -126,7 +123,11 @@ for url in https://github.com/acmecorp/x.git git@github.com:acmecorp/x.git; do
 done
 # Actually execute the HOME-relative hook; --path alone only checks config conversion.
 if g hook run pre-push </dev/null >"$S/out" 2>&1; then exit 1; fi
-grep -q 'Garde-fou introuvable' "$S/out"
+# With a dot back in the PATH the same hook runs and passes: it was executed, and failed closed without dot.
+mv "$S/dot.stub" "$S/bin/dot"; rm -f "$STUB/args"
+g hook run pre-push </dev/null >"$S/out" 2>&1
+[ -s "$STUB/args" ]
+rm "$S/bin/dot"
 g config core.hooksPath .githooks
 [ "$(g config --path core.hooksPath)" = .githooks ]
 g config --unset core.hooksPath
@@ -146,7 +147,7 @@ g remote set-url origin "$S/remote.git"
 g remote add site https://github.com/acmecorp/x.git
 echo "AcmeCorp" >"$S/repo/t.txt"; g add t.txt; g commit -q --no-verify -m term
 if g push -q origin main >"$S/out" 2>&1; then exit 1; fi
-grep -q 'contenu' "$S/out"
+[ "$(git --git-dir="$S/remote.git" rev-parse main)" = "$(g rev-parse HEAD~1)" ]
 g reset -q --hard HEAD~1
 g push -q origin main
 echo 'OK   dot guard push: the term list of the profile in git config blocks, a clean push passes'

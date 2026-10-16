@@ -32,7 +32,7 @@ func git(t *testing.T, dir string, args ...string) string {
 	c.Dir = dir
 	out, err := c.CombinedOutput()
 	if err != nil {
-		t.Fatalf("git %v : %v\n%s", args, err, out)
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 	return strings.TrimSpace(string(out))
 }
@@ -66,33 +66,43 @@ func newGuard(t *testing.T, dir string, s *scans) *Guard {
 	return &Guard{Terms: terms, Dir: dir, Scan: s.run, Stderr: &bytes.Buffer{}}
 }
 
+// wantFailure wants a refusal (a *Failure); sub, when not empty, is data the refusal must carry: the
+// name of a file, a ref, a commit or a range.
 func wantFailure(t *testing.T, err error, sub string) {
 	t.Helper()
 	var f *Failure
 	if !errors.As(err, &f) || !strings.Contains(f.Msg, sub) {
-		t.Fatalf("erreur = %v, attendu un refus contenant %q", err, sub)
+		t.Fatalf("error = %v, want a refusal containing %q", err, sub)
 	}
+}
+
+// wantCause wants a refusal whose cause only the wording tells: a Failure carries no kind or code, and
+// a git command failing fails closed with the same type, so which check refused is only in the text.
+// message kept: needs a product change (a stable kind or code on Failure).
+func wantCause(t *testing.T, err error, sub string) {
+	t.Helper()
+	wantFailure(t, err, sub)
 }
 
 func TestPushRanges(t *testing.T) {
 	dir := repo(t)
 	first := git(t, dir, "rev-parse", "HEAD")
-	second := commit(t, dir, "b.txt", "propre\n", "second")
+	second := commit(t, dir, "b.txt", "clean\n", "second")
 	zeros := strings.Repeat("0", 40)
 
 	for _, tc := range []struct {
 		name, line, wantOpts string
 	}{
-		{"nouvelle ref", "refs/heads/main " + second + " refs/heads/main " + zeros, "--log-opts=" + second + " --not --remotes"},
-		{"plage connue", "refs/heads/main " + second + " refs/heads/main " + first, "--log-opts=" + first + ".." + second},
-		{"tip distant inconnu", "refs/heads/main " + second + " refs/heads/main " + strings.Repeat("a", 40), "--log-opts=" + second + " --not --remotes"},
+		{"new ref", "refs/heads/main " + second + " refs/heads/main " + zeros, "--log-opts=" + second + " --not --remotes"},
+		{"known range", "refs/heads/main " + second + " refs/heads/main " + first, "--log-opts=" + first + ".." + second},
+		{"unknown remote tip", "refs/heads/main " + second + " refs/heads/main " + strings.Repeat("a", 40), "--log-opts=" + second + " --not --remotes"},
 	} {
 		s := &scans{}
 		if err := newGuard(t, dir, s).Push(strings.NewReader(tc.line+"\n"), ""); err != nil {
-			t.Fatalf("%s : %v", tc.name, err)
+			t.Fatalf("%s: %v", tc.name, err)
 		}
 		if len(s.calls) != 1 || strings.Join(s.calls[0], " ") != "git "+tc.wantOpts+" ." {
-			t.Errorf("%s : scanner appelé avec %v", tc.name, s.calls)
+			t.Errorf("%s: scanner called with %v", tc.name, s.calls)
 		}
 	}
 }
@@ -116,13 +126,17 @@ func TestPushRefNameBlocked(t *testing.T) {
 	head := git(t, dir, "rev-parse", "HEAD")
 	line := "refs/heads/main " + head + " refs/heads/acmecorp-sync " + strings.Repeat("0", 40) + "\n"
 	err := newGuard(t, dir, &scans{}).Push(strings.NewReader(line), "")
-	wantFailure(t, err, "nom de branche ou de tag interdit : refs/heads/main")
+	wantFailure(t, err, "refs/heads/main")
 }
 
 func TestPushMalformedInputFailsClosed(t *testing.T) {
 	dir := repo(t)
 	for _, in := range []string{"a b c\n", "refs/heads/main --upload-pack=x refs/heads/main " + strings.Repeat("0", 40) + "\n"} {
-		wantFailure(t, newGuard(t, dir, &scans{}).Push(strings.NewReader(in), ""), "invalide")
+		s := &scans{}
+		wantFailure(t, newGuard(t, dir, s).Push(strings.NewReader(in), ""), "")
+		if len(s.calls) != 0 {
+			t.Errorf("malformed input: the scanner must not run: %v", s.calls)
+		}
 	}
 }
 
@@ -133,7 +147,7 @@ func TestPushAddedContentOnlyAndHistory(t *testing.T) {
 	zeros := strings.Repeat("0", 40)
 	s := &scans{}
 	g := newGuard(t, dir, s)
-	wantFailure(t, g.Push(strings.NewReader("refs/heads/main "+bad+" refs/heads/main "+first+"\n"), ""), "contenu ajouté par : "+first+".."+bad)
+	wantCause(t, g.Push(strings.NewReader("refs/heads/main "+bad+" refs/heads/main "+first+"\n"), ""), "content added by: "+first+".."+bad)
 	// Removing the term is allowed: only added lines count.
 	git(t, dir, "rm", "-q", "c.txt")
 	git(t, dir, "commit", "-q", "-m", "remove")
@@ -142,19 +156,19 @@ func TestPushAddedContentOnlyAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A new ref checks everything not on a remote, the bad commit included.
-	wantFailure(t, g.Push(strings.NewReader("refs/heads/x "+fixed+" refs/heads/x "+zeros+"\n"), ""), "contenu ajouté par")
+	wantCause(t, g.Push(strings.NewReader("refs/heads/x "+fixed+" refs/heads/x "+zeros+"\n"), ""), "content added by")
 }
 
 func TestHistoryMetadata(t *testing.T) {
 	dir := repo(t)
 	base := git(t, dir, "rev-parse", "HEAD")
-	head := commit(t, dir, "d.txt", "propre\n", "fix for Globex-Inc")
-	wantFailure(t, newGuard(t, dir, &scans{}).history(base+".."+head), "métadonnées ou noms de fichiers")
+	head := commit(t, dir, "d.txt", "clean\n", "fix for Globex-Inc")
+	wantCause(t, newGuard(t, dir, &scans{}).history(base+".."+head), "metadata or file names")
 }
 
 func TestStagedBlocksNameContentAndReportsOnlyNames(t *testing.T) {
 	dir := repo(t)
-	for name, content := range map[string]string{"notes-acmecorp.txt": "propre\n", "b.txt": "tenant = AcmeCorp\n", "ok.txt": "rien\n"} {
+	for name, content := range map[string]string{"notes-acmecorp.txt": "clean\n", "b.txt": "tenant = AcmeCorp\n", "ok.txt": "nothing\n"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -162,16 +176,16 @@ func TestStagedBlocksNameContentAndReportsOnlyNames(t *testing.T) {
 	git(t, dir, "add", "-A")
 	s := &scans{}
 	err := newGuard(t, dir, s).Staged()
-	wantFailure(t, err, "  b.txt")
-	wantFailure(t, err, "  <nom masqué> (fichier 2)") // the name holds a term: masked, with its rank
+	wantFailure(t, err, "b.txt")
+	wantCause(t, err, "<masked name> (file 2)") // the name holds a term: masked, with its rank
 	if strings.Contains(err.Error(), "ok.txt") || strings.Contains(strings.ToLower(err.Error()), "acmecorp") || strings.Contains(strings.ToLower(err.Error()), "tenant") || len(s.calls) != 0 {
-		t.Fatalf("rapport trop bavard ou scanner lancé : %v", err)
+		t.Fatalf("report too verbose or scanner run: %v", err)
 	}
 }
 
 func TestStagedCleanRunsScannerAndScannerFailureBlocks(t *testing.T) {
 	dir := repo(t)
-	if err := os.WriteFile(filepath.Join(dir, "ok.txt"), []byte("rien\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "ok.txt"), []byte("nothing\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	git(t, dir, "add", "ok.txt")
@@ -180,12 +194,12 @@ func TestStagedCleanRunsScannerAndScannerFailureBlocks(t *testing.T) {
 		t.Fatalf("%v, %v", err, s.calls)
 	}
 	s.err = &exec.ExitError{}
-	wantFailure(t, newGuard(t, dir, s).Staged(), "betterleaks a signalé un secret")
-	s.err = errors.New("betterleaks : empreinte non figée pour x")
-	wantFailure(t, newGuard(t, dir, s).Staged(), "empreinte non figée")
+	wantFailure(t, newGuard(t, dir, s).Staged(), "")
+	s.err = errors.New("betterleaks: sha256 not pinned for x")
+	wantFailure(t, newGuard(t, dir, s).Staged(), "")
 	g := newGuard(t, dir, s)
 	g.Scan = nil
-	wantFailure(t, g.Staged(), "betterleaks indisponible")
+	wantFailure(t, g.Staged(), "")
 }
 
 func TestStagedInvalidIndexedManifest(t *testing.T) {
@@ -195,7 +209,7 @@ func TestStagedInvalidIndexedManifest(t *testing.T) {
 	}
 	git(t, dir, "add", "dot.json")
 	err := newGuard(t, dir, &scans{}).Staged()
-	wantFailure(t, err, "clé unexpected")
+	wantFailure(t, err, "unexpected")
 }
 
 func TestGitFailureFailsClosed(t *testing.T) {
@@ -208,7 +222,7 @@ func TestGitFailureFailsClosed(t *testing.T) {
 		s := &scans{}
 		wantFailure(t, f(newGuard(t, notARepo, s)), "")
 		if len(s.calls) != 0 {
-			t.Errorf("%s : le scanner ne doit pas tourner après un échec git", name)
+			t.Errorf("%s: the scanner must not run after a git failure", name)
 		}
 	}
 }
@@ -223,11 +237,11 @@ func TestMsg(t *testing.T) {
 		return p
 	}
 	g := &Guard{Terms: mustTerms(t)}
-	wantFailure(t, g.Msg(write("fix for Globex-Inc\n")), "message de commit")
-	if err := g.Msg(write("propre\n# Globex-Inc dans un commentaire\n")); err != nil {
+	wantFailure(t, g.Msg(write("fix for Globex-Inc\n")), "")
+	if err := g.Msg(write("clean\n# Globex-Inc in a comment\n")); err != nil {
 		t.Fatal(err)
 	}
-	wantFailure(t, g.Msg(filepath.Join(dir, "absent")), "illisible")
+	wantFailure(t, g.Msg(filepath.Join(dir, "absent")), "")
 	if err := (&Guard{}).Msg("/nonexistent"); err != nil { // secrets-only mode
 		t.Fatal(err)
 	}
@@ -253,10 +267,10 @@ func TestAllChecksRefsHistoryAndSecrets(t *testing.T) {
 		t.Fatalf("%v, %v", err, s.calls)
 	}
 	git(t, dir, "branch", "globex-inc")
-	wantFailure(t, newGuard(t, dir, &scans{}).All(), "nom de branche ou de tag interdit")
+	wantCause(t, newGuard(t, dir, &scans{}).All(), "forbidden branch or tag name")
 	git(t, dir, "branch", "-q", "-D", "globex-inc")
 	commit(t, dir, "z.txt", "client zed\n", "add")
-	wantFailure(t, newGuard(t, dir, &scans{}).All(), "contenu de l'historique")
+	wantCause(t, newGuard(t, dir, &scans{}).All(), "content of the history")
 }
 
 func mustTerms(t *testing.T) *Terms {
@@ -274,9 +288,9 @@ func evilMerge(t *testing.T, dir, name, content string) (base, merge string) {
 	t.Helper()
 	base = git(t, dir, "rev-parse", "HEAD")
 	git(t, dir, "checkout", "-q", "-b", "side")
-	commit(t, dir, "side.txt", "propre\n", "side")
+	commit(t, dir, "side.txt", "clean\n", "side")
 	git(t, dir, "checkout", "-q", "-")
-	commit(t, dir, "main.txt", "propre\n", "main")
+	commit(t, dir, "main.txt", "clean\n", "main")
 	git(t, dir, "merge", "-q", "--no-ff", "--no-commit", "side")
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
@@ -293,28 +307,28 @@ func TestHiddenContentIsSeen(t *testing.T) {
 		setup func(t *testing.T, dir string) (base, head string)
 		want  string
 	}{
-		{"binaire avec NUL", func(t *testing.T, dir string) (string, string) {
+		{"binary with NUL", func(t *testing.T, dir string) (string, string) {
 			base := git(t, dir, "rev-parse", "HEAD")
 			return base, commit(t, dir, "f.bin", "\x00\x01 client zed \x00\n", "bin")
-		}, "contenu ajouté par"},
-		{"attribut -diff", func(t *testing.T, dir string) (string, string) {
+		}, "content added by"},
+		{"-diff attribute", func(t *testing.T, dir string) (string, string) {
 			commit(t, dir, ".gitattributes", "* -diff\n", "attrs")
 			base := git(t, dir, "rev-parse", "HEAD")
 			return base, commit(t, dir, "p.txt", "client zed\n", "nodiff")
-		}, "contenu ajouté par"},
-		{"fusion dont la résolution ajoute le terme", func(t *testing.T, dir string) (string, string) {
+		}, "content added by"},
+		{"merge whose resolution adds the term", func(t *testing.T, dir string) (string, string) {
 			return evilMerge(t, dir, "m.txt", "client zed\n")
-		}, "contenu ajouté par"},
-		{"fusion dont la résolution ajoute un nom interdit", func(t *testing.T, dir string) (string, string) {
-			return evilMerge(t, dir, "notes-acmecorp.txt", "propre\n")
-		}, "noms de fichiers"},
+		}, "content added by"},
+		{"merge whose resolution adds a forbidden name", func(t *testing.T, dir string) (string, string) {
+			return evilMerge(t, dir, "notes-acmecorp.txt", "clean\n")
+		}, "file names"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := repo(t)
 			base, head := tc.setup(t, dir)
 			g := newGuard(t, dir, &scans{})
-			wantFailure(t, g.Push(strings.NewReader("refs/heads/main "+head+" refs/heads/main "+base+"\n"), ""), tc.want)
-			wantFailure(t, g.All(), "historique")
+			wantCause(t, g.Push(strings.NewReader("refs/heads/main "+head+" refs/heads/main "+base+"\n"), ""), tc.want)
+			wantCause(t, g.All(), "history")
 		})
 	}
 }
@@ -344,12 +358,12 @@ func TestMediaContentIsNotScanned(t *testing.T) {
 	}
 	git(t, dir, "reset", "-q")
 	commit(t, dir, "globex-inc.png", "\x89PNG\n", "named")
-	wantFailure(t, newGuard(t, dir, &scans{}).All(), "noms de fichiers")
+	wantCause(t, newGuard(t, dir, &scans{}).All(), "file names")
 }
 
 func TestOrdinaryCommitsStillPass(t *testing.T) {
 	dir := repo(t)
-	base, head := evilMerge(t, dir, "m.txt", "propre\n")
+	base, head := evilMerge(t, dir, "m.txt", "clean\n")
 	if err := newGuard(t, dir, &scans{}).Push(strings.NewReader("refs/heads/main "+head+" refs/heads/main "+base+"\n"), ""); err != nil {
 		t.Fatal(err)
 	}
@@ -365,11 +379,11 @@ func TestAnnotatedTags(t *testing.T) {
 		args []string // git arguments creating the tag v1
 		bad  bool
 	}{
-		{"message interdit", []string{"tag", "-a", "-m", "release for Globex-Inc", "v1"}, true},
-		{"tagger interdit", []string{"-c", "user.name=Acmecorp Bot", "tag", "-a", "-m", "propre", "v1"}, true},
-		{"email du tagger interdit", []string{"-c", "user.email=me@acmecorp.example", "tag", "-a", "-m", "propre", "v1"}, true},
-		{"tag annoté propre", []string{"tag", "-a", "-m", "propre", "v1"}, false},
-		{"tag léger", []string{"tag", "v1"}, false},
+		{"forbidden message", []string{"tag", "-a", "-m", "release for Globex-Inc", "v1"}, true},
+		{"forbidden tagger", []string{"-c", "user.name=Acmecorp Bot", "tag", "-a", "-m", "clean", "v1"}, true},
+		{"forbidden tagger email", []string{"-c", "user.email=me@acmecorp.example", "tag", "-a", "-m", "clean", "v1"}, true},
+		{"clean annotated tag", []string{"tag", "-a", "-m", "clean", "v1"}, false},
+		{"lightweight tag", []string{"tag", "v1"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := repo(t)
@@ -383,21 +397,21 @@ func TestAnnotatedTags(t *testing.T) {
 				}
 				return
 			}
-			wantFailure(t, push, "tag annoté : "+sha)
-			wantFailure(t, all, "tag annoté : "+sha)
+			wantCause(t, push, "annotated tag: "+sha)
+			wantCause(t, all, "annotated tag: "+sha)
 			for _, err := range []error{push, all} {
 				if low := strings.ToLower(err.Error()); strings.Contains(low, "acmecorp") || strings.Contains(low, "globex") {
-					t.Errorf("le texte interdit est affiché : %v", err)
+					t.Errorf("the forbidden text is shown: %v", err)
 				}
 			}
 		})
 	}
-	t.Run("tag de tag", func(t *testing.T) {
+	t.Run("tag of a tag", func(t *testing.T) {
 		dir := repo(t)
 		git(t, dir, "tag", "-a", "-m", "client zed", "inner")
-		git(t, dir, "tag", "-a", "-m", "propre", "outer", "inner")
+		git(t, dir, "tag", "-a", "-m", "clean", "outer", "inner")
 		sha := git(t, dir, "rev-parse", "outer")
-		wantFailure(t, newGuard(t, dir, &scans{}).Push(strings.NewReader("refs/tags/outer "+sha+" refs/tags/outer "+zeros+"\n"), ""), "tag annoté")
+		wantCause(t, newGuard(t, dir, &scans{}).Push(strings.NewReader("refs/tags/outer "+sha+" refs/tags/outer "+zeros+"\n"), ""), "annotated tag")
 	})
 	// chain makes n nested tags t1..tn (t1 on the commit, message msg1) and keeps only tn as a ref,
 	// so the inner messages are reachable through the outer tag object alone.
@@ -405,19 +419,19 @@ func TestAnnotatedTags(t *testing.T) {
 		dir = repo(t)
 		git(t, dir, "tag", "-a", "-m", msg1, "t1")
 		for i := 2; i <= n; i++ {
-			git(t, dir, "tag", "-a", "-m", "propre", fmt.Sprintf("t%d", i), fmt.Sprintf("t%d", i-1))
+			git(t, dir, "tag", "-a", "-m", "clean", fmt.Sprintf("t%d", i), fmt.Sprintf("t%d", i-1))
 			git(t, dir, "tag", "-d", fmt.Sprintf("t%d", i-1))
 		}
 		return dir, git(t, dir, "rev-parse", fmt.Sprintf("t%d", n))
 	}
-	t.Run("chaîne de 20 tags, terme dans le plus interne", func(t *testing.T) {
+	t.Run("chain of 20 tags, term in the innermost", func(t *testing.T) {
 		dir, sha := chain(t, 20, "client zed")
 		g := newGuard(t, dir, &scans{})
-		wantFailure(t, g.Push(strings.NewReader("refs/tags/t20 "+sha+" refs/tags/t20 "+zeros+"\n"), ""), "tag annoté")
-		wantFailure(t, g.All(), "tag annoté")
+		wantCause(t, g.Push(strings.NewReader("refs/tags/t20 "+sha+" refs/tags/t20 "+zeros+"\n"), ""), "annotated tag")
+		wantCause(t, g.All(), "annotated tag")
 	})
-	t.Run("chaîne de 20 tags propres", func(t *testing.T) {
-		dir, sha := chain(t, 20, "propre")
+	t.Run("chain of 20 clean tags", func(t *testing.T) {
+		dir, sha := chain(t, 20, "clean")
 		g := newGuard(t, dir, &scans{})
 		if err := g.Push(strings.NewReader("refs/tags/t20 "+sha+" refs/tags/t20 "+zeros+"\n"), ""); err != nil {
 			t.Fatal(err)
@@ -426,17 +440,17 @@ func TestAnnotatedTags(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	t.Run("chaîne au-delà du plafond", func(t *testing.T) {
+	t.Run("chain beyond the limit", func(t *testing.T) {
 		old := maxTagChain
 		maxTagChain = 5
 		t.Cleanup(func() { maxTagChain = old })
-		dir, sha := chain(t, 8, "propre")
+		dir, sha := chain(t, 8, "clean")
 		g := newGuard(t, dir, &scans{})
-		wantFailure(t, g.Push(strings.NewReader("refs/tags/t8 "+sha+" refs/tags/t8 "+zeros+"\n"), ""), "chaîne de tags trop profonde")
-		wantFailure(t, g.All(), "chaîne de tags trop profonde")
+		wantCause(t, g.Push(strings.NewReader("refs/tags/t8 "+sha+" refs/tags/t8 "+zeros+"\n"), ""), "tag chain too deep")
+		wantCause(t, g.All(), "tag chain too deep")
 	})
-	t.Run("git en échec", func(t *testing.T) {
-		wantFailure(t, newGuard(t, repo(t), &scans{}).tags(strings.Repeat("a", 40)), "commande en échec")
+	t.Run("git failing", func(t *testing.T) {
+		wantFailure(t, newGuard(t, repo(t), &scans{}).tags(strings.Repeat("a", 40)), "")
 	})
 }
 
@@ -457,14 +471,14 @@ func TestPushRangeUsesTheTargetRemote(t *testing.T) {
 		s := &scans{}
 		err := newGuard(t, dir, s).Push(strings.NewReader(line), tc.remote)
 		if tc.scan == "--not --remotes=origin" {
-			wantFailure(t, err, "contenu ajouté par")
+			wantCause(t, err, "content added by")
 			continue
 		}
 		if err != nil {
-			t.Fatalf("remote %q : %v", tc.remote, err)
+			t.Fatalf("remote %q: %v", tc.remote, err)
 		}
 		if got := strings.Join(s.calls[0], " "); got != "git --log-opts="+bad+" "+tc.scan+" ." {
-			t.Errorf("remote %q : scanner appelé avec %q", tc.remote, got)
+			t.Errorf("remote %q: scanner called with %q", tc.remote, got)
 		}
 	}
 }
@@ -475,7 +489,7 @@ func TestStagedFileNamedLikeAStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	git(t, dir, "add", "--", "0:a.txt")
-	wantFailure(t, newGuard(t, dir, &scans{}).Staged(), "  0:a.txt")
+	wantFailure(t, newGuard(t, dir, &scans{}).Staged(), "0:a.txt")
 }
 
 func TestForbiddenNamesAreNeverPrinted(t *testing.T) {
@@ -483,11 +497,11 @@ func TestForbiddenNamesAreNeverPrinted(t *testing.T) {
 	head := git(t, dir, "rev-parse", "HEAD")
 	g := newGuard(t, dir, &scans{})
 	err := g.Push(strings.NewReader("refs/heads/acmecorp-sync "+head+" refs/heads/x "+strings.Repeat("0", 40)+"\n"), "")
-	wantFailure(t, err, "interdit : <nom masqué> (ligne 1)")
+	wantCause(t, err, "name: <masked name> (line 1)")
 	if strings.Contains(err.Error(), "acmecorp") {
-		t.Fatalf("nom de ref affiché : %v", err)
+		t.Fatalf("ref name shown: %v", err)
 	}
-	if got := g.shown("log", "--remotes=acmecorp", "ok"); got != "log <masqué> ok" {
+	if got := g.shown("log", "--remotes=acmecorp", "ok"); strings.Contains(got, "acmecorp") || !strings.HasPrefix(got, "log ") || !strings.HasSuffix(got, " ok") {
 		t.Fatalf("shown = %q", got)
 	}
 }

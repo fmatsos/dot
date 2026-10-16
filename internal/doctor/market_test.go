@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -41,37 +42,37 @@ func TestMarketplaces(t *testing.T) {
 	home, market, cache := marketSandbox(t)
 	p := profile(t, home, "alpha")
 	lines := check(home, p)
-	for _, want := range []string{"marketplace Claude acme présent", "marketplace Codex acme présent"} {
+	if problems(lines) != nil {
+		t.Errorf("healthy marketplaces:\n%s", text(lines))
+	}
+	// message kept: a present marketplace or an up-to-date copy is only an OK line, known by its text (no check id on Line).
+	for _, want := range []string{"marketplace Claude acme present", "marketplace Codex acme present"} {
 		if !has(lines, OK, want) {
-			t.Errorf("manque %q :\n%s", want, text(lines))
+			t.Errorf("missing %q:\n%s", want, text(lines))
 		}
 	}
-	if !has(lines, OK, "copie Codex à jour") {
-		t.Errorf("copie à jour :\n%s", text(lines))
+	if !has(lines, OK, "Codex copy up to date") {
+		t.Errorf("up-to-date copy:\n%s", text(lines))
 	}
 	write(t, filepath.Join(cache, "example"), "never-print-plugin-content\n", 0o644)
 	lines = check(home, p)
-	if !has(lines, Warn, "copie Codex périmée : dot pull") || HasFail(lines) {
-		t.Errorf("copie périmée :\n%s", text(lines))
+	if !slices.Equal(problems(lines), []Level{Warn}) || HasFail(lines) {
+		t.Errorf("stale copy:\n%s", text(lines))
 	}
 	if out := text(lines); strings.Contains(out, "never-print-plugin-content") {
-		t.Error("contenu du plugin affiché")
+		t.Error("plugin content shown")
 	}
 	write(t, filepath.Join(cache, "example"), "original\n", 0o644)
 	write(t, filepath.Join(cache, "extra"), "x", 0o644)
-	if lines = check(home, p); !has(lines, Warn, "copie Codex périmée : dot pull") {
-		t.Errorf("fichier en trop :\n%s", text(lines))
+	if lines = check(home, p); !slices.Equal(problems(lines), []Level{Warn}) {
+		t.Errorf("extra file:\n%s", text(lines))
 	}
 	os.Remove(filepath.Join(cache, "extra"))
 	os.RemoveAll(market)
 	lines = check(home, p)
-	for _, l := range []Line{
-		{Warn, "marketplace Claude acme absent : claude plugin marketplace add <dossier> (jq requis)"},
-		{Warn, "marketplace Codex acme absent : codex plugin marketplace add <dossier>"},
-	} {
-		if !has(lines, l.Level, l.Message) {
-			t.Errorf("manque %q :\n%s", l.Message, text(lines))
-		}
+	// one warning per CLI whose marketplace is gone, and no failure
+	if !slices.Equal(problems(lines), []Level{Warn, Warn}) {
+		t.Errorf("missing marketplaces:\n%s", text(lines))
 	}
 }
 
@@ -80,18 +81,19 @@ func TestMarketplaceDeclaredByTwoProfilesIsCheckedOnce(t *testing.T) {
 	lines := check(home, profile(t, home, "alpha"), profile(t, home, "beta"))
 	n := 0
 	for _, l := range lines {
-		if l.Message == "marketplace Claude acme présent" || l.Message == "copie Codex à jour" {
+		if l.Message == "marketplace Claude acme present" || l.Message == "Codex copy up to date" {
 			n++
 		}
 	}
 	if n != 2 {
-		t.Errorf("%d lignes de marketplace, attendu 2 :\n%s", n, text(lines))
+		t.Errorf("%d marketplace lines, want 2:\n%s", n, text(lines))
 	}
 }
 
 func TestNoMarketplaceCliSkipsChecks(t *testing.T) {
 	home := sandbox(t)
+	// message kept: the marketplace checks are only known by their text (no check id on Line).
 	if out := text(check(home, profile(t, home, "alpha"))); strings.Contains(out, "marketplace") {
-		t.Errorf("marketplace vérifiée sans CLI :\n%s", out)
+		t.Errorf("marketplace checked without a CLI:\n%s", out)
 	}
 }

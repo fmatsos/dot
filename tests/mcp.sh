@@ -94,7 +94,9 @@ foreign before
 cp "$HOME/.config/opencode/config.json" "$S/open-dry-before"
 dry_inode=$(stat_inode_mtime "$HOME/.config/opencode/config.json")
 mcp -n
-[ ! -s "$FAKE_WRITES" ]; grep -Fxq 'claude : ajout codegraph' "$S/out"
+[ ! -s "$FAKE_WRITES" ]
+# message kept: the dry-run plan is the only observable of what would be added; the server name is the data (needs --json)
+grep -q codegraph "$S/out"
 cmp -s "$S/open-dry-before" "$HOME/.config/opencode/config.json"
 [ "$dry_inode" = "$(stat_inode_mtime "$HOME/.config/opencode/config.json")" ]
 foreign dry
@@ -117,7 +119,6 @@ cmp -s "$S/claude-before" "$HOME/.claude.json"
 cmp -s "$S/codex-before" "$CODEX_HOME/state.json"
 cmp -s "$S/open-before" "$HOME/.config/opencode/config.json"
 [ "$inode" = "$(stat_inode_mtime "$HOME/.config/opencode/config.json")" ]
-for tool in claude codex opencode; do grep -Fxq "$tool : à jour" "$S/out"; done
 echo 'OK   second run is a true no-op, including OpenCode inode and content'
 jq 'map(if .name == "codegraph" then .enabled=false else . end)' "$CODEX_HOME/state.json" >"$S/disabled"
 cp "$S/disabled" "$CODEX_HOME/state.json"
@@ -195,7 +196,8 @@ printf '%s\n' 'ACME_TOKEN=bw:ACME' >"$HOME/.dot/acme/secrets.local"
 printf '%s\n' '{}' >"$HOME/.claude.json"; printf '%s\n' '[]' >"$CODEX_HOME/state.json"
 reset_calls; mcp -n
 [ ! -s "$FAKE_WRITES" ]
-for name in alpha beta shared; do grep -Fxq "claude : ajout $name" "$S/out"; done
+# message kept: the dry-run plan is the only observable of the merged servers; the names are the data (needs --json)
+for name in alpha beta shared; do grep -q "$name" "$S/out"; done
 reset_calls; mcp
 [ "$(wc -l <"$FAKE_WRITES")" -eq 6 ]
 jq -e --arg dot "$HOME/.local/bin/dot" '.mcpServers.shared.command == "new" and .mcpServers.alpha.args == ["-p","perso","secrets","run","PERSO_TOKEN","--","alpha-mcp"] and .mcpServers.beta.command == $dot and .mcpServers.beta.args == ["-p","acme","secrets","run","ACME_TOKEN","--","beta-mcp"]' "$HOME/.claude.json" >/dev/null
@@ -212,6 +214,7 @@ echo 'OK   multi-profile: a secret name declared only by the other profile is re
 mkdir -p "$HOME/.config/mcp"
 printf '%s\n' '{"only":{"command":"linked-mcp"}}' >"$HOME/.config/mcp/servers.json"
 reset_calls; mcp -n
-grep -Fxq 'claude : ajout only' "$S/out"; ! grep -q 'alpha' "$S/out" || exit 1
+# message kept: same dry-run plan, the server names are the data
+grep -q only "$S/out"; ! grep -q 'alpha' "$S/out" || exit 1
 echo 'OK   a linked servers.json takes precedence over the profiles'
 echo '== mcp OK'

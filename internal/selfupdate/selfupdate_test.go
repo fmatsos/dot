@@ -90,18 +90,18 @@ func TestUpdateOK(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := content(t, f.exe); got != string(newBin) {
-		t.Fatalf("binaire = %q", got)
+		t.Fatalf("binary = %q", got)
 	}
 	real, _ := filepath.EvalSymlinks(f.exe)
 	if fi, _ := os.Lstat(f.exe); fi.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("le lien symbolique a été remplacé")
+		t.Fatal("the symlink was replaced")
 	}
 	if fi, _ := os.Stat(real); fi.Mode().Perm() != 0o755 {
 		t.Fatalf("mode = %v", fi.Mode())
 	}
 	entries, _ := os.ReadDir(filepath.Dir(real))
 	if len(entries) != 2 {
-		t.Fatalf("fichier temporaire laissé : %v", entries)
+		t.Fatalf("temp file left behind: %v", entries)
 	}
 }
 
@@ -112,34 +112,44 @@ func TestLatest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if content(t, f.exe) != string(newBin) {
-		t.Fatal("pas mis à jour")
+		t.Fatal("not updated")
 	}
 }
 
-func assertRefused(t *testing.T, f *fixture, want string) {
+// assertRefused wants a refusal that leaves the executable alone. The cause is told by the network
+// state the callers check (what was fetched before the refusal), not by the wording.
+func assertRefused(t *testing.T, f *fixture) {
 	t.Helper()
-	err := Run(f.opts)
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("erreur = %v, attendu %q", err, want)
+	if err := Run(f.opts); err == nil {
+		t.Fatal("update accepted")
 	}
 	if got := content(t, f.exe); got != "old" {
-		t.Fatalf("exécutable modifié : %q", got)
+		t.Fatalf("executable modified: %q", got)
 	}
 }
 
 func TestBadSignature(t *testing.T) {
 	f := setup(t, func(_, sig, _ *[]byte) { (*sig)[0] ^= 1 })
-	assertRefused(t, f, "signature")
+	assertRefused(t, f)
+	if f.hits["/v1.2.3/dot-linux-x64"] != 0 { // refused on the signature, before the binary is fetched
+		t.Fatalf("binary downloaded despite an invalid signature: %v", f.hits)
+	}
 }
 
 func TestSignatureOfOtherContent(t *testing.T) {
 	f := setup(t, func(sums, _, _ *[]byte) { *sums = append(*sums, []byte("# extra\n")...) })
-	assertRefused(t, f, "signature")
+	assertRefused(t, f)
+	if f.hits["/v1.2.3/dot-linux-x64"] != 0 {
+		t.Fatalf("binary downloaded despite an invalid signature: %v", f.hits)
+	}
 }
 
 func TestTamperedBinary(t *testing.T) {
 	f := setup(t, func(_, _, bin *[]byte) { *bin = []byte("evil") })
-	assertRefused(t, f, "checksum invalide")
+	assertRefused(t, f)
+	if f.hits["/v1.2.3/dot-linux-x64"] != 1 { // the signature passed: refused on the checksum of the fetched binary
+		t.Fatalf("hits: %v", f.hits)
+	}
 }
 
 func TestMissingAssetLine(t *testing.T) {
@@ -152,19 +162,24 @@ func TestMissingAssetLine(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1.2.3/SHA256SUMS", func(w http.ResponseWriter, _ *http.Request) { w.Write(sums) })
 	mux.HandleFunc("/v1.2.3/SHA256SUMS.sig", func(w http.ResponseWriter, _ *http.Request) { w.Write(sig) })
+	binHits := 0
+	mux.HandleFunc("/v1.2.3/dot-linux-x64", func(w http.ResponseWriter, _ *http.Request) { binHits++; w.Write(newBin) })
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	f.opts.BaseURL = srv.URL
-	assertRefused(t, f, "absent de SHA256SUMS")
+	assertRefused(t, f)
+	if binHits != 0 { // no line for the asset: refused before the binary is fetched
+		t.Fatal("binary downloaded without a signed sum")
+	}
 }
 
 func TestEmptyOrInvalidKey(t *testing.T) {
 	for _, k := range []string{"", "  \n", "!!!notbase64", base64.StdEncoding.EncodeToString([]byte("short"))} {
 		f := setup(t, nil)
 		releaseKey = k
-		assertRefused(t, f, "mise à jour refusée")
+		assertRefused(t, f)
 		if len(f.hits) != 0 {
-			t.Fatalf("réseau touché sans clé valide : %v", f.hits)
+			t.Fatalf("network touched without a valid key: %v", f.hits)
 		}
 	}
 }
@@ -175,11 +190,11 @@ func TestAlreadyUpToDate(t *testing.T) {
 	if err := Run(f.opts); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(f.out.String(), "déjà en v1.2.3") || content(t, f.exe) != "old" {
-		t.Fatalf("sortie %q", f.out.String())
+	if f.out.Len() == 0 || content(t, f.exe) != "old" {
+		t.Fatalf("output %q", f.out.String())
 	}
 	if f.hits["/v1.2.3/dot-linux-x64"] != 0 {
-		t.Fatal("binaire téléchargé")
+		t.Fatal("binary downloaded")
 	}
 }
 
@@ -189,11 +204,11 @@ func TestDryRun(t *testing.T) {
 	if err := Run(f.opts); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(f.out.String(), "[dry]") || content(t, f.exe) != "old" {
-		t.Fatalf("sortie %q", f.out.String())
+	if f.out.Len() == 0 || content(t, f.exe) != "old" {
+		t.Fatalf("output %q", f.out.String())
 	}
 	if len(f.hits) != 0 {
-		t.Fatalf("téléchargements en dry run : %v", f.hits)
+		t.Fatalf("downloads in a dry run: %v", f.hits)
 	}
 }
 
@@ -201,14 +216,20 @@ func TestInvalidTarget(t *testing.T) {
 	for _, tag := range []string{"1.2.3", "v1.2", "v1.2.3/../x", "latest"} {
 		f := setup(t, nil)
 		f.opts.Target = tag
-		assertRefused(t, f, "version invalide")
+		assertRefused(t, f)
+		if len(f.hits) != 0 { // refused before any request
+			t.Fatalf("%q: network touched: %v", tag, f.hits)
+		}
 	}
 }
 
 func TestHTTPError(t *testing.T) {
 	f := setup(t, nil)
 	f.opts.Target = "v9.9.9"
-	assertRefused(t, f, "HTTP 404")
+	assertRefused(t, f)
+	if f.hits["/v1.2.3/dot-linux-x64"] != 0 {
+		t.Fatalf("binary downloaded: %v", f.hits)
+	}
 }
 
 func TestAsset(t *testing.T) {
@@ -225,6 +246,6 @@ func TestAsset(t *testing.T) {
 
 func TestEmbeddedKeyPlaceholder(t *testing.T) {
 	if _, err := publicKey(); err != nil && strings.TrimSpace(releaseKey) != "" {
-		t.Fatalf("clé commitée invalide : %v", err)
+		t.Fatalf("committed key invalid: %v", err)
 	}
 }

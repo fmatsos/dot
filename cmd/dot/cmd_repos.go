@@ -14,7 +14,7 @@ import (
 
 func init() { register(newReposCmd) }
 
-const reposUsage = "usage : dot repos [--problems | export [fichier] | clone [fichier]]"
+const reposUsage = "usage: dot repos [--problems | export [file] | clone [file]]"
 
 // useColor is true on a terminal unless NO_COLOR is set.
 // ponytail: any character device but /dev/null counts as a terminal, no ioctl.
@@ -53,12 +53,12 @@ func newReposCmd(env *Env) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "repos [--problems]",
-		Short: "État des dépôts locaux, export et reclonage de leurs remotes",
-		Long: "État des dépôts locaux, sans fetch, et liste de remotes pour une autre machine.\n\n" +
-			"Sans argument : branche, changements, avance/retard et identité de chaque dépôt. Racines : " +
-			"$DOT_SRC (défaut ~/src, profondeur 3) et $DOT_SANDBOX (~/sandbox, profondeur 1). Les worktrees " +
-			"sont exclus. Une identité différente de celle du profil est signalée.\n\n" +
-			"--problems : identités incohérentes ou garde-fou contourné ; code 1.",
+		Short: "Status of local repositories, export and re-clone of their remotes",
+		Long: "Status of local repositories, without fetch, and a list of remotes for another machine.\n\n" +
+			"With no argument: branch, changes, ahead/behind and identity of each repository. Roots: " +
+			"$DOT_SRC (default ~/src, depth 3) and $DOT_SANDBOX (~/sandbox, depth 1). Worktrees " +
+			"are excluded. An identity different from the profile's is flagged.\n\n" +
+			"--problems: inconsistent identities or bypassed guard; exit 1.",
 		DisableFlagsInUseLine: true,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -85,13 +85,13 @@ func newReposCmd(env *Env) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&problems, "problems", false, "n'affiche que les identités incohérentes ou le garde-fou contourné (code 1)")
+	cmd.Flags().BoolVar(&problems, "problems", false, "show only inconsistent identities or the bypassed guard (exit 1)")
 	cmd.AddCommand(
 		&cobra.Command{
-			Use:   "export [fichier]",
-			Short: "Garde les remotes origin uniques, triés, dans un fichier privé",
-			Long: "Garde les remotes origin uniques, triés, dans un fichier privé (0600).\n\n" +
-				"Défaut : <dossier du profil>/repos.local. Les dépôts sandbox ne sont pas exportés.",
+			Use:   "export [file]",
+			Short: "Keep the unique origin remotes, sorted, in a private file",
+			Long: "Keep the unique origin remotes, sorted, in a private file (0600).\n\n" +
+				"Default: <profile directory>/repos.local. Sandbox repositories are not exported.",
 			Args: atMostOne,
 			RunE: func(_ *cobra.Command, args []string) error {
 				file, err := listFile(args)
@@ -107,10 +107,10 @@ func newReposCmd(env *Env) *cobra.Command {
 			},
 		},
 		&cobra.Command{
-			Use:   "clone [fichier]",
-			Short: "Reclone cette liste, en continuant après une erreur",
-			Long: "Reclone cette liste, en continuant après une erreur.\n\n" +
-				"Même fichier par défaut ; les dépôts déjà présents sont réutilisés par dot clone.",
+			Use:   "clone [file]",
+			Short: "Re-clone this list, continuing after an error",
+			Long: "Re-clone this list, continuing after an error.\n\n" +
+				"Same default file; repositories already present are reused by dot clone.",
 			Args: atMostOne,
 			RunE: func(_ *cobra.Command, args []string) error {
 				file, err := listFile(args)
@@ -119,11 +119,11 @@ func newReposCmd(env *Env) *cobra.Command {
 				}
 				good, bad, err := repos.CloneList(file, srcRoot(env), env.Stderr)
 				if errors.Is(err, repos.ErrUnreadable) {
-					return fmt.Errorf("repos : %w", err)
+					return fmt.Errorf("repos: %w", err)
 				} else if err != nil {
 					return err
 				}
-				fmt.Fprintf(env.Stdout, "%d dépôts réutilisés ou clonés, %d échecs\n", good, bad)
+				fmt.Fprintf(env.Stdout, "%d repositories reused or cloned, %d failures\n", good, bad)
 				if bad > 0 {
 					return exitError{code: 1}
 				}

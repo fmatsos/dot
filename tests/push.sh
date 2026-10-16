@@ -15,16 +15,16 @@ git -C "$DOTFILES_DEPLOY" commit -qm init; git -C "$DOTFILES_DEPLOY" push -q -u 
 
 echo two >"$DOTFILES_DEPLOY/f"
 mv "$S/remote.git" "$S/remote.off"
-if dot push "second" >"$S/out" 2>"$S/err"; then echo "FAIL push sans distant réussi"; exit 1; fi
+if dot push "second" >"$S/out" 2>"$S/err"; then echo "FAIL push without a remote succeeded"; exit 1; fi
 [ "$(git -C "$DOTFILES_DEPLOY" log -1 --format=%s)" = second ]
 echo 'OK   failed push leaves the commit'
 
 mv "$S/remote.off" "$S/remote.git"
 dot push >"$S/out" 2>"$S/err"
-grep -Fq 'rien à commiter, 1 commit(s) à pousser' "$S/out"
 [ "$(git -C "$S/remote.git" log -1 --format=%s main)" = second ]
 echo 'OK   next push sends the unpushed commit'
 
+head=$(git -C "$S/remote.git" rev-parse main)
 dot push >"$S/out" 2>"$S/err"
-grep -Fxq 'rien à envoyer' "$S/out"
-echo 'OK   nothing left: rien à envoyer'
+[ "$(git -C "$S/remote.git" rev-parse main)" = "$head" ] && [ "$(git -C "$DOTFILES_DEPLOY" rev-parse HEAD)" = "$head" ]
+echo 'OK   nothing left: the next push changes nothing'

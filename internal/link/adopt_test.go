@@ -21,7 +21,7 @@ func TestAdoptSource(t *testing.T) {
 		t.Fatalf("%q %q %v", abs, rel, err)
 	}
 	if _, rel, err := AdoptSource(home, home, ".config/../.config/a/rc"); err != nil || rel != ".config/a/rc" {
-		t.Fatalf("relatif : %q %v", rel, err)
+		t.Fatalf("relative: %q %v", rel, err)
 	}
 	_ = os.Symlink(good, filepath.Join(home, "ln"))
 	_ = os.Symlink(filepath.Join(home, ".config"), filepath.Join(home, "dirln"))
@@ -31,7 +31,7 @@ func TestAdoptSource(t *testing.T) {
 		filepath.Join(home, "dirln", "a", "rc"),
 	} {
 		if _, _, err := AdoptSource(home, home, bad); err == nil {
-			t.Errorf("%s accepté", bad)
+			t.Errorf("%s accepted", bad)
 		}
 	}
 }
@@ -48,7 +48,7 @@ func TestAdoptMoveAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, _ := os.Readlink(src); got != dst {
-		t.Fatalf("lien %q", got)
+		t.Fatalf("link %q", got)
 	}
 	if fi, _ := os.Stat(dst); fi.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %v", fi.Mode())
@@ -67,10 +67,10 @@ func TestAdoptMoveAndRollback(t *testing.T) {
 		t.Skip("root ignores directory permissions")
 	}
 	if err := AdoptMove(src2, dst2, true); err == nil {
-		t.Fatal("succès inattendu")
+		t.Fatal("unexpected success")
 	}
 	if b, err := os.ReadFile(src2); err != nil || string(b) != "y" {
-		t.Fatalf("fichier perdu : %v", err)
+		t.Fatalf("file lost: %v", err)
 	}
 }
 

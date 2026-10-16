@@ -15,17 +15,17 @@ func TestParseTermsMatchesLikeTheBashList(t *testing.T) {
 	}
 	for _, hit := range []string{"tenant AcmeCorp", "fix for Globex-Inc", "globexinc", "client zed", "zed", "notes-acmecorp.txt"} {
 		if !terms.Match(hit) {
-			t.Errorf("%q devrait correspondre", hit)
+			t.Errorf("%q should match", hit)
 		}
 	}
-	for _, miss := range []string{"items and systems, zedd", "zedd", "organized", "rien"} {
+	for _, miss := range []string{"items and systems, zedd", "zedd", "organized", "nothing"} {
 		if terms.Match(miss) {
-			t.Errorf("%q ne devrait pas correspondre", miss)
+			t.Errorf("%q should not match", miss)
 		}
 	}
 	// zed_tickets: "_" is not in [a-z0-9], so it is a whole-word hit, as with grep -E.
 	if !terms.Match("repo: zed_tickets") {
-		t.Error("zed_tickets devrait correspondre")
+		t.Error("zed_tickets should match")
 	}
 }
 
@@ -35,7 +35,7 @@ func TestParseTermsAccents(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !terms.Match("ACMÉ.txt") || !terms.Match("acmé.txt") || terms.Match("café.txt") {
-		t.Error("insensibilité à la casse des caractères accentués")
+		t.Error("case insensitivity of accented characters")
 	}
 }
 
@@ -45,7 +45,7 @@ func TestParseTermsIgnoresCommentsBlankLinesAndCRLF(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !terms.Match("AcmeCorp") {
-		t.Error("le terme suivi de CRLF devrait correspondre")
+		t.Error("the term followed by CRLF should match")
 	}
 }
 
@@ -54,29 +54,29 @@ func TestParseTermsFailsClosed(t *testing.T) {
 		name, in string
 		want     error
 	}{
-		{"vide", "", ErrAbsent},
-		{"commentaires", "# a\n\n   \n", ErrAbsent},
-		{"parenthèse ouverte", "acmecorp\nbroken(\n", ErrInvalid},
-		{"parenthèses déséquilibrées", "(a)b)(c\n", ErrInvalid},
-		{"répétition sans argument", "*oops\n", ErrInvalid},
-		{"référence arrière ERE", "(a)\\1\n", ErrInvalid},
-		{"UTF-8 invalide", "\xff\xfe\n", ErrInvalid},
-		{"alternance GNU", "acmecorp\\|globex\n", ErrInvalid},
-		{"plus GNU", "acme\\+corp\n", ErrInvalid},
-		{"option GNU", "acme\\?corp\n", ErrInvalid},
-		{"accolade GNU", "a\\{2\\}\n", ErrInvalid},
-		{"groupe GNU ouvrant", "\\(acme\\)corp\n", ErrInvalid},
-		{"groupe GNU fermant", "ok\n(acme\\)\n", ErrInvalid},
-		{"sensibilité à la casse rétablie", "(?-i)acmecorp\n", ErrInvalid},
-		{"drapeaux dont -i", "(?s-i:acmecorp)\n", ErrInvalid},
-		{"-i dans un groupe", "ok\n(?-i:acmecorp)\n", ErrInvalid},
+		{"empty", "", ErrAbsent},
+		{"comments", "# a\n\n   \n", ErrAbsent},
+		{"open parenthesis", "acmecorp\nbroken(\n", ErrInvalid},
+		{"unbalanced parentheses", "(a)b)(c\n", ErrInvalid},
+		{"repetition without argument", "*oops\n", ErrInvalid},
+		{"ERE backreference", "(a)\\1\n", ErrInvalid},
+		{"invalid UTF-8", "\xff\xfe\n", ErrInvalid},
+		{"GNU alternation", "acmecorp\\|globex\n", ErrInvalid},
+		{"GNU plus", "acme\\+corp\n", ErrInvalid},
+		{"GNU optional", "acme\\?corp\n", ErrInvalid},
+		{"GNU brace", "a\\{2\\}\n", ErrInvalid},
+		{"GNU opening group", "\\(acme\\)corp\n", ErrInvalid},
+		{"GNU closing group", "ok\n(acme\\)\n", ErrInvalid},
+		{"case sensitivity restored", "(?-i)acmecorp\n", ErrInvalid},
+		{"flags including -i", "(?s-i:acmecorp)\n", ErrInvalid},
+		{"-i in a group", "ok\n(?-i:acmecorp)\n", ErrInvalid},
 	} {
 		terms, err := ParseTerms([]byte(tc.in))
 		if !errors.Is(err, tc.want) || terms != nil {
-			t.Errorf("%s : %v, %v", tc.name, terms, err)
+			t.Errorf("%s: %v, %v", tc.name, terms, err)
 		}
 		if err != nil && strings.Contains(err.Error(), "broken") {
-			t.Errorf("%s : l'erreur ne doit pas citer l'expression", tc.name)
+			t.Errorf("%s: the error must not quote the pattern", tc.name)
 		}
 	}
 }
@@ -84,17 +84,17 @@ func TestParseTermsFailsClosed(t *testing.T) {
 func TestMatchIsLineBased(t *testing.T) {
 	terms, _ := ParseTerms([]byte("a[^x]b\n"))
 	if terms.Match("a\nb") {
-		t.Error("un motif ne traverse pas les lignes")
+		t.Error("a pattern does not span lines")
 	}
 	if !terms.Match("ok\naub") {
-		t.Error("une ligne suivante doit être contrôlée")
+		t.Error("a following line must be checked")
 	}
 }
 
 func TestNilTermsMatchNothing(t *testing.T) {
 	var terms *Terms
 	if terms.Match("acmecorp") || terms.MatchLine([]byte("acmecorp")) {
-		t.Error("sans liste (mode secrets), rien ne correspond")
+		t.Error("without a list (secrets mode), nothing matches")
 	}
 }
 
@@ -112,12 +112,12 @@ func TestParseTermsKeepsLiteralEscapesAndCaseFlags(t *testing.T) {
 	}
 	for _, hit := range []string{`acme\`, "GLOBEX", "Initech", "UMBRELLA", "x.corp"} {
 		if !terms.Match(hit) {
-			t.Errorf("%q devrait correspondre", hit)
+			t.Errorf("%q should match", hit)
 		}
 	}
 	// The refusal never echoes the pattern.
 	_, err = ParseTerms([]byte("secretterm\\|x\n"))
 	if err == nil || strings.Contains(err.Error(), "secretterm") {
-		t.Fatalf("erreur = %v", err)
+		t.Fatalf("error = %v", err)
 	}
 }

@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	ErrUnknownKey     = errors.New("clé inconnue")
-	ErrUnknownProfile = errors.New("profil inconnu")
+	ErrUnknownKey     = errors.New("unknown key")
+	ErrUnknownProfile = errors.New("unknown profile")
 	keyRe             = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
@@ -46,7 +46,7 @@ type orderedProfiles []Profile
 func (o *orderedProfiles) UnmarshalJSON(b []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
-		return errors.New("profiles : objet attendu")
+		return errors.New("profiles: object expected")
 	}
 	for dec.More() {
 		t, err := dec.Token()
@@ -62,7 +62,7 @@ func (o *orderedProfiles) UnmarshalJSON(b []byte) error {
 		body.DisallowUnknownFields()
 		var pb profileBody
 		if err := body.Decode(&pb); err != nil {
-			return fmt.Errorf("profiles.%s : %w", key, err)
+			return fmt.Errorf("profiles.%s: %w", key, err)
 		}
 		*o = append(*o, Profile{Key: key, Repo: pb.Repo})
 	}
@@ -76,7 +76,7 @@ func Load(path string) (*Registry, error) {
 		return &Registry{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("registre : %w", err)
+		return nil, fmt.Errorf("registry: %w", err)
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -84,15 +84,15 @@ func Load(path string) (*Registry, error) {
 	err = dec.Decode(&f)
 	if err == nil {
 		if _, perr := dec.Token(); perr != io.EOF {
-			err = errors.New("données après le premier objet")
+			err = errors.New("data after the first object")
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("registre : %s : %w", path, err)
+		return nil, fmt.Errorf("registry: %s: %w", path, err)
 	}
 	r := &Registry{Default: f.Default, Profiles: f.Profiles}
 	if err := r.Validate(); err != nil {
-		return nil, fmt.Errorf("registre : %s : %w", path, err)
+		return nil, fmt.Errorf("registry: %s: %w", path, err)
 	}
 	return r, nil
 }
@@ -105,7 +105,7 @@ func (r *Registry) Validate() error {
 			return err
 		}
 		if seen[p.Key] {
-			return fmt.Errorf("profil en double : %s", p.Key)
+			return fmt.Errorf("duplicate profile: %s", p.Key)
 		}
 		seen[p.Key] = true
 		if err := validRepo(p.Key, p.Repo); err != nil {
@@ -114,26 +114,26 @@ func (r *Registry) Validate() error {
 	}
 	switch {
 	case len(r.Profiles) == 0 && r.Default != "":
-		return fmt.Errorf("default : profil inconnu : %s", r.Default)
+		return fmt.Errorf("default: unknown profile: %s", r.Default)
 	case len(r.Profiles) > 0 && !seen[r.Default]:
 		if r.Default == "" {
-			return errors.New("default requis tant qu'un profil existe")
+			return errors.New("default required while a profile exists")
 		}
-		return fmt.Errorf("default : profil inconnu : %s", r.Default)
+		return fmt.Errorf("default: unknown profile: %s", r.Default)
 	}
 	return nil
 }
 
 func validKey(key string) error {
 	if !keyRe.MatchString(key) || strings.Contains(key, "..") {
-		return fmt.Errorf("clé de profil invalide : %q", key)
+		return fmt.Errorf("invalid profile key: %q", key)
 	}
 	return nil
 }
 
 func validRepo(key, repo string) error {
 	if repo == "" || strings.IndexFunc(repo, unicode.IsControl) >= 0 {
-		return fmt.Errorf("profiles.%s.repo : valeur vide ou invalide", key)
+		return fmt.Errorf("profiles.%s.repo: empty or invalid value", key)
 	}
 	return nil
 }
@@ -165,7 +165,7 @@ func (r *Registry) Add(key, repo string) error {
 		return err
 	}
 	if r.index(key) >= 0 {
-		return fmt.Errorf("profil déjà inscrit : %s", key)
+		return fmt.Errorf("profile already registered: %s", key)
 	}
 	r.Profiles = append(r.Profiles, Profile{Key: key, Repo: repo})
 	if r.Default == "" {
@@ -178,10 +178,10 @@ func (r *Registry) Add(key, repo string) error {
 func (r *Registry) Remove(key string) error {
 	i := r.index(key)
 	if i < 0 {
-		return fmt.Errorf("%w : %s", ErrUnknownProfile, key)
+		return fmt.Errorf("%w: %s", ErrUnknownProfile, key)
 	}
 	if key == r.Default && len(r.Profiles) > 1 {
-		return fmt.Errorf("%s est le profil par défaut : en choisir un autre d'abord (dot config set default <clé>)", key)
+		return fmt.Errorf("%s is the default profile: pick another one first (dot config set default <key>)", key)
 	}
 	r.Profiles = append(r.Profiles[:i], r.Profiles[i+1:]...)
 	if len(r.Profiles) == 0 {
@@ -190,7 +190,7 @@ func (r *Registry) Remove(key string) error {
 	return nil
 }
 
-// parseKey understands the dotted keys of dot config: default, profiles.<clé>.repo.
+// parseKey understands the dotted keys of dot config: default, profiles.<key>.repo.
 func parseKey(key string) (profile string, isDefault bool, err error) {
 	if key == "default" {
 		return "", true, nil
@@ -200,10 +200,10 @@ func parseKey(key string) (profile string, isDefault bool, err error) {
 			return p, false, nil
 		}
 	}
-	return "", false, fmt.Errorf("%w : %s (attendu : default, profiles.<clé>.repo)", ErrUnknownKey, key)
+	return "", false, fmt.Errorf("%w: %s (expected: default, profiles.<key>.repo)", ErrUnknownKey, key)
 }
 
-// ProfileKey extracts <clé> from profiles.<clé>.repo.
+// ProfileKey extracts <key> from profiles.<key>.repo.
 func ProfileKey(key string) (string, bool) {
 	p, isDefault, err := parseKey(key)
 	return p, err == nil && !isDefault
@@ -219,12 +219,12 @@ func (r *Registry) Get(key string) (string, error) {
 	}
 	i := r.index(p)
 	if i < 0 {
-		return "", fmt.Errorf("%w : %s", ErrUnknownProfile, p)
+		return "", fmt.Errorf("%w: %s", ErrUnknownProfile, p)
 	}
 	return r.Profiles[i].Repo, nil
 }
 
-// Set writes a value; profiles.<clé>.repo on an unknown key adds the profile.
+// Set writes a value; profiles.<key>.repo on an unknown key adds the profile.
 func (r *Registry) Set(key, value string) error {
 	p, isDefault, err := parseKey(key)
 	if err != nil {
@@ -232,7 +232,7 @@ func (r *Registry) Set(key, value string) error {
 	}
 	if isDefault {
 		if r.index(value) < 0 {
-			return fmt.Errorf("default : %w : %s", ErrUnknownProfile, value)
+			return fmt.Errorf("default: %w: %s", ErrUnknownProfile, value)
 		}
 		r.Default = value
 		return nil
@@ -258,7 +258,7 @@ func (r *Registry) Unset(key string) error {
 		return r.Remove(p)
 	}
 	if len(r.Profiles) > 0 {
-		return errors.New("default requis tant qu'un profil existe")
+		return errors.New("default required while a profile exists")
 	}
 	return nil
 }

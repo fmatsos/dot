@@ -19,11 +19,11 @@ import (
 )
 
 // ErrUnreadable means the list of remotes to clone is missing or unreadable.
-var ErrUnreadable = errors.New("liste absente ou illisible")
+var ErrUnreadable = errors.New("list missing or unreadable")
 
 const (
-	reasonEmail = "✗ email différent du profil "
-	reasonHooks = "✗ hooksPath local : garde-fou contourné"
+	reasonEmail = "✗ email differs from profile "
+	reasonHooks = "✗ local hooksPath: guard bypassed"
 )
 
 // Row is the state of one repository. Reason is empty when its identity is consistent.
@@ -120,11 +120,11 @@ func changes(dir string) int {
 }
 
 func inspect(home, p string) Row {
-	r := Row{Path: p, display: tilde(home, p), Profile: "-", Email: "aucun"}
+	r := Row{Path: p, display: tilde(home, p), Profile: "-", Email: "none"}
 	if b, ok := git(p, "symbolic-ref", "--quiet", "--short", "HEAD"); ok {
 		r.Branch = b
 	} else {
-		r.Branch = "détaché"
+		r.Branch = "detached"
 	}
 	r.Changes = changes(p)
 	if out, ok := git(p, "rev-list", "--left-right", "--count", "HEAD...@{upstream}"); ok {
@@ -150,7 +150,7 @@ func inspect(home, p string) Row {
 		hooks, _ := git(p, "config", "--path", "core.hooksPath")
 		if hooks != want && (hooks != ".githooks" || !guardsPush(filepath.Join(p, ".githooks", "pre-push"))) {
 			if r.Reason != "" {
-				r.Reason += " ; "
+				r.Reason += "; "
 			}
 			r.Reason += reasonHooks
 		}
@@ -296,9 +296,9 @@ func CloneList(file, root string, errw io.Writer) (good, bad int, err error) {
 		bad++
 		target, perr := clone.Path(url, root)
 		if perr != nil {
-			target = "(URL invalide)"
+			target = "(invalid URL)"
 		}
-		fmt.Fprintf(errw, "échec : %s\n", target)
+		fmt.Fprintf(errw, "failed: %s\n", target)
 	}
 	return good, bad, sc.Err()
 }

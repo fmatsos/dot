@@ -48,14 +48,14 @@ func ListBackups(home string) ([]BackupRun, error) {
 // which must be a real directory, not a link.
 func runDir(home, id string) (string, error) {
 	if id == "" || id == "." || id == ".." || id != filepath.Base(id) || strings.ContainsAny(id, `/\`) {
-		return "", fmt.Errorf("identifiant de sauvegarde invalide : %q", id)
+		return "", fmt.Errorf("invalid backup id: %q", id)
 	}
 	if i, err := os.Lstat(BackupBase(home)); err != nil || !i.IsDir() {
-		return "", fmt.Errorf("sauvegarde introuvable : %s", id)
+		return "", fmt.Errorf("backup not found: %s", id)
 	}
 	d := filepath.Join(BackupBase(home), id)
 	if i, err := os.Lstat(d); err != nil || !i.IsDir() {
-		return "", fmt.Errorf("sauvegarde introuvable : %s", id)
+		return "", fmt.Errorf("backup not found: %s", id)
 	}
 	return d, nil
 }
@@ -129,7 +129,7 @@ func Restore(r RestoreRequest) (restored, refused int, err error) {
 				}
 			}
 			if n == 0 {
-				fmt.Fprintf(errOut, "  absent de la sauvegarde : %s\n", p)
+				fmt.Fprintf(errOut, "  not in the backup: %s\n", p)
 				refused++
 			}
 		}
@@ -139,27 +139,27 @@ func Restore(r RestoreRequest) (restored, refused int, err error) {
 	for _, rel := range sel {
 		src, dst := filepath.Join(run, filepath.FromSlash(rel)), filepath.Join(r.Home, filepath.FromSlash(rel))
 		if why := restoreBlocker(r.Home, dst, r.Clones); why != "" {
-			fmt.Fprintf(errOut, "  refusé (%s) : %s\n", why, Tilde(r.Home, dst))
+			fmt.Fprintf(errOut, "  refused (%s): %s\n", why, Tilde(r.Home, dst))
 			refused++
 			continue
 		}
 		if r.Dry {
-			fmt.Fprintf(out, "  [dry] restauré : %s\n", Tilde(r.Home, dst))
+			fmt.Fprintf(out, "  [dry] restored: %s\n", Tilde(r.Home, dst))
 			restored++
 			continue
 		}
 		if err := moveBack(src, dst); err != nil {
-			fmt.Fprintf(errOut, "  échec : %s : %v\n", Tilde(r.Home, dst), err)
+			fmt.Fprintf(errOut, "  failed: %s: %v\n", Tilde(r.Home, dst), err)
 			refused++
 			continue
 		}
-		fmt.Fprintf(out, "  restauré : %s\n", Tilde(r.Home, dst))
+		fmt.Fprintf(out, "  restored: %s\n", Tilde(r.Home, dst))
 		restored++
 		for d := filepath.Dir(src); d != run && strings.HasPrefix(d, run+string(filepath.Separator)) && os.Remove(d) == nil; d = filepath.Dir(d) {
 		}
 	}
 	if !r.Dry && os.Remove(run) == nil { // only succeeds when empty
-		fmt.Fprintf(out, "  sauvegarde vidée, dossier retiré : %s\n", Tilde(r.Home, run))
+		fmt.Fprintf(out, "  backup empty, directory removed: %s\n", Tilde(r.Home, run))
 	}
 	return restored, refused, nil
 }
@@ -167,7 +167,7 @@ func Restore(r RestoreRequest) (restored, refused int, err error) {
 // backupRel turns a user path (~/x, x relative to ~, or absolute under ~ or under the run) into
 // a clean slash path relative to ~, refusing anything that climbs out.
 func backupRel(home, run, p string) (string, error) {
-	bad := fmt.Errorf("chemin refusé (hors de ~ ou de la sauvegarde) : %s", p)
+	bad := fmt.Errorf("path refused (outside ~ or the backup): %s", p)
 	if slices.Contains(strings.Split(filepath.ToSlash(p), "/"), "..") {
 		return "", bad
 	}
@@ -211,10 +211,10 @@ func restoreBlocker(home, dst string, clones []string) string {
 			return err.Error()
 		}
 		if i.Mode()&fs.ModeSymlink != 0 {
-			return "dossier parent lié"
+			return "parent directory linked"
 		}
 		if !i.IsDir() {
-			return "parent non dossier"
+			return "parent is not a directory"
 		}
 	}
 	i, err := os.Lstat(dst)
@@ -225,7 +225,7 @@ func restoreBlocker(home, dst string, clones []string) string {
 		return err.Error()
 	}
 	if i.Mode()&fs.ModeSymlink == 0 {
-		return "fichier existant"
+		return "file exists"
 	}
 	t, _ := os.Readlink(dst)
 	if !filepath.IsAbs(t) {
@@ -238,7 +238,7 @@ func restoreBlocker(home, dst string, clones []string) string {
 			return ""
 		}
 	}
-	return "lien étranger aux profils"
+	return "link foreign to the profiles"
 }
 
 // moveBack removes a dot link at dst, if any, and renames src there (the mode travels with it).

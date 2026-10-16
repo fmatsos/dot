@@ -16,13 +16,13 @@ func newStatusCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:     "status",
 		Aliases: []string{"st"},
-		Short:   "Changements des clones de profils, et fichiers de home/ qui ne sont plus des liens",
-		Long: "Pour chaque profil : état du clone (git status -sb : changements, branche, avance et retard), puis les\n" +
-			"fichiers de home/ qui ne sont plus des liens.\n" +
-			"Sans -p, $DOT_PROFILE ni $DOTFILES_DEPLOY, tous les profils inscrits sont listés, chacun sous une ligne\n" +
-			"« ==> <clé> ». C'est un rapport : le code de sortie est 0.\n\n" +
-			"Un fichier « détaché » a été réécrit par un outil au lieu d'être modifié à travers le lien : " +
-			"ses changements n'iront jamais dans le dépôt. Remets le lien (dot install) après avoir reporté le contenu.",
+		Short:   "Changes in the profile clones, and home/ files that are no longer links",
+		Long: "For each profile: state of the clone (git status -sb: changes, branch, ahead and behind), then the\n" +
+			"home/ files that are no longer links.\n" +
+			"Without -p, $DOT_PROFILE or $DOTFILES_DEPLOY, every registered profile is listed, each under a\n" +
+			"\"==> <key>\" line. It is a report: the exit code is 0.\n\n" +
+			"A \"detached\" file was rewritten by a tool instead of being modified through the link: " +
+			"its changes will never reach the repository. Restore the link (dot install) after carrying the content over.",
 		DisableFlagsInUseLine: true,
 		Args:                  cobra.ArbitraryArgs,
 		RunE: func(*cobra.Command, []string) error {
@@ -37,7 +37,7 @@ func newStatusCmd(env *Env) *cobra.Command {
 				// git reports its own failure (missing clone…) on stderr; a report goes on to the next profile.
 				if err := runWithStdio(env, gitCmd(p.Dir, "status", "-sb")); err != nil {
 					if _, ok := err.(exitError); !ok {
-						fmt.Fprintf(env.Stderr, "status %s : %v\n", p.Key, err)
+						fmt.Fprintf(env.Stderr, "status %s: %v\n", p.Key, err)
 					}
 					continue
 				}

@@ -12,14 +12,14 @@ func newSelfUpdateCmd(env *Env) *cobra.Command {
 	var target string
 	cmd := &cobra.Command{
 		Use:   "self-update [--version vX.Y.Z] [-n]",
-		Short: "Met dot à jour depuis une release GitHub signée",
-		Long: "Télécharge la release (la dernière, ou --version vX.Y.Z), vérifie la signature Ed25519 de\n" +
-			"SHA256SUMS avec la clé compilée dans le binaire, puis le sha256 du binaire, et remplace\n" +
-			"l'exécutable en cours de façon atomique. Toute vérification qui échoue abandonne sans rien\n" +
-			"modifier. Sans clé de signature dans le binaire, la mise à jour est refusée.\n" +
-			"-n : affiche ce qui serait fait, sans télécharger de binaire ni rien écrire ; sans --version,\n" +
-			"la dernière release est tout de même demandée à l'API GitHub, pour savoir laquelle installer.\n\n" +
-			"$DOT_RELEASE_BASE et $DOT_RELEASE_API remplacent les URL des releases, pour les tests uniquement.",
+		Short: "Update dot from a signed GitHub release",
+		Long: "Download the release (the latest, or --version vX.Y.Z), verify the Ed25519 signature of\n" +
+			"SHA256SUMS with the key compiled into the binary, then the sha256 of the binary, and replace\n" +
+			"the running executable atomically. Any failed check aborts without changing\n" +
+			"anything. Without a signing key in the binary, the update is refused.\n" +
+			"-n: show what would be done, without downloading a binary or writing anything; without --version,\n" +
+			"the latest release is still requested from the GitHub API, to know which one to install.\n\n" +
+			"$DOT_RELEASE_BASE and $DOT_RELEASE_API override the release URLs, for tests only.",
 		Args: exactArgs(0, "dot self-update [--version vX.Y.Z] [-n]"),
 		RunE: func(*cobra.Command, []string) error {
 			return selfupdate.Run(selfupdate.Options{
@@ -28,7 +28,7 @@ func newSelfUpdateCmd(env *Env) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&target, "version", "", "version à installer, vX.Y.Z (défaut : la dernière release)")
-	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "affiche ce qui serait fait sans rien écrire")
+	cmd.Flags().StringVar(&target, "version", "", "version to install, vX.Y.Z (default: the latest release)")
+	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "show what would be done without writing anything")
 	return cmd
 }
