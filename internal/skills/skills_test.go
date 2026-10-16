@@ -133,3 +133,26 @@ func TestRunUpToDateAndErrors(t *testing.T) {
 		t.Fatalf("failed add: %v", err)
 	}
 }
+
+func TestListEditing(t *testing.T) {
+	l := List{"https://github.com/o/r#v1": {"a"}}
+	AddTo(l, "o/r", "b", "a")
+	Adopt(l, []Installed{{"c", "x/y"}, {"hand", ""}, {"a", "o/r"}})
+	if !reflect.DeepEqual(l, List{"https://github.com/o/r#v1": {"a", "b"}, "x/y": {"c"}}) {
+		t.Fatalf("%v", l)
+	}
+	if missing := RemoveFrom(l, "c", "a", "zz"); !reflect.DeepEqual(missing, []string{"zz"}) ||
+		!reflect.DeepEqual(l, List{"https://github.com/o/r#v1": {"b"}}) {
+		t.Fatalf("%v %v", missing, l)
+	}
+	p := filepath.Join(t.TempDir(), "sub", "skills.json")
+	if err := WriteList(p, l); err != nil {
+		t.Fatal(err)
+	}
+	if back, err := ReadList(p); err != nil || !reflect.DeepEqual(back, l) {
+		t.Fatalf("%v %v", back, err)
+	}
+	if empty, err := ReadList(p + ".missing"); err != nil || len(empty) != 0 {
+		t.Fatalf("%v %v", empty, err)
+	}
+}

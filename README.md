@@ -224,8 +224,12 @@ source as [`npx skills`](https://github.com/vercel-labs/skills) takes it, with a
 ```
 
 ```sh
-dot ai skills -n    # preview the plan
-dot ai skills       # install and remove global skills through npx skills (pinned version)
+dot ai skills -n            # preview the plan
+dot ai skills               # install and remove global skills through npx skills (pinned version)
+dot ai skills adopt         # write the skills already installed from a source into the list
+dot ai skills add <src> <skill>...   # edit the list, then apply it
+dot ai skills rm <skill>...
+dot ai skills update | find <query>  # npx skills update -g / find, as is
 ```
 
 The list is authoritative: a skill installed from a source and missing from it is removed. A skill
@@ -408,6 +412,7 @@ dot launcher add|update|rm|get|list   edit <profile>/launcher.conf
 dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
 dot ai settings|mcp|skills [-n]     merge agent settings, MCP servers and skills
+dot ai skills adopt|add|rm|update|find   edit the profile's skills list, or run npx skills
 dot <cmd>                           run dot-<cmd> (profile bin/, then PATH), otherwise git on the clone
 ```
 

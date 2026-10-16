@@ -24,6 +24,7 @@ add)
     jq --arg n "$n" --arg s "${src%%#*}" 'map(select(.name != $n)) + [{name:$n,source:$s}]' "$STATE" >"$STATE.tmp"
     mv "$STATE.tmp" "$STATE"
   done ;;
+update | find) ;;
 remove)
   shift
   while [ "$1" != -g ]; do
@@ -64,3 +65,27 @@ printf '{"acme/tools": "lint"}\n' >"$HOME/.config/skills/skills.local.json"; : >
 not dot ai skills 2>"$S/err"
 [ ! -s "$CALLS" ] && grep -q 'skills.local.json' "$S/err"
 echo 'OK   an invalid list stops before any call'
+
+rm "$HOME/.config/skills/skills.local.json"
+L=$DOTFILES_DEPLOY/home/.config/skills/skills.json
+printf '[{"name":"hand","source":null},{"name":"x","source":"acme/extra"},{"name":"lint","source":"acme/tools"}]\n' >"$STATE"
+printf '{"acme/tools#v1": ["fmt"]}\n' >"$L"
+dot ai skills adopt -n >"$S/out"
+[ "$(jq -c . "$S/out")" = '{"acme/extra":["x"],"acme/tools#v1":["fmt","lint"]}' ] && [ "$(jq -c . "$L")" = '{"acme/tools#v1":["fmt"]}' ]
+dot ai skills adopt >"$S/out"
+[ "$(jq -c . "$L")" = '{"acme/extra":["x"],"acme/tools#v1":["fmt","lint"]}' ]
+echo 'OK   adopt writes the sourced skills into the list, the skill without source stays out'
+
+dot ai skills add acme/new one >"$S/out"
+[ "$(jq -c '.["acme/new"]' "$L")" = '["one"]' ] && jq -e 'any(.name == "one" and .source == "acme/new")' "$STATE" >/dev/null
+dot ai skills rm one x >"$S/out"
+[ "$(jq -c . "$L")" = '{"acme/tools#v1":["fmt","lint"]}' ] && [ "$(jq -c 'map(.name) | sort' "$STATE")" = '["fmt","hand","lint"]' ]
+cp "$L" "$S/list"
+not dot ai skills rm absent 2>"$S/err"; cmp -s "$L" "$S/list"
+not dot ai skills add acme/new -bad 2>"$S/err"; cmp -s "$L" "$S/list"
+echo 'OK   add and rm edit the list then apply it; a wrong name changes nothing'
+
+: >"$CALLS"
+dot ai skills update >"$S/out"; dot ai skills find lint --owner acme >"$S/out"
+[ "$(cut -d' ' -f3- "$CALLS")" = $'update -g -y\nfind lint --owner acme' ]
+echo 'OK   update and find run the pinned CLI'

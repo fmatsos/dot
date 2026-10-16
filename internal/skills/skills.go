@@ -268,3 +268,70 @@ func (o Options) apply(steps []Step) error {
 	}
 	return nil
 }
+
+// ReadList reads a profile's list; a missing file is an empty list.
+func ReadList(path string) (List, error) {
+	l, err := readList(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return List{}, nil
+	}
+	return l, err
+}
+
+// Encode renders a list as written in the profile: sorted sources, a trailing newline.
+func Encode(l List) []byte {
+	data, _ := json.MarshalIndent(l, "", "  ")
+	return append(data, '\n')
+}
+
+// WriteList replaces a profile's list, creating its directory when needed.
+func WriteList(path string, l List) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, Encode(l), 0o644)
+}
+
+// AddTo adds names to a source of the list, under the key the list already uses for that
+// repository if any, without duplicates.
+func AddTo(l List, src string, names ...string) {
+	for k := range l {
+		if SameSource(k, src) {
+			src = k
+		}
+	}
+	for _, n := range names {
+		if !slices.Contains(l[src], n) {
+			l[src] = append(l[src], n)
+		}
+	}
+}
+
+// RemoveFrom drops names from every source of the list, and a source left empty; it returns
+// the names the list did not hold.
+func RemoveFrom(l List, names ...string) (missing []string) {
+	for _, n := range names {
+		found := false
+		for src, have := range l {
+			if i := slices.Index(have, n); i >= 0 {
+				found = true
+				if l[src] = slices.Delete(have, i, i+1); len(l[src]) == 0 {
+					delete(l, src)
+				}
+			}
+		}
+		if !found {
+			missing = append(missing, n)
+		}
+	}
+	return missing
+}
+
+// Adopt adds every installed skill that has a source to the list.
+func Adopt(l List, installed []Installed) {
+	for _, s := range installed {
+		if s.Source != "" {
+			AddTo(l, s.Source, s.Name)
+		}
+	}
+}
