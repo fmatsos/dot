@@ -270,7 +270,7 @@ ignored. There is no templating: files in <code>~</code> stay links into the clo
 <code>dot adopt --os</code> or <code>--host</code> moves a file into the matching variant.</li>
 <li>A <code>deploy.sparse</code> list must name each variant it wants (<code>home@darwin</code>...).</li>
 <li>
-<code>dot settings</code>, <code>dot mcp</code> and the mise configuration still read <code>home/</code> only.</li>
+<code>dot ai settings</code>, <code>dot ai mcp</code>, <code>dot ai skills</code> and the mise configuration still read <code>home/</code> only.</li>
 </ul>
 <h3 id="keep-a-personal-and-a-work-setup-on-the-same-machine">Keep a personal and a work setup on the same machine</h3>
 <div class="highlight highlight-source-shell"><pre>dot install https://github.com/you/dotfiles-perso.git
@@ -356,15 +356,28 @@ space or a <code>#</code>. The reference is split at its last <code>#</code>, so
 <h3 id="configure-your-coding-agents-once">Configure your coding agents once</h3>
 <p>Claude Code, Codex and OpenCode each want their own MCP servers and settings. <code>dot</code> keeps one
 shared list and applies it to all three:</p>
-<div class="highlight highlight-source-shell"><pre>dot mcp -n          <span class="pl-c"><span class="pl-c">#</span> preview the plan</span>
-dot mcp             <span class="pl-c"><span class="pl-c">#</span> the servers of your profiles → Claude Code, Codex and OpenCode</span>
-dot settings -n     <span class="pl-c"><span class="pl-c">#</span> preview the diff of ~/.claude/settings.json</span>
-dot settings        <span class="pl-c"><span class="pl-c">#</span> merge home/.claude/settings.base.json into it</span></pre></div>
+<div class="highlight highlight-source-shell"><pre>dot ai mcp -n       <span class="pl-c"><span class="pl-c">#</span> preview the plan</span>
+dot ai mcp          <span class="pl-c"><span class="pl-c">#</span> the servers of your profiles → Claude Code, Codex and OpenCode</span>
+dot ai settings -n  <span class="pl-c"><span class="pl-c">#</span> preview the diff of ~/.claude/settings.json</span>
+dot ai settings     <span class="pl-c"><span class="pl-c">#</span> merge home/.claude/settings.base.json into it</span></pre></div>
 <p>For settings, the versioned base wins and the extra local keys are kept, and the old file is
 backed up. For MCP, a local <code>servers.local.json</code> can replace a server by name or remove it, and
 the secrets of a server stay names that <code>dot secrets run</code> resolves when the server starts. With
 one profile the list is <code>~/.config/mcp/servers.json</code>, a link to the profile's file; with several,
 <code>dot</code> reads the list of each profile in registry order.</p>
+<p>Agent skills follow the same idea. A profile lists them in <code>home/.config/skills/skills.json</code>, by
+source as <a href="https://github.com/vercel-labs/skills"><code>npx skills</code></a> takes it, with an optional <code>#ref</code>:</p>
+<div class="highlight highlight-source-json"><pre>{ <span class="pl-ent">"anthropics/skills"</span>: [<span class="pl-s"><span class="pl-pds">"</span>pdf<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>doc-coauthoring<span class="pl-pds">"</span></span>], <span class="pl-ent">"acme/tools#v1"</span>: [<span class="pl-s"><span class="pl-pds">"</span>lint<span class="pl-pds">"</span></span>] }</pre></div>
+<div class="highlight highlight-source-shell"><pre>dot ai skills -n            <span class="pl-c"><span class="pl-c">#</span> preview the plan</span>
+dot ai skills               <span class="pl-c"><span class="pl-c">#</span> install and remove global skills through npx skills (pinned version)</span>
+dot ai skills adopt         <span class="pl-c"><span class="pl-c">#</span> write the skills already installed from a source into the list</span>
+dot ai skills add <span class="pl-k">&lt;</span>src<span class="pl-k">&gt;</span> <span class="pl-k">&lt;</span>skill<span class="pl-k">&gt;</span>...   <span class="pl-c"><span class="pl-c">#</span> edit the list, then apply it</span>
+dot ai skills rm <span class="pl-k">&lt;</span>skill<span class="pl-k">&gt;</span>...
+dot ai skills update <span class="pl-k">|</span> find <span class="pl-k">&lt;</span>query<span class="pl-k">&gt;</span>  <span class="pl-c"><span class="pl-c">#</span> npx skills update -g / find, as is</span></pre></div>
+<p>The list is authoritative: a skill installed from a source and missing from it is removed. A skill
+without a source, copied by hand, is never touched and shows as <code>unmanaged</code>; version it with
+<code>dot adopt</code> instead. A local <code>~/.config/skills/skills.local.json</code> replaces a source of the profiles,
+or drops it with <code>null</code>. Node must be installed (the <code>nvm</code> key of the manifest).</p>
 <h3 id="keep-your-cron-jobs-with-your-profile">Keep your cron jobs with your profile</h3>
 <p>A profile can ship its cron jobs in <code>home/.config/crontab</code>, in plain crontab syntax. With
 <code>"crontab"</code> in the manifest's <code>modules</code>, <code>dot install</code> and <code>dot pull</code> write them into your user
@@ -428,7 +441,7 @@ scanner (betterleaks) is pinned to one version and its sha256 is compiled into t
 <strong>Secrets stay in your vault.</strong> <code>dot secrets</code> works with <code>bw</code> and <code>pass-cli</code> (<code>add</code>, <code>get</code>,
 <code>run</code>, <code>unlock</code>, <code>lock</code>, <code>status</code>), so a profile never has to hold them.</li>
 <li>
-<strong>One config for your coding agents.</strong> <code>dot settings</code> and <code>dot mcp</code> merge the settings and the
+<strong>One config for your coding agents.</strong> <code>dot ai settings</code>, <code>dot ai mcp</code> and <code>dot ai skills</code> merge the settings, the skills and the
 MCP servers of a profile into Claude Code, Codex and OpenCode.</li>
 <li>
 <strong>Cron jobs in the profile.</strong> The <code>crontab</code> module installs <code>home/.config/crontab</code> into a
@@ -512,7 +525,7 @@ deploy, which git identities the profile has, and which optional modules to enab
 </tr>
 <tr>
 <td><code>modules</code></td>
-<td>Optional: <code>settings</code>, <code>mcp</code> and/or <code>crontab</code>, to merge agent settings, MCP servers and cron jobs.</td>
+<td>Optional: <code>settings</code>, <code>mcp</code>, <code>skills</code> and/or <code>crontab</code>, to merge agent settings, MCP servers, agent skills and cron jobs.</td>
 </tr>
 </tbody>
 </table></div>
@@ -538,12 +551,13 @@ dot launcher [--install|--uninstall]   aliases in the GNOME search
 dot launcher add|update|rm|get|list   edit &lt;profile&gt;/launcher.conf
 dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
-dot settings [-n] | dot mcp [-n]   merge Claude settings and MCP servers
+dot ai settings|mcp|skills [-n]     merge agent settings, MCP servers and skills
+dot ai skills adopt|add|rm|update|find   edit the profile's skills list, or run npx skills
 dot &lt;cmd&gt;                           run dot-&lt;cmd&gt; (profile bin/, then PATH), otherwise git on the clone
 </code></pre>
 <h3 id="choosing-a-profile">Choosing a profile</h3>
 <p>The target profile is chosen with <code>-p/--profile &lt;key&gt;</code>, then <code>DOT_PROFILE</code>, then the registry's
-default profile. Without <code>-p</code>, <code>pull</code>, <code>push</code>, <code>status</code>, <code>doctor</code>, <code>settings</code> and <code>mcp</code> act on
+default profile. Without <code>-p</code>, <code>pull</code>, <code>push</code>, <code>status</code>, <code>doctor</code>, <code>ai settings</code>, <code>ai mcp</code> and <code>ai skills</code> (always) act on
 every registered profile, and the other commands on the default profile. With several profiles
 registered, <code>dot &lt;cmd&gt;</code> searches every profile's <code>bin/</code>: a <code>dot-&lt;cmd&gt;</code> claimed by two profiles is
 refused and you must pass <code>-p</code>. Without <code>-p</code>, the key
