@@ -110,7 +110,9 @@ func newLauncherAliasCmds(env *Env) []*cobra.Command {
 			Use:   op + " <alias> <command…>",
 			Short: short,
 			Long: long + "\n\nThe command is run by sh -c: quote it to include spaces, " +
-				"pipes or &&. It does not open a terminal: write xdg-terminal-exec <command> to see its output.",
+				"pipes or &&. It does not open a terminal: write xdg-terminal-exec <command> to see its output.\n\n" +
+				"{q} in the command stands for the text typed after the alias (\"$DOT_Q\", one quoted word): " +
+				"typing \"c hello world\" runs the alias c with {q} = hello world.",
 			Args: func(_ *cobra.Command, args []string) error {
 				if len(args) < 2 {
 					return usagef("usage: dot launcher %s <alias> <command…>", op)

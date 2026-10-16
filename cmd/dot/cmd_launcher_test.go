@@ -100,10 +100,58 @@ func TestLauncherRunAliases(t *testing.T) {
 	}
 	var self, got string
 	old := startShell
-	startShell = func(s, c string) error { self, got = s, c; return nil }
+	startShell = func(s, c, _ string) error { self, got = s, c; return nil }
 	t.Cleanup(func() { startShell = old })
 	if err := p.ActivateResult("run:prod", nil, 0); err != nil || self != "/opt/dot" || got != `echo "a b" && true` {
 		t.Fatalf("run:prod: %v %q %q", err, self, got)
+	}
+}
+
+func TestLauncherQueryAlias(t *testing.T) {
+	p := launcherProvider(t, "", "c claude --model sonnet {q}\ngh xdg-open https://github.com\n")
+	for terms, want := range map[string][]string{
+		"c":           {"run:c"},
+		"c hello":     {"run:c"},
+		"C Hello Big": {"run:c"},
+		"cl hello":    {},
+		"gh hello":    {},
+	} {
+		if got, _ := p.GetInitialResultSet(strings.Fields(terms)); !slices.Equal(got, want) {
+			t.Errorf("%q: %v, want %v", terms, got, want)
+		}
+	}
+	var cmd, query string
+	old := startShell
+	startShell = func(_, c, q string) error { cmd, query = c, q; return nil }
+	t.Cleanup(func() { startShell = old })
+	for terms, want := range map[string]string{"c hello  world $(id)": "hello world $(id)", "c": "", "cl hello": "", "gh x": ""} {
+		query = "unset"
+		id := "run:c"
+		if strings.HasPrefix(terms, "gh") {
+			id = "run:gh"
+		}
+		if err := p.ActivateResult(id, strings.Fields(terms), 0); err != nil || query != want {
+			t.Errorf("%q: %v, query %q, want %q", terms, err, query, want)
+		}
+	}
+	if err := p.ActivateResult("run:c", []string{"c", "hi"}, 0); err != nil || cmd != "claude --model sonnet {q}" {
+		t.Fatalf("command: %v %q", err, cmd)
+	}
+}
+
+// The text typed after the alias reaches the command as one quoted word, never as shell code.
+func TestStartShellQuery(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+	if err := startShell("/opt/dot", `printf '%s|' {q} > `+out, `a b; echo pwned $(id)`); err != nil {
+		t.Fatal(err)
+	}
+	var b []byte
+	for i := 0; i < 100 && len(b) == 0; i++ {
+		time.Sleep(20 * time.Millisecond)
+		b, _ = os.ReadFile(out)
+	}
+	if string(b) != "a b; echo pwned $(id)|" {
+		t.Fatalf("got %q", b)
 	}
 }
 

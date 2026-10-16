@@ -126,6 +126,9 @@ profile (or `$DOT_PROFILE`).
 The search also offers your own aliases, kept in `<profile>/launcher.conf` (versioned like `ssh.conf`): one
 `<alias> <command line>` per line, `#` for comments. The line is run by `sh -c`, so quotes, pipes and `&&` work;
 it opens no terminal, so write `xdg-terminal-exec <command>` when you want to see the output.
+A command containing `{q}` takes the text typed after the alias: with `c xdg-terminal-exec claude --model sonnet {q}`,
+typing `c hello world` runs it with `hello world` as one argument. `{q}` is replaced by `"$DOT_Q"`, so write it
+unquoted and outside single quotes; what you type is never run as shell code.
 
 ```sh
 dot launcher add gh xdg-open https://github.com

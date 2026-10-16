@@ -34,12 +34,25 @@ var startTerminal = func(argv []string) error {
 	return c.Process.Release()
 }
 
+// queryToken, in a launcher.conf command, stands for the text typed after the alias. It reaches the shell
+// as the quoted "$DOT_Q", never inside the command line, so what is typed cannot be run as shell code.
+const queryToken = "{q}"
+
+// queryOf is the text typed after an alias whose command takes {q}: "c hello world" gives "hello world".
+// The first term must be the alias itself (any case), so a prefix never swallows the rest of the line.
+func queryOf(name, command string, terms []string) (string, bool) {
+	if len(terms) < 2 || !strings.Contains(command, queryToken) || !strings.EqualFold(terms[0], name) {
+		return "", false
+	}
+	return strings.Join(terms[1:], " "), true
+}
+
 // startShell runs an alias command line detached, with the directory of dot first on PATH (the shell
-// starts the service with a short environment); swapped by tests.
-var startShell = func(self, command string) error {
-	c := exec.Command("sh", "-c", command)
+// starts the service with a short environment) and the typed text in $DOT_Q; swapped by tests.
+var startShell = func(self, command, query string) error {
+	c := exec.Command("sh", "-c", strings.ReplaceAll(command, queryToken, `"$DOT_Q"`))
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	c.Env = append(os.Environ(), "PATH="+filepath.Dir(self)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	c.Env = append(os.Environ(), "DOT_Q="+query, "PATH="+filepath.Dir(self)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if err := c.Start(); err != nil {
 		return err
 	}
@@ -109,9 +122,9 @@ func aliasMatches(name string, terms []string, extra ...string) bool {
 func (p *provider) find(terms []string) []string {
 	p.idle.Reset(launcherIdle)
 	found := []string{}
-	run, _ := p.launcher()
+	run, cmds := p.launcher()
 	for _, n := range run {
-		if aliasMatches(n, terms) {
+		if _, ok := queryOf(n, cmds[n], terms); ok || aliasMatches(n, terms) {
 			found = append(found, "run:"+n)
 		}
 	}
@@ -157,14 +170,15 @@ func (p *provider) GetResultMetas(ids []string) ([]map[string]dbus.Variant, *dbu
 	return metas, nil
 }
 
-// ActivateResult runs a launcher.conf alias, or opens `dot ssh <alias>` in a terminal. The id comes off
+// ActivateResult runs a launcher.conf alias (with the text typed after it when its command takes {q}), or opens `dot ssh <alias>` in a terminal. The id comes off
 // the bus, so only an alias read from the profile files is used: the command line comes from the file
 // and the ssh alias goes in an argv, never in a shell line.
-func (p *provider) ActivateResult(id string, _ []string, _ uint32) *dbus.Error {
+func (p *provider) ActivateResult(id string, terms []string, _ uint32) *dbus.Error {
 	p.idle.Reset(launcherIdle)
 	kind, name, _ := strings.Cut(id, ":")
 	if run, cmds := p.launcher(); kind == "run" && slices.Contains(run, name) {
-		if err := startShell(p.self, cmds[name]); err != nil {
+		query, _ := queryOf(name, cmds[name], terms)
+		if err := startShell(p.self, cmds[name], query); err != nil {
 			return dbus.MakeFailedError(err)
 		}
 		return nil
