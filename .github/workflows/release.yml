@@ -1,4 +1,5 @@
-# Static binaries, SHA256SUMS and its Ed25519 signature published on a vX.Y.Z tag.
+# Static binaries, SHA256SUMS and its Ed25519 signature published on a vX.Y.Z tag, then a check that
+# install.sh still ends on that version.
 name: release
 on:
   push:
@@ -59,3 +60,26 @@ jobs:
             sed -E "s/ by @$GITHUB_REPOSITORY_OWNER in / in /; /^\* @$GITHUB_REPOSITORY_OWNER made their first contribution/d" |
             perl -0pe 's/## New Contributors\n+(?=\*\*Full Changelog)//')
           gh release create "$GITHUB_REF_NAME" --verify-tag --notes "$notes" dist/dot-* dist/SHA256SUMS dist/SHA256SUMS.sig
+  # install.sh installs a pinned bootstrap, then self-updates to the latest signed release. It swallows
+  # a failed update, so only the final version tells whether the pinned bootstrap can still update.
+  verify-install:
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install through install.sh and check the version
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          mkdir -p "$HOME"
+          sh install.sh
+          got=$("$HOME/.local/bin/dot" --version)
+          [ "$got" = "dot $GITHUB_REF_NAME" ] || {
+            echo "::error::install.sh ended on '$got', expected 'dot $GITHUB_REF_NAME': the pinned bootstrap can no longer update, run scripts/pin-install.sh"
+            exit 1
+          }
