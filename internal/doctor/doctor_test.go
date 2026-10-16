@@ -458,3 +458,22 @@ func TestWrite(t *testing.T) {
 		t.Error("HasFail")
 	}
 }
+
+func TestSkillsModuleNeedsNpx(t *testing.T) {
+	home := sandbox(t)
+	p := profile(t, home, "demo")
+	write(t, filepath.Join(p.Dir, "dot.json"), strings.Replace(manifestJSON, `["settings"]`, `["skills"]`, 1), 0o644)
+	commitAll(t, p.Dir)
+	if _, err := exec.LookPath("npx"); err != nil {
+		if !has(check(home, p), Fail, "skills module: npx not found, install Node (nvm key of dot.json)") {
+			t.Fatal("missing npx not reported")
+		}
+	}
+	write(t, filepath.Join(filepath.Dir(home), "bin", "npx"), "#!/bin/sh\nexit 0\n", 0o755)
+	if !has(check(home, p), OK, "npx found for the skills module") {
+		t.Fatal("npx not found")
+	}
+	if has(check(home, profile(t, home, "other")), OK, "npx found for the skills module") {
+		t.Fatal("checked without the skills module")
+	}
+}

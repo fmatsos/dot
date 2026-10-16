@@ -84,7 +84,7 @@ ignored. There is no templating: files in `~` stay links into the clone.
 - `dot install -n` shows the winning layer when it is not `home`.
 - `dot adopt --os` or `--host` moves a file into the matching variant.
 - A `deploy.sparse` list must name each variant it wants (`home@darwin`...).
-- `dot ai settings`, `dot ai mcp` and the mise configuration still read `home/` only.
+- `dot ai settings`, `dot ai mcp`, `dot ai skills` and the mise configuration still read `home/` only.
 
 ### Keep a personal and a work setup on the same machine
 
@@ -216,6 +216,23 @@ the secrets of a server stay names that `dot secrets run` resolves when the serv
 one profile the list is `~/.config/mcp/servers.json`, a link to the profile's file; with several,
 `dot` reads the list of each profile in registry order.
 
+Agent skills follow the same idea. A profile lists them in `home/.config/skills/skills.json`, by
+source as [`npx skills`](https://github.com/vercel-labs/skills) takes it, with an optional `#ref`:
+
+```json
+{ "anthropics/skills": ["pdf", "doc-coauthoring"], "acme/tools#v1": ["lint"] }
+```
+
+```sh
+dot ai skills -n    # preview the plan
+dot ai skills       # install and remove global skills through npx skills (pinned version)
+```
+
+The list is authoritative: a skill installed from a source and missing from it is removed. A skill
+without a source, copied by hand, is never touched and shows as `unmanaged`; version it with
+`dot adopt` instead. A local `~/.config/skills/skills.local.json` replaces a source of the profiles,
+or drops it with `null`. Node must be installed (the `nvm` key of the manifest).
+
 ### Keep your cron jobs with your profile
 
 A profile can ship its cron jobs in `home/.config/crontab`, in plain crontab syntax. With
@@ -286,7 +303,7 @@ On a new machine, `dot install <url>` brings the profiles back, and `dot repos e
   `dot self-update` verifies the signature, then the checksum, before replacing the executable.
 - **Secrets stay in your vault.** `dot secrets` works with `bw` and `pass-cli` (`add`, `get`,
   `run`, `unlock`, `lock`, `status`), so a profile never has to hold them.
-- **One config for your coding agents.** `dot ai settings` and `dot ai mcp` merge the settings and the
+- **One config for your coding agents.** `dot ai settings`, `dot ai mcp` and `dot ai skills` merge the settings, the skills and the
   MCP servers of a profile into Claude Code, Codex and OpenCode.
 - **Cron jobs in the profile.** The `crontab` module installs `home/.config/crontab` into a
   managed block of your user crontab, and keeps the lines you added by hand.
@@ -360,7 +377,7 @@ deploy, which git identities the profile has, and which optional modules to enab
 | `deployProfile` | The identity to deploy on this machine. It must be one of `profiles`. |
 | `marketplace` | Optional: a plugin marketplace and its plugins. |
 | `nvm` | Optional: a pinned Node version (`x.y.z`) and the packages to install with it. |
-| `modules` | Optional: `settings`, `mcp` and/or `crontab`, to merge agent settings, MCP servers and cron jobs. |
+| `modules` | Optional: `settings`, `mcp`, `skills` and/or `crontab`, to merge agent settings, MCP servers, agent skills and cron jobs. |
 
 The git hooks of the data repository stay one line each:
 
@@ -390,14 +407,14 @@ dot launcher [--install|--uninstall]   aliases in the GNOME search
 dot launcher add|update|rm|get|list   edit <profile>/launcher.conf
 dot secrets add|get|run|unlock|lock|status
 dot guard staged|msg|push|all       leak guard for git hooks (forbidden terms, secrets)
-dot ai settings|mcp [-n]            merge Claude settings and MCP servers
+dot ai settings|mcp|skills [-n]     merge agent settings, MCP servers and skills
 dot <cmd>                           run dot-<cmd> (profile bin/, then PATH), otherwise git on the clone
 ```
 
 ### Choosing a profile
 
 The target profile is chosen with `-p/--profile <key>`, then `DOT_PROFILE`, then the registry's
-default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `ai settings` and `ai mcp` act on
+default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `ai settings`, `ai mcp` and `ai skills` act on
 every registered profile, and the other commands on the default profile. With several profiles
 registered, `dot <cmd>` searches every profile's `bin/`: a `dot-<cmd>` claimed by two profiles is
 refused and you must pass `-p`. Without `-p`, the key

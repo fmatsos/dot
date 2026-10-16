@@ -19,6 +19,7 @@ import (
 	"github.com/fmatsos/dot/internal/registry"
 	"github.com/fmatsos/dot/internal/settings"
 	"github.com/fmatsos/dot/internal/shellrc"
+	"github.com/fmatsos/dot/internal/skills"
 )
 
 // Profile is a profile clone: Key is its registry key, Dir its absolute directory.
@@ -282,7 +283,7 @@ func (in *Installer) shared(done []loaded, all []Profile) error {
 	return in.modules(done, all)
 }
 
-// modules runs the settings, mcp and crontab modules declared by any profile of the run. Their sources
+// modules runs the settings, mcp, skills and crontab modules declared by any profile of the run. Their sources
 // are every registered profile, in registry order, like `dot ai settings` and `dot ai mcp` without -p.
 func (in *Installer) modules(done []loaded, all []Profile) error {
 	var names []string
@@ -313,6 +314,12 @@ func (in *Installer) modules(done []loaded, all []Profile) error {
 				})
 			}
 			err = mcp.Run(o)
+		case "skills":
+			o := skills.Options{Home: in.Home, DryRun: in.Dry, Out: in.Out}
+			for _, p := range all {
+				o.Sources = append(o.Sources, filepath.Join(p.Dir, "home", ".config", "skills", "skills.json"))
+			}
+			err = skills.Run(o)
 		case "crontab":
 			o := crontab.Options{DryRun: in.Dry, Out: in.Out}
 			for _, p := range all {

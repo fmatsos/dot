@@ -31,10 +31,10 @@ func (e *NoHomeError) Error() string {
 	return fmt.Sprintf("nothing to link: %s/home missing (dry run without clone?)", e.Dir)
 }
 
-// ModuleSources are the home/ files merged across profiles by `dot ai settings`, `dot ai mcp`
-// and the crontab module. With two or more registered profiles they are per-profile inputs
-// and are not linked into ~; with one, they are linked like any other file.
-var ModuleSources = []string{".claude/settings.base.json", ".config/mcp/servers.json", ".config/crontab"}
+// ModuleSources are the home/ files merged across profiles by `dot ai settings`, `dot ai mcp`,
+// `dot ai skills` and the crontab module. With two or more registered profiles they are
+// per-profile inputs and are not linked into ~; with one, they are linked like any other file.
+var ModuleSources = []string{".claude/settings.base.json", ".config/mcp/servers.json", ".config/skills/skills.json", ".config/crontab"}
 
 // Tilde shortens a path under home to ~/…, like the bash `${p/#$HOME/~}`.
 func Tilde(home, p string) string {

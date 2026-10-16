@@ -129,6 +129,7 @@ func Run(o Options) []Line {
 			c.shims()
 		}
 		c.secrets(s)
+		c.npx(s)
 	}
 	if !single {
 		c.deadLinks()
@@ -287,6 +288,18 @@ func (c *checker) guard(s *state) {
 	default:
 		c.add(Fail, "guard disabled: restore forbidden.local")
 	}
+}
+
+// npx checks that a profile asking for the skills module can run the skills CLI.
+func (c *checker) npx(s *state) {
+	if s.m == nil || !slices.Contains(s.m.Modules, "skills") {
+		return
+	}
+	if _, err := exec.LookPath("npx"); err != nil {
+		c.add(Fail, "skills module: npx not found, install Node (nvm key of dot.json)")
+		return
+	}
+	c.add(OK, "npx found for the skills module")
 }
 
 func (c *checker) gitInclude() {

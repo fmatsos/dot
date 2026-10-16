@@ -15,6 +15,8 @@ export PATH=$S/bin:$PATH
 for cli in claude codex opencode bw pass-cli gh mise; do
   printf '#!/bin/bash\nexit 0\n' >"$S/bin/$cli"; chmod +x "$S/bin/$cli"
 done
+# npx records its calls and lists no installed skill.
+printf '#!/bin/bash\necho "$*" >>"%s/npx.calls"\n[ "$3" != list ] || echo "[]"\n' "$S" >"$S/bin/npx"; chmod +x "$S/bin/npx"
 
 # mkremote <fixture> <dir>: a local git repository standing for a profile's remote.
 mkremote() {
@@ -31,6 +33,10 @@ fails() { # fails <code> <cmd…>: the command must exit with that code and prin
 }
 registry=$HOME/.dot/profiles.json
 A=$S/remotes/dots-a; mkremote a "$A"
+# This profile also lists a skill, through the skills module.
+mkdir -p "$A/home/.config/skills"; printf '{"acme/tools": ["lint"]}\n' >"$A/home/.config/skills/skills.json"
+sed -i.bak 's/"modules": \["settings"\]/"modules": ["settings", "skills"]/' "$A/dot.json"; rm "$A/dot.json.bak"
+git -C "$A" add -A; git -C "$A" -c user.name=Fixture -c user.email=fixture@example.com commit -q -m skills
 sha=$(git -C "$A" rev-parse HEAD)
 clone=$HOME/.dot/a
 
@@ -63,7 +69,8 @@ git config --global --get-all include.path | grep -qxF '~/.config/git/profiles.g
 echo 'OK   HEAD deployed with sparse blobless config, profiles include and local identity/hooks'
 
 grep -q '"theme": "dark"' "$HOME/.claude/settings.json"
-echo 'OK   the settings module declared by the manifest ran'
+grep -q 'add acme/tools -g -y -s lint$' "$S/npx.calls"
+echo 'OK   the settings and skills modules declared by the manifest ran'
 
 links() { find "$HOME" -type l | sort | while IFS= read -r l; do echo "$l $(readlink "$l") $(stat_inode_mtime "$l")"; done; }
 links >"$S/links.before"

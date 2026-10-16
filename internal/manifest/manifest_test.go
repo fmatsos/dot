@@ -57,12 +57,12 @@ func TestLoadOptionalBlocksAbsent(t *testing.T) {
 	}
 }
 
-func TestLoadCrontabModule(t *testing.T) {
-	m, err := Load(writeFile(t, `{"repo":"https://example.com/acme/dots.git","deploy":{"sparse":["home"]},"profiles":{"acme":"home/acme.gitconfig"},"deployProfile":"acme","modules":["crontab"]}`))
+func TestLoadCrontabAndSkillsModules(t *testing.T) {
+	m, err := Load(writeFile(t, `{"repo":"https://example.com/acme/dots.git","deploy":{"sparse":["home"]},"profiles":{"acme":"home/acme.gitconfig"},"deployProfile":"acme","modules":["crontab","skills"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(m.Modules, []string{"crontab"}) {
+	if !reflect.DeepEqual(m.Modules, []string{"crontab", "skills"}) {
 		t.Fatalf("modules = %v", m.Modules)
 	}
 }

@@ -204,7 +204,7 @@ func parse(data []byte) (*Manifest, string) {
 	if m.DeployProfile, ok = asText(root.get("deployProfile")); !ok || profiles.vals[m.DeployProfile] == nil {
 		return nil, "deployProfile"
 	}
-	if m.Modules, ok = asStrings(root.get("modules"), func(s string) bool { return s == "settings" || s == "mcp" || s == "crontab" }); !ok ||
+	if m.Modules, ok = asStrings(root.get("modules"), func(s string) bool { return s == "settings" || s == "mcp" || s == "skills" || s == "crontab" }); !ok ||
 		len(slices.Compact(slices.Sorted(slices.Values(m.Modules)))) != len(m.Modules) { // sorted copy: duplicates become adjacent
 		return nil, "modules"
 	}
