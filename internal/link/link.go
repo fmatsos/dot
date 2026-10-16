@@ -311,11 +311,16 @@ func multiProfile(home string) bool {
 	return err == nil && len(r.Keys()) > 1
 }
 
-// Drift is Detached formatted as the report lines of `dot status`.
+// Drift is Detached formatted as the report lines of `dot status`: a missing ~ twin (a file new
+// in the profile) only waits for an install, anything else in its place is to reconcile.
 func Drift(dir, home string) []string {
 	d := Detached(dir, home)
 	for i, p := range d {
-		d[i] = "detached (no longer a link, to reconcile): " + p
+		if _, err := os.Lstat(filepath.Join(home, strings.TrimPrefix(p, "~/"))); errors.Is(err, fs.ErrNotExist) {
+			d[i] = "not linked yet (run dot install): " + p
+		} else {
+			d[i] = "detached (no longer a link, to reconcile): " + p
+		}
 	}
 	return d
 }

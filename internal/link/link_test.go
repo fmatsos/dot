@@ -235,6 +235,10 @@ func TestDriftAndDeadLinks(t *testing.T) {
 			t.Fatalf("drift = %v", got)
 		}
 	}
+	// A missing twin (not linked yet) is not reported like a file that replaced its link.
+	if strings.TrimSuffix(got[0], want[0]) == strings.TrimSuffix(got[1], want[1]) {
+		t.Fatalf("missing and replaced reported alike: %v", got)
+	}
 	must(t, os.Symlink("/nowhere", home+"/.local/bin/dead1"))
 	must(t, os.Symlink("/nowhere", home+"/.local/bin/.hidden"))
 	must(t, os.Symlink(dir+"/bin/dot-x", home+"/.local/bin/alive2"))
