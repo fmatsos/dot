@@ -16,11 +16,11 @@ func init() { register(newReposCmd) }
 
 const reposUsage = "usage: dot repos [--problems | export [file] | clone [file]]"
 
-// useColor is true on a terminal unless NO_COLOR is set.
+// useColor is true on a terminal unless NO_COLOR is set or TERM is dumb.
 // ponytail: any character device but /dev/null counts as a terminal, no ioctl.
 func useColor(env *Env, w io.Writer) bool {
 	f, ok := w.(*os.File)
-	if !ok || env.Getenv("NO_COLOR") != "" {
+	if !ok || env.Getenv("NO_COLOR") != "" || env.Getenv("TERM") == "dumb" {
 		return false
 	}
 	fi, err := f.Stat()

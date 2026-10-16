@@ -1,28 +1,59 @@
 package main
 
 import (
+	"regexp"
 	"strings"
+	"sync/atomic"
 
 	"github.com/spf13/cobra"
 )
 
+// helpColor is set by setupHelp for the template functions below: bold headers, cyan command and
+// flag names, on a terminal only (see useColor).
+var helpColor atomic.Bool
+
+// flagHead is the "-p, --profile string" part of a pflag usage line, up to the gap before its description.
+var flagHead = regexp.MustCompile(`(?m)^(\s+)(-\S+(?:, --\S+)?(?: [^\s-]\S*)?)(\s{2,}|$)`)
+
+func init() {
+	paint := func(code string) func(string) string {
+		return func(s string) string {
+			if !helpColor.Load() {
+				return s
+			}
+			return "\x1b[" + code + "m" + s + "\x1b[0m"
+		}
+	}
+	cobra.AddTemplateFunc("helpHead", paint("1"))
+	cobra.AddTemplateFunc("helpName", paint("36"))
+	cobra.AddTemplateFunc("helpFlags", colorFlags)
+}
+
+// colorFlags paints the option names of pflag's usage lines, nothing else.
+func colorFlags(s string) string {
+	if !helpColor.Load() {
+		return s
+	}
+	return flagHead.ReplaceAllString(s, "$1\x1b[36m$2\x1b[0m$3")
+}
+
 // usageTemplate is cobra's default usage template, simplified and lowercased.
-const usageTemplate = `usage: {{if and .Runnable .HasParent}}{{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}{{if and .Runnable .HasParent}}
+const usageTemplate = `{{helpHead "usage:"}} {{if and .Runnable .HasParent}}{{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}{{if and .Runnable .HasParent}}
         {{end}}{{.CommandPath}} <command> [arguments]{{end}}{{if gt (len .Aliases) 0}}
 
-aliases: {{.NameAndAliases}}{{end}}{{if .HasExample}}
+{{helpHead "aliases:"}} {{.NameAndAliases}}{{end}}{{if .HasExample}}
 
-examples:
+{{helpHead "examples:"}}
 {{.Example}}{{end}}{{if .HasAvailableSubCommands}}
 
-commands:{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+{{helpHead "commands:"}}{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{helpName (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 
-options:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+{{helpHead "options:"}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces | helpFlags}}{{end}}{{if .HasAvailableInheritedFlags}}
 
-global options:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if and .HasAvailableSubCommands (not .HasParent)}}
+{{helpHead "global options:"}}
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces | helpFlags}}{{end}}{{if and .HasAvailableSubCommands (not .HasParent)}}
 
 ` + "`{{.CommandPath}} help <command>`" + ` shows a command's help.{{end}}
 `
@@ -30,6 +61,7 @@ global options:
 // setupHelp gives the whole tree the usage template above and a help command that reports
 // unknown topics with exit code 2 and also answers for extensions (dot-<cmd> --help).
 func setupHelp(env *Env, root *cobra.Command) {
+	helpColor.Store(useColor(env, env.Stdout))
 	root.SetUsageTemplate(usageTemplate)
 	root.SetHelpCommand(&cobra.Command{
 		Use:   "help [command]",
