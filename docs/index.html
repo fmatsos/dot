@@ -302,7 +302,10 @@ three. The search never shows what is inside <code>{…}</code> of an ssh alias,
 profile (or <code>$DOT_PROFILE</code>).</p>
 <p>The search also offers your own aliases, kept in <code>&lt;profile&gt;/launcher.conf</code> (versioned like <code>ssh.conf</code>): one
 <code>&lt;alias&gt; &lt;command line&gt;</code> per line, <code>#</code> for comments. The line is run by <code>sh -c</code>, so quotes, pipes and <code>&amp;&amp;</code> work;
-it opens no terminal, so write <code>xdg-terminal-exec &lt;command&gt;</code> when you want to see the output.</p>
+it opens no terminal, so write <code>xdg-terminal-exec &lt;command&gt;</code> when you want to see the output.
+A command containing <code>{q}</code> takes the text typed after the alias: with <code>c xdg-terminal-exec claude --model sonnet {q}</code>,
+typing <code>c hello world</code> runs it with <code>hello world</code> as one argument. <code>{q}</code> is replaced by <code>"$DOT_Q"</code>, so write it
+unquoted and outside single quotes; what you type is never run as shell code.</p>
 <div class="highlight highlight-source-shell"><pre>dot launcher add gh xdg-open https://github.com
 dot launcher add up <span class="pl-s"><span class="pl-pds">"</span>dot pull &amp;&amp; notify-send 'dot' 'profiles updated'<span class="pl-pds">"</span></span>
 dot launcher list <span class="pl-k">|</span> get <span class="pl-k">&lt;</span>alias<span class="pl-k">&gt;</span> <span class="pl-k">|</span> update <span class="pl-k">&lt;</span>alias<span class="pl-k">&gt;</span> <span class="pl-k">&lt;</span>command<span class="pl-k">&gt;</span> <span class="pl-k">|</span> rm <span class="pl-k">&lt;</span>alias<span class="pl-k">&gt;</span></pre></div>
