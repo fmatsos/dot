@@ -59,3 +59,20 @@ func TestFormerCommandsPointToAi(t *testing.T) {
 		}
 	}
 }
+
+// dot ai skills applies every profile's list even under -p: one list alone would remove the others' skills.
+func TestSkillsMergesEveryProfileEvenWithP(t *testing.T) {
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "calls")
+	if err := os.WriteFile(filepath.Join(dir, "npx"), []byte("#!/bin/sh\necho \"$*\" >>"+calls+"\n[ \"$3\" != list ] || echo '[{\"name\":\"a\",\"source\":\"o/a\"},{\"name\":\"b\",\"source\":\"o/b\"}]'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	env, out, errb := testEnv(t)
+	writeRegistry(t, env, twoProfiles)
+	writeProfileFile(t, env, "perso", "home/.config/skills/skills.json", `{"o/a":["a"]}`)
+	writeProfileFile(t, env, "acmecorp", "home/.config/skills/skills.json", `{"o/b":["b"]}`)
+	if code := execute(env, []string{"-p", "perso", "ai", "skills"}); code != 0 || out.String() != "skills: up to date\n" {
+		t.Fatalf("code %d, %q, %q", code, out, errb)
+	}
+}

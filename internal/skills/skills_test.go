@@ -11,13 +11,14 @@ import (
 )
 
 func TestParseRejectsWhatTheCLIWouldMisread(t *testing.T) {
-	for _, bad := range []string{`[]`, `null`, `{"-g":["a"]}`, `{"o/r":[]}`, `{"o/r":["-y"]}`, `{"o/r":["*"]}`, `{"o/r":"a"}`} {
+	for _, bad := range []string{`[]`, `null`, `{"-g":["a"]}`, `{"o/r/sub":["a"]}`, `{"o/r@a":["a"]}`, `{"gitlab:g/r":["a"]}`,
+		`{"https://github.com/o/r/tree/main/s":["a"]}`, `{"o/r":[]}`, `{"o/r":["-y"]}`, `{"o/r":["*"]}`, `{"o/r":"a"}`} {
 		if _, err := Parse([]byte(bad)); err == nil {
 			t.Errorf("%s accepted", bad)
 		}
 	}
-	l, err := Parse([]byte(`{"o/r#v1":["a","b"],"x/y":null}`))
-	if err != nil || !reflect.DeepEqual(l, List{"o/r#v1": {"a", "b"}, "x/y": nil}) {
+	l, err := Parse([]byte(`{"o/r#v1":["a","b"],"x/y":null,"https://github.com/o/s.git":["c"],"https://git.example.com/g/s/r.git":["d"]}`))
+	if err != nil || !reflect.DeepEqual(l, List{"o/r#v1": {"a", "b"}, "x/y": nil, "https://github.com/o/s.git": {"c"}, "https://git.example.com/g/s/r.git": {"d"}}) {
 		t.Fatalf("%v %v", l, err)
 	}
 }
@@ -121,14 +122,23 @@ func TestRunUpToDateAndErrors(t *testing.T) {
 		t.Fatalf("invalid list: %v %v", err, f.calls)
 	}
 
-	o, _ = f.opts(t)
+	o, _ = f.opts(t, filepath.Join(dir, "missing.json"))
+	if err := Run(o); err == nil || !strings.Contains(err.Error(), "adopt") || len(f.calls) != 0 {
+		t.Fatalf("no list at all: %v %v", err, f.calls)
+	}
+	write(t, Local(o.Home), `{}`)
+	if err := Run(o); err != nil || len(f.calls) != 2 || f.calls[1] != "npx -y "+CLI+" remove a -g -y" {
+		t.Fatalf("an explicit {} removes every sourced skill: %v %v", err, f.calls)
+	}
+
+	o, _ = f.opts(t, p2(t, dir))
 	o.LookPath = func(string) (string, error) { return "", errors.New("none") }
 	if err := Run(o); err == nil || !strings.Contains(err.Error(), "npx") {
 		t.Fatalf("no npx: %v", err)
 	}
 
 	f = &fake{list: `[]`, fail: " add "}
-	o, _ = f.opts(t, write(t, filepath.Join(dir, "p2.json"), `{"o/r":["a"]}`))
+	o, _ = f.opts(t, p2(t, dir))
 	if err := Run(o); err == nil || err.Error() != "cannot add (a from o/r)" {
 		t.Fatalf("failed add: %v", err)
 	}
@@ -155,4 +165,8 @@ func TestListEditing(t *testing.T) {
 	if empty, err := ReadList(p + ".missing"); err != nil || len(empty) != 0 {
 		t.Fatalf("%v %v", empty, err)
 	}
+}
+
+func p2(t *testing.T, dir string) string {
+	return write(t, filepath.Join(dir, "p2.json"), `{"o/r":["a"]}`)
 }

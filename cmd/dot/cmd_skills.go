@@ -25,12 +25,16 @@ func newSkillsCmd(env *Env) *cobra.Command {
 		Long: "Apply <profile>/home/.config/skills/skills.json, {\"<source>[#ref]\": [\"<skill>\", ...]}, to the\n" +
 			"global skills of the coding agents (-n: preview). The list is authoritative: a skill installed\n" +
 			"from a source and missing from it is removed; a skill without a source (copied by hand) is left\n" +
-			"alone and reported as unmanaged. Without -p, every registered profile is merged in registry order.\n\n" +
+			"alone and reported as unmanaged. Every registered profile is merged in registry order, even with\n" +
+			"-p: a list applied alone would remove the skills of the others.\n\n" +
 			"~/.config/skills/skills.local.json (optional): a local source replaces the profiles' one; null\n" +
 			"removes it. The skills CLI runs pinned (" + skills.CLI + "), through npx.",
 		Args: exactArgs(0, "dot ai skills [-n]"),
 		RunE: func(*cobra.Command, []string) error {
-			dirs, _, err := targetProfileDirs(env)
+			dirs, err := allProfileDirs(env)
+			if err == nil && len(dirs) == 0 {
+				_, err = env.ProfileDir() // reports the empty registry the usual way
+			}
 			if err != nil {
 				return reportErr(env, "skills", err)
 			}

@@ -36,6 +36,9 @@ esac
 BASH
 chmod +x "$S/bin/npx"
 printf '[{"name":"hand","source":null},{"name":"old","source":"acme/old"}]\n' >"$STATE"
+not dot ai skills 2>"$S/err"
+[ ! -s "$CALLS" ] && grep -q 'adopt' "$S/err"
+echo 'OK   no list at all removes nothing and points to adopt'
 printf '{"acme/tools#v1": ["lint", "fmt"]}\n' >"$DOTFILES_DEPLOY/home/.config/skills/skills.json"
 
 dot ai skills -n >"$S/out"

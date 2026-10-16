@@ -419,7 +419,7 @@ dot <cmd>                           run dot-<cmd> (profile bin/, then PATH), oth
 ### Choosing a profile
 
 The target profile is chosen with `-p/--profile <key>`, then `DOT_PROFILE`, then the registry's
-default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `ai settings`, `ai mcp` and `ai skills` act on
+default profile. Without `-p`, `pull`, `push`, `status`, `doctor`, `ai settings`, `ai mcp` and `ai skills` (always) act on
 every registered profile, and the other commands on the default profile. With several profiles
 registered, `dot <cmd>` searches every profile's `bin/`: a `dot-<cmd>` claimed by two profiles is
 refused and you must pass `-p`. Without `-p`, the key

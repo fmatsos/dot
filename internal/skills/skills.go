@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -75,8 +76,8 @@ func Parse(data []byte) (List, error) {
 	}
 	l := List{}
 	for src, v := range raw {
-		if src == "" || strings.HasPrefix(src, "-") {
-			return nil, fmt.Errorf("invalid source %q", src)
+		if err := checkSource(src); err != nil {
+			return nil, err
 		}
 		if string(bytes.TrimSpace(v)) == "null" {
 			l[src] = nil
@@ -96,6 +97,23 @@ func Parse(data []byte) (List, error) {
 	return l, nil
 }
 
+var shorthandRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
+// checkSource refuses the source forms whose lock entry would never match the key (a sub path, an
+// @skill suffix, a tree URL, a gitlab: prefix): the skill would be added again on every run.
+func checkSource(src string) error {
+	repo, _, _ := strings.Cut(src, "#")
+	if gh, ok := strings.CutPrefix(strings.TrimSuffix(repo, ".git"), "https://github.com/"); ok {
+		repo = gh
+	} else if strings.Contains(repo, "://") || strings.HasPrefix(repo, "git@") {
+		return nil // another host: the lock keeps the URL as given
+	}
+	if !shorthandRe.MatchString(strings.TrimPrefix(repo, "github:")) {
+		return fmt.Errorf("invalid source %q: owner/repo[#ref] or a repository URL expected", src)
+	}
+	return nil
+}
+
 func readList(path string) (List, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -109,7 +127,8 @@ func readList(path string) (List, error) {
 }
 
 // Merge unions the profiles' lists source by source, then applies the local list: a local source
-// replaces the profiles' one (the same repository, whatever its ref), null drops it. It returns the wanted skill name → source key.
+// replaces the profiles' one (the same repository, whatever its ref), null drops it. It returns
+// the wanted skill name → source key.
 func Merge(profiles []List, local List) (map[string]string, error) {
 	merged := List{}
 	for _, l := range profiles {
@@ -199,6 +218,7 @@ func (o Options) State() ([]Installed, error) {
 func Run(o Options) error {
 	o.defaults()
 	var lists []List
+	read := false
 	for _, p := range o.Sources {
 		l, err := readList(p)
 		if errors.Is(err, os.ErrNotExist) {
@@ -207,11 +227,15 @@ func Run(o Options) error {
 		if err != nil {
 			return err
 		}
-		lists = append(lists, l)
+		lists, read = append(lists, l), true
 	}
 	local, err := readList(Local(o.Home))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
+	}
+	// No list at all is no wish: it would remove every skill. An explicit {} still does.
+	if !read && local == nil {
+		return errors.New("no skills.json in the profiles: run dot ai skills adopt first")
 	}
 	want, err := Merge(lists, local)
 	if err != nil {
