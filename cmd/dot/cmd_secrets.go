@@ -65,15 +65,15 @@ func newSecretsCmd(env *Env) *cobra.Command {
 		Use:   "add NAME <ref>",
 		Short: "Create a secret or reuse an existing item",
 		Long: "Create a secret or reuse an existing item.\n\n" +
-			"Reference: bw:<item> or pass:<vault>/<item>[#field]. Hidden input asked twice on the terminal,\n" +
+			"Reference: bw:<item>[#field] or pass:<vault>/<item>[#field] (names or ids). Hidden input asked twice on the terminal,\n" +
 			"otherwise stdin (one trailing newline removed). The value is checked before it is added to\n" +
 			"secrets.local (600); an existing item asks for no input.",
 		Args: exactArgs(2, "dot secrets add NAME <ref>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref := args[1]
 			if field != "" {
-				if !strings.HasPrefix(ref, "pass:") || strings.Contains(ref, "#") || strings.Contains(field, "#") {
-					return usagef("--field: only with pass:<vault>/<item>, with no # in the reference or the field")
+				if !strings.HasPrefix(ref, "pass:") && !strings.HasPrefix(ref, "bw:") || strings.Contains(ref, "#") || strings.Contains(field, "#") {
+					return usagef("--field: only with bw:<item> or pass:<vault>/<item>, with no # in the reference or the field")
 				}
 				ref += "#" + field
 			}
@@ -93,7 +93,7 @@ func newSecretsCmd(env *Env) *cobra.Command {
 			return nil
 		},
 	}
-	addCmd.Flags().StringVar(&field, "field", "", "custom field to read (pass), same as #field in the reference")
+	addCmd.Flags().StringVar(&field, "field", "", "field to read, same as #field in the reference")
 	cmd.AddCommand(
 		addCmd,
 		&cobra.Command{

@@ -121,9 +121,9 @@ func (s *Store) Read(ctx context.Context, m Mapping) (string, error) {
 		if serr != nil {
 			return "", serr
 		}
-		out, err = s.run(ctx, []string{"BW_SESSION=" + sess}, nil, "bw", "get", "password", m.Item())
+		out, err = s.readBW(ctx, sess, m)
 	case "pass":
-		out, err = s.run(ctx, nil, nil, "pass-cli", "item", "view", "--vault-name", m.Vault(), "--item-title", m.Title(), "--field", m.Field())
+		out, err = s.run(ctx, nil, nil, "pass-cli", m.PassView()...)
 	default:
 		err = errors.New("unknown backend")
 	}
@@ -135,6 +135,96 @@ func (s *Store) Read(ctx context.Context, m Mapping) (string, error) {
 		return "", fmt.Errorf("%s (%s): empty value", m.Name, m.Backend())
 	}
 	return v, nil
+}
+
+// readBW returns what bw prints for the field of m: a login's own field through bw get, any
+// other one (card.*, identity.*, ssh.*, fields.NAME or a custom field NAME) from the item's JSON,
+// which stays in memory. The result ends with a newline, as bw's own output would.
+func (s *Store) readBW(ctx context.Context, sess string, m Mapping) ([]byte, error) {
+	extra := []string{"BW_SESSION=" + sess}
+	field := m.Field()
+	switch f := strings.ToLower(field); f {
+	case "password", "username", "uri", "totp", "notes":
+		return s.run(ctx, extra, nil, "bw", "get", f, m.BwItem())
+	}
+	out, err := s.run(ctx, extra, nil, "bw", "get", "item", m.BwItem())
+	if err != nil {
+		return nil, err
+	}
+	v, ok := bwField(out, field)
+	if !ok {
+		return nil, errors.New("field not found")
+	}
+	return []byte(v + "\n"), nil
+}
+
+// bwField picks one field out of the JSON of a Bitwarden item: "card.number", "identity.email",
+// "ssh.privateKey" (also "sshkey."), "fields.NAME" or, with no prefix, a custom field by name.
+// Property and field names match exactly first, then without regard to case.
+func bwField(data []byte, field string) (string, bool) {
+	var it struct {
+		Fields []struct {
+			Name  string `json:"name"`
+			Value any    `json:"value"`
+		} `json:"fields"`
+		Card     map[string]any `json:"card"`
+		Identity map[string]any `json:"identity"`
+		SSHKey   map[string]any `json:"sshKey"`
+	}
+	if json.Unmarshal(data, &it) != nil {
+		return "", false
+	}
+	props := []struct {
+		prefix string
+		m      map[string]any
+	}{{"card.", it.Card}, {"identity.", it.Identity}, {"ssh.", it.SSHKey}, {"sshkey.", it.SSHKey}}
+	for _, p := range props {
+		if name, ok := cutPrefixFold(field, p.prefix); ok {
+			for _, same := range matchers(name) {
+				for key, v := range p.m {
+					if same(key) {
+						return scalar(v)
+					}
+				}
+			}
+			return "", false
+		}
+	}
+	name, _ := cutPrefixFold(field, "fields.")
+	if name == "" {
+		name = field
+	}
+	for _, same := range matchers(name) {
+		for _, f := range it.Fields {
+			if same(f.Name) {
+				return scalar(f.Value)
+			}
+		}
+	}
+	return "", false
+}
+
+// matchers tries a name as is, then without regard to case.
+func matchers(name string) []func(string) bool {
+	return []func(string) bool{func(s string) bool { return s == name }, func(s string) bool { return strings.EqualFold(s, name) }}
+}
+
+func cutPrefixFold(s, prefix string) (string, bool) {
+	if len(s) > len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):], true
+	}
+	return "", false
+}
+
+// scalar renders a JSON string, number or boolean; null and structures are not a value.
+func scalar(v any) (string, bool) {
+	switch v := v.(type) {
+	case string:
+		return v, true
+	case bool, float64:
+		return fmt.Sprint(v), true
+	}
+	return "", false
 }
 
 // Get returns the value of the secret called name in secrets.local.

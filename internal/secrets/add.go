@@ -35,8 +35,8 @@ func (s *Store) Add(ctx context.Context, name, ref string, input func() (string,
 		return false, err
 	}
 	if !exists {
-		if m.HasField() {
-			return false, errors.New("item or field not found: a #field is read, never created")
+		if m.HasField() || m.Backend() == "pass" && looksLikeID(m.Title()) {
+			return false, errors.New("item or field not found: a #field or an item id is read, never created")
 		}
 		value, err := input()
 		if err != nil {
@@ -67,7 +67,11 @@ func (s *Store) exists(ctx context.Context, m Mapping) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		out, err := s.run(ctx, []string{"BW_SESSION=" + sess}, nil, "bw", "list", "items", "--search", m.Item())
+		if m.HasField() { // a field is read, never created: the reference must already resolve
+			_, err := s.Read(ctx, m)
+			return err == nil, nil
+		}
+		out, err := s.run(ctx, []string{"BW_SESSION=" + sess}, nil, "bw", "list", "items", "--search", m.BwItem())
 		var items []struct {
 			Name string `json:"name"`
 		}
@@ -77,7 +81,7 @@ func (s *Store) exists(ctx context.Context, m Mapping) (bool, error) {
 		switch {
 		case len(items) == 0:
 			return false, nil
-		case len(items) == 1 && items[0].Name == m.Item():
+		case len(items) == 1 && items[0].Name == m.BwItem():
 			return true, nil
 		}
 		return false, errors.New("Bitwarden: ambiguous search for bw get, choose a more specific name")
@@ -85,7 +89,7 @@ func (s *Store) exists(ctx context.Context, m Mapping) (bool, error) {
 	if _, err := s.run(ctx, nil, nil, "pass-cli", "info"); err != nil {
 		return false, ErrPassLoggedOut
 	}
-	_, err := s.run(ctx, nil, nil, "pass-cli", "item", "view", "--vault-name", m.Vault(), "--item-title", m.Title(), "--field", m.Field())
+	_, err := s.run(ctx, nil, nil, "pass-cli", m.PassView()...)
 	return err == nil, nil
 }
 
@@ -121,7 +125,7 @@ func (s *Store) create(ctx context.Context, m Mapping, value string) error {
 		sess := []string{"BW_SESSION=" + session}
 		raw, err := s.template(ctx, sess, func(doc map[string]any) {
 			doc["type"] = 1
-			doc["name"] = m.Item()
+			doc["name"] = m.BwItem()
 			doc["notes"] = nil
 			login, ok := doc["login"].(map[string]any)
 			if !ok {
@@ -146,7 +150,8 @@ func (s *Store) create(ctx context.Context, m Mapping, value string) error {
 		doc["password"] = value
 	}, "pass-cli", "item", "create", "login", "--get-template")
 	if err == nil {
-		_, err = s.run(ctx, nil, bytes.NewReader(raw), "pass-cli", "item", "create", "login", "--vault-name", m.Vault(), "--from-template", "-")
+		args := append(append([]string{"item", "create", "login"}, m.passVault()...), "--from-template", "-")
+		_, err = s.run(ctx, nil, bytes.NewReader(raw), "pass-cli", args...)
 	}
 	if err != nil {
 		return errors.New("Proton Pass: creation failed")

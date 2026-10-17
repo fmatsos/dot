@@ -131,3 +131,26 @@ func TestOverrideEnv(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+func TestBitwardenField(t *testing.T) {
+	for _, tc := range []struct {
+		ref, item, field string
+		has              bool
+	}{
+		{"bw:Item", "Item", "password", false},
+		{"bw:Item#username", "Item", "username", true},
+		{"bw:a/b c#card.number", "a/b c", "card.number", true},
+		{"bw:Item#password", "Item", "password", true},
+		{"bw:id-1234#fields.x#y", "id-1234#fields.x", "y", true},
+	} {
+		m := Mapping{"N", tc.ref}
+		if !Valid("N", tc.ref) || m.BwItem() != tc.item || m.Field() != tc.field || m.HasField() != tc.has {
+			t.Errorf("%s: item %q field %q has %v", tc.ref, m.BwItem(), m.Field(), m.HasField())
+		}
+	}
+	for _, ref := range []string{"bw:", "bw:#field", "bw:Item#"} {
+		if Valid("N", ref) {
+			t.Errorf("Valid(%q)", ref)
+		}
+	}
+}

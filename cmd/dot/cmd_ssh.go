@@ -185,7 +185,7 @@ func newSSHCmd(env *Env) *cobra.Command {
 			"\"<name> <ssh arguments…>\" line each, # for a comment. Arguments after the name " +
 			"are appended after the alias ones, so a remote command works: dot ssh prod uptime.\n\n" +
 			"Nothing secret in this file: {X} is replaced at connection time by the secret X of secrets.local, " +
-			"or by {bw:<item>} / {pass:<vault>/<item>[#field]} read straight from the vault " +
+			"or by {bw:<item>[#field]} / {pass:<vault>/<item>[#field]} read straight from the vault " +
 			"(e.g. \"pve root@{pass:Infra/pve#host}\"). \"password={X}\" reads the password from the vault " +
 			"when ssh asks for it (SSH_ASKPASS, OpenSSH >= 8.4): it goes neither in an argument nor in " +
 			"the environment, and a single attempt is made. \"key={pass:<vault>/<item>}\" loads the private key of a " +

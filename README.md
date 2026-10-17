@@ -100,7 +100,7 @@ dot ssh pve uptime                         # alias `pve` from <profile>/ssh.conf
 
 `ssh.conf` is versioned, so it holds no secret: one `<name> <ssh arguments>` line per alias, where
 `{X}` is replaced at connection time by the `secrets.local` secret `X`, or by a vault reference
-(`{bw:<item>}`, `{pass:<vault>/<item>#field}`) that works on a new machine without any `dot secrets add`.
+(`{bw:<item>[#field]}`, `{pass:<vault>/<item>#field}`) that works on a new machine without any `dot secrets add`.
 `password={X}` reads the password from the vault when ssh asks for it (`SSH_ASKPASS`, OpenSSH 8.4+):
 it never goes through an argument or the environment, and ssh tries it once.
 
@@ -185,18 +185,28 @@ Instead of `export GITHUB_TOKEN=…` in `.zshrc`, you keep a reference to your v
 (Bitwarden or Proton Pass), and the value is read only when a command needs it:
 
 ```sh
-dot secrets add GITHUB_TOKEN bw:github-token     # or pass:<vault>/<item>
+dot secrets add GITHUB_TOKEN bw:github-token     # or pass:<vault>/<item>, `#field` for another field
 dot secrets run GITHUB_TOKEN -- gh api user      # the token exists for this one command only
 ```
 
 The names live in a local file, `secrets.local` (mode 600), in the profile directory. A value is
 never passed as a process argument and never sits in your shell.
 
-A Proton Pass item that keeps its value in a custom field (an API key, say) takes a `#field`
-suffix, or `--field` on `add`: `dot secrets add TOKEN pass:Dev/Item --field "API key"`. A reference
+An item that keeps its value in another field (an API key, say) takes a `#field` suffix, or
+`--field` on `add`: `dot secrets add TOKEN pass:Dev/Item --field "API key"`. On Proton Pass the field is
+the one `pass-cli item view --field` takes: `username`, `email`, `password`, `urls`, `totp` (the current
+code) or `totp_uri` for a login; `number`, `cvv`, `pin`, `cardholder_name`, `expiration_date` for a card;
+`ssid`, `password`, `security` for Wi-Fi; `private_key`, `public_key` for an SSH key; the identity's
+`first_name`, `email`…; a custom field by name, or `Section.name`. An empty field does not exist
+for `pass-cli`, so reading it fails. On
+Bitwarden it is a login's `username`, `password`, `uri`, `totp` or `notes`; `card.number`, `identity.email`
+or `ssh.privateKey` (also `card.code`, `identity.ssn`…) for the other item types; otherwise a custom field
+by name, or `fields.NAME` when it shares a login field's name. A reference
 may be quoted in `secrets.local` (`TOKEN="pass:Dev/Item#API key"`); `add` quotes it when it holds a
-space or a `#`. The reference is split at its last `#`, so a Proton Pass item title holding a `#`
-(`Issue#123`) cannot be used in a `pass:` reference.
+space or a `#`. The reference is split at its last `#`, so an item name holding a `#`
+(`Issue#123`) cannot be used in a `bw:` or `pass:` reference. When several items share a name, the
+vault picks one of them: use the item's id instead, `bw:<uuid>` or `pass:<Share ID>/<Item ID>` (a
+Proton Pass vault or item may each be a name or an id).
 
 ### Configure your coding agents once
 

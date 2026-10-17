@@ -48,7 +48,7 @@ func TestSecretsHelpAndUsage(t *testing.T) {
 		{"secrets", "add", "A"},
 		{"secrets", "run", "A"},
 		{"secrets", "run", "--", "true"},
-		{"secrets", "add", "A", "bw:x", "--field", "f"},
+		{"secrets", "add", "A", "other:x", "--field", "f"},
 		{"secrets", "add", "A", "pass:V/I#f", "--field", "g"},
 		{"secrets", "add", "A", "pass:V/I", "--field", "part#token"},
 		{"secrets", "run", "A", "--"},

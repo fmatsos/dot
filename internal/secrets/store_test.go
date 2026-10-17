@@ -26,7 +26,8 @@ create) cat >"$FAKE_STORE/created.json" ;;
 get)
   if [ "$2" = template ]; then echo '{"type":null,"name":null,"notes":"n","login":null,"reprompt":0}'; exit; fi
   [ "${BW_PASSWORD+x}" != x ] || exit 98
-  cat "$FAKE_STORE/bw-$3" 2>/dev/null || exit 1 ;;
+  f="$FAKE_STORE/bw-$3"; [ "$2" = password ] || f="$FAKE_STORE/bw-$2-$3"
+  cat "$f" 2>/dev/null || exit 1 ;;
 *) exit 1 ;;
 esac
 `
@@ -38,6 +39,7 @@ case "$*" in
 info) [ "${FAKE_PASS_OUT:-}" != 1 ] ;;
 'item create login --get-template') echo '{"title":"","password":"","urls":[]}' ;;
 'item create login --vault-name '*' --from-template -') cat >"$FAKE_STORE/created.json" ;;
+'item view --share-id '*' --item-id '*) cat "$FAKE_STORE/pass-$6" 2>/dev/null || exit 1 ;;
 'item view --vault-name '*) [ -e "$FAKE_STORE/created.json" ] || [ -e "$FAKE_STORE/live" ] || exit 1; cat "$FAKE_STORE/pass-$6" 2>/dev/null || exit 1 ;;
 *) exit 1 ;;
 esac
@@ -103,6 +105,68 @@ func TestReadStripsOneNewline(t *testing.T) {
 	}
 	if !strings.Contains(f.argv(t), "pass-cli item view --vault-name Vault --item-title Item with spaces --field password\n") {
 		t.Errorf("argv:\n%s", f.argv(t))
+	}
+}
+
+// A Bitwarden reference reaches every field: a login's own ones through bw get, the others in the
+// item's JSON, where a custom field called like a login field needs the fields. prefix.
+func TestReadBitwardenFields(t *testing.T) {
+	f := newFake(t)
+	f.put(t, "bw-username-Login", "fake-user\n")
+	f.put(t, "bw-totp-Login", "123456\n")
+	f.put(t, "bw-item-Multi", `{"fields":[{"name":"Api_Key","value":"fake-hidden","type":1},{"name":"username","value":"fake-custom","type":0},{"name":"flag","value":true,"type":2},{"name":"linked","value":null,"type":3}],
+		"card":{"number":"4242","expMonth":"04","code":"123"},
+		"identity":{"email":"fake@example.test","passportNumber":"P0"},
+		"sshKey":{"privateKey":"-----BEGIN FAKE-----\nabc\n-----END FAKE-----\n","publicKey":"ssh-ed25519 FAKE"}}`)
+	ctx := context.Background()
+	for _, tc := range []struct{ ref, want string }{
+		{"bw:Login#username", "fake-user"},
+		{"bw:Login#TOTP", "123456"},
+		{"bw:Multi#api_key", "fake-hidden"},
+		{"bw:Multi#fields.username", "fake-custom"},
+		{"bw:Multi#flag", "true"},
+		{"bw:Multi#card.number", "4242"},
+		{"bw:Multi#Card.expMonth", "04"},
+		{"bw:Multi#identity.email", "fake@example.test"},
+		{"bw:Multi#identity.passportnumber", "P0"},
+		{"bw:Multi#ssh.privateKey", "-----BEGIN FAKE-----\nabc\n-----END FAKE-----\n"},
+		{"bw:Multi#sshkey.publicKey", "ssh-ed25519 FAKE"},
+	} {
+		if got, err := f.Read(ctx, Mapping{"ACME_TOKEN", tc.ref}); err != nil || got != tc.want {
+			t.Errorf("Read(%s) = %q, %v", tc.ref, got, err)
+		}
+	}
+	for _, ref := range []string{"bw:Multi#nothing", "bw:Multi#linked", "bw:Multi#card.nothing", "bw:Missing#card.number", "bw:Multi#username"} {
+		if got, err := f.Read(ctx, Mapping{"ACME_TOKEN", ref}); err == nil || errors.Is(err, ErrLocked) || got != "" {
+			t.Errorf("Read(%s) = %q, %v", ref, got, err)
+		}
+	}
+	if !strings.Contains(f.argv(t), "bw get username Login\n") || !strings.Contains(f.argv(t), "bw get item Multi\n") {
+		t.Errorf("argv:\n%s", f.argv(t))
+	}
+}
+
+// A Share ID or an Item ID in a pass reference is looked up by id, whatever the other part is.
+func TestReadPassByID(t *testing.T) {
+	f := newFake(t)
+	share, item := strings.Repeat("S", 86)+"==", strings.Repeat("i", 40)+strings.Repeat("-", 46)+"=="
+	f.put(t, "pass-"+item, "fake-by-id\n")
+	f.put(t, "live", "")
+	ctx := context.Background()
+	if got, err := f.Read(ctx, passMap(share+"/"+item)); err != nil || got != "fake-by-id" {
+		t.Errorf("Read by ids = %q, %v", got, err)
+	}
+	if got, err := f.Read(ctx, passMap("Vault/"+item)); err != nil || got != "fake-by-id" {
+		t.Errorf("Read by name and id = %q, %v", got, err)
+	}
+	if _, err := f.Add(ctx, "ACME_ID", "pass:Vault/"+strings.Repeat("x", 86)+"==", func() (string, error) { t.Fatal("input called"); return "", nil }); err == nil {
+		t.Error("an unknown item id was created as a title")
+	}
+	a := f.argv(t)
+	for _, want := range []string{"item view --share-id " + share + " --item-id " + item + " --field password\n", "item view --vault-name Vault --item-id " + item + " --field password\n"} {
+		if !strings.Contains(a, want) {
+			t.Errorf("argv lacks %q:\n%s", want, a)
+		}
 	}
 }
 
@@ -252,6 +316,25 @@ func TestAddReusesExistingWithoutInput(t *testing.T) {
 	}
 	if f.mapping(t) != "A=bw:Existing\nB=pass:Personal/Existing\n" {
 		t.Errorf("mapping = %q", f.mapping(t))
+	}
+}
+
+func TestAddRegistersExistingBitwardenField(t *testing.T) {
+	f := newFake(t)
+	f.put(t, "bw-item-Multi", `{"fields":[{"name":"api_key","value":"fake","type":1}]}`)
+	ctx := context.Background()
+	none := func() (string, error) { t.Fatal("input called"); return "", nil }
+	if created, err := f.Add(ctx, "ACME_KEY", "bw:Multi#api_key", none); err != nil || created {
+		t.Fatalf("Add = %v, %v", created, err)
+	}
+	if got := f.mapping(t); got != "ACME_KEY=\"bw:Multi#api_key\"\n" {
+		t.Errorf("mapping: %q", got)
+	}
+	if _, err := f.Add(ctx, "ACME_NEW", "bw:Multi#missing", none); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Add of a missing field = %v", err)
+	}
+	if strings.Contains(f.mapping(t), "ACME_NEW") {
+		t.Error("a missing field was registered")
 	}
 }
 
