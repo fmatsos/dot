@@ -98,8 +98,8 @@ func newSecretsCmd(env *Env) *cobra.Command {
 		addCmd,
 		&cobra.Command{
 			Use:   "get NAME",
-			Short: "Print the value, without a trailing newline",
-			Long: "Print the value, without a trailing newline.\n\n" +
+			Short: "Print the value, without a trailing newline (unless on a terminal)",
+			Long: "Print the value, without a trailing newline (one is added when stdout is a terminal).\n\n" +
 				"For a substitution: VAR=$(dot secrets get NAME). Bitwarden locked: exit code 3.",
 			Args: exactArgs(1, "dot secrets get NAME"),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -110,6 +110,10 @@ func newSecretsCmd(env *Env) *cobra.Command {
 				v, err := st.Get(cmd.Context(), args[0])
 				if err != nil {
 					return secretFail(env, err)
+				}
+				// On a terminal only: zsh would print a "%" after a value with no final newline.
+				if r, ok := env.Stdout.(io.Reader); ok && secrets.IsTerminal(r) {
+					v += "\n"
 				}
 				_, err = io.WriteString(env.Stdout, v)
 				return err
