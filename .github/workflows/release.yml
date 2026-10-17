@@ -73,6 +73,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install through install.sh and check the version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}   # the shared macOS runner IPs exhaust the unauthenticated API limit (HTTP 403)
         run: |
           set -euo pipefail
           export HOME="$RUNNER_TEMP/home"

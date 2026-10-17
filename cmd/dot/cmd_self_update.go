@@ -18,7 +18,8 @@ func newSelfUpdateCmd(env *Env) *cobra.Command {
 			"the running executable atomically. Any failed check aborts without changing\n" +
 			"anything. Without a signing key in the binary, the update is refused.\n" +
 			"-n: show what would be done, without downloading a binary or writing anything; without --version,\n" +
-			"the latest release is still requested from the GitHub API, to know which one to install.\n\n" +
+			"the latest release is still requested from the GitHub API, to know which one to install.\n" +
+			"$GITHUB_TOKEN or $GH_TOKEN, when set, is sent to api.github.com only, to raise its rate limit.\n\n" +
 			"$DOT_RELEASE_BASE and $DOT_RELEASE_API override the release URLs, for tests only.",
 		Args: exactArgs(0, "dot self-update [--version vX.Y.Z] [-n]"),
 		RunE: func(*cobra.Command, []string) error {

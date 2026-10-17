@@ -194,7 +194,21 @@ func sumFor(sums []byte, name string) (string, error) {
 }
 
 func download(c *http.Client, url string, limit int64) ([]byte, error) {
-	resp, err := c.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, errors.New("download failed")
+	}
+	// The unauthenticated API limit is shared by every runner behind one IP (macOS CI): a token
+	// raises it. It goes to api.github.com only, never to a mirror or a download host.
+	if strings.HasPrefix(url, "https://api.github.com/") {
+		for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
+			if t := os.Getenv(k); t != "" {
+				req.Header.Set("Authorization", "Bearer "+t)
+				break
+			}
+		}
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		return nil, errors.New("download failed")
 	}
