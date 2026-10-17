@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,15 @@ func stage(t *testing.T, dir, name, content string) {
 		t.Fatal(err)
 	}
 	git(t, dir, "--literal-pathspecs", "add", "-f", "--", name)
+}
+
+// shown is how the guard names a staged file: on macOS git precomposes a decomposed name (NFD) to NFC.
+func shown(name string) string {
+	s := printable(name)
+	if runtime.GOOS == "darwin" {
+		s = strings.ReplaceAll(s, "e\u0301", "\u00e9")
+	}
+	return s
 }
 
 func staged(t *testing.T, dir string) error {
@@ -57,7 +67,7 @@ func TestStagedAwkwardFileNamesWithTermContent(t *testing.T) {
 			dir := repo(t)
 			stage(t, dir, name, "tenant AcmeCorp\n")
 			err := staged(t, dir)
-			wantFailure(t, err, printable(name))
+			wantFailure(t, err, shown(name))
 			if strings.Contains(strings.ToLower(err.Error()), "acmecorp") {
 				t.Fatalf("the term is shown: %v", err)
 			}
