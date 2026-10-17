@@ -282,7 +282,7 @@ dot repos --problems                       <span class="pl-c"><span class="pl-c"
 dot ssh pve uptime                         <span class="pl-c"><span class="pl-c">#</span> alias `pve` from &lt;profile&gt;/ssh.conf; `dot ssh` lists them</span></pre></div>
 <p><code>ssh.conf</code> is versioned, so it holds no secret: one <code>&lt;name&gt; &lt;ssh arguments&gt;</code> line per alias, where
 <code>{X}</code> is replaced at connection time by the <code>secrets.local</code> secret <code>X</code>, or by a vault reference
-(<code>{bw:&lt;item&gt;}</code>, <code>{pass:&lt;vault&gt;/&lt;item&gt;#field}</code>) that works on a new machine without any <code>dot secrets add</code>.
+(<code>{bw:&lt;item&gt;[#field]}</code>, <code>{pass:&lt;vault&gt;/&lt;item&gt;#field}</code>) that works on a new machine without any <code>dot secrets add</code>.
 <code>password={X}</code> reads the password from the vault when ssh asks for it (<code>SSH_ASKPASS</code>, OpenSSH 8.4+):
 it never goes through an argument or the environment, and ssh tries it once.</p>
 <p><code>key={pass:&lt;vault&gt;/&lt;item&gt;}</code> takes the private key of a Proton Pass SSH key item: it is loaded (through
@@ -344,15 +344,25 @@ so the same check runs in CI.</p>
 <h3 id="keep-secrets-out-of-your-config">Keep secrets out of your config</h3>
 <p>Instead of <code>export GITHUB_TOKEN=…</code> in <code>.zshrc</code>, you keep a reference to your vault
 (Bitwarden or Proton Pass), and the value is read only when a command needs it:</p>
-<div class="highlight highlight-source-shell"><pre>dot secrets add GITHUB_TOKEN bw:github-token     <span class="pl-c"><span class="pl-c">#</span> or pass:&lt;vault&gt;/&lt;item&gt;</span>
+<div class="highlight highlight-source-shell"><pre>dot secrets add GITHUB_TOKEN bw:github-token     <span class="pl-c"><span class="pl-c">#</span> or pass:&lt;vault&gt;/&lt;item&gt;, `#field` for another field</span>
 dot secrets run GITHUB_TOKEN -- gh api user      <span class="pl-c"><span class="pl-c">#</span> the token exists for this one command only</span></pre></div>
 <p>The names live in a local file, <code>secrets.local</code> (mode 600), in the profile directory. A value is
 never passed as a process argument and never sits in your shell.</p>
-<p>A Proton Pass item that keeps its value in a custom field (an API key, say) takes a <code>#field</code>
-suffix, or <code>--field</code> on <code>add</code>: <code>dot secrets add TOKEN pass:Dev/Item --field "API key"</code>. A reference
+<p>An item that keeps its value in another field (an API key, say) takes a <code>#field</code> suffix, or
+<code>--field</code> on <code>add</code>: <code>dot secrets add TOKEN pass:Dev/Item --field "API key"</code>. On Proton Pass the field is
+the one <code>pass-cli item view --field</code> takes: <code>username</code>, <code>email</code>, <code>password</code>, <code>urls</code>, <code>totp</code> (the current
+code) or <code>totp_uri</code> for a login; <code>number</code>, <code>cvv</code>, <code>pin</code>, <code>cardholder_name</code>, <code>expiration_date</code> for a card;
+<code>ssid</code>, <code>password</code>, <code>security</code> for Wi-Fi; <code>private_key</code>, <code>public_key</code> for an SSH key; the identity's
+<code>first_name</code>, <code>email</code>…; a custom field by name, or <code>Section.name</code>. An empty field does not exist
+for <code>pass-cli</code>, so reading it fails. On
+Bitwarden it is a login's <code>username</code>, <code>password</code>, <code>uri</code>, <code>totp</code> or <code>notes</code>; <code>card.number</code>, <code>identity.email</code>
+or <code>ssh.privateKey</code> (also <code>card.code</code>, <code>identity.ssn</code>…) for the other item types; otherwise a custom field
+by name, or <code>fields.NAME</code> when it shares a login field's name. A reference
 may be quoted in <code>secrets.local</code> (<code>TOKEN="pass:Dev/Item#API key"</code>); <code>add</code> quotes it when it holds a
-space or a <code>#</code>. The reference is split at its last <code>#</code>, so a Proton Pass item title holding a <code>#</code>
-(<code>Issue#123</code>) cannot be used in a <code>pass:</code> reference.</p>
+space or a <code>#</code>. The reference is split at its last <code>#</code>, so an item name holding a <code>#</code>
+(<code>Issue#123</code>) cannot be used in a <code>bw:</code> or <code>pass:</code> reference. When several items share a name, the
+vault picks one of them: use the item's id instead, <code>bw:&lt;uuid&gt;</code> or <code>pass:&lt;Share ID&gt;/&lt;Item ID&gt;</code> (a
+Proton Pass vault or item may each be a name or an id).</p>
 <h3 id="configure-your-coding-agents-once">Configure your coding agents once</h3>
 <p>Claude Code, Codex and OpenCode each want their own MCP servers and settings. <code>dot</code> keeps one
 shared list and applies it to all three:</p>
