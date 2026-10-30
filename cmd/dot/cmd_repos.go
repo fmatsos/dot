@@ -14,7 +14,7 @@ import (
 
 func init() { register(newReposCmd) }
 
-const reposUsage = "usage: dot repos [--problems | export [file] | clone [file]]"
+const reposUsage = "usage: dot repos [--problems | create [name] | export [file] | clone [file]]"
 
 // useColor is true on a terminal unless NO_COLOR is set or TERM is dumb.
 // ponytail: any character device but /dev/null counts as a terminal, no ioctl.
@@ -87,6 +87,7 @@ func newReposCmd(env *Env) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&problems, "problems", false, "show only inconsistent identities or the bypassed guard (exit 1)")
 	cmd.AddCommand(
+		newReposCreateCmd(env),
 		&cobra.Command{
 			Use:   "export [file]",
 			Short: "Keep the unique origin remotes, sorted, in a private file",
