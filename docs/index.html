@@ -208,9 +208,9 @@ document.documentElement.dataset.motion = m || (matchMedia("(prefers-reduced-mot
 </p>
 <p class="center">
   <a href="https://github.com/fmatsos/dot/actions/workflows/ci.yml">ci</a>
-  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/0e1c78e3166e3f146a0090a01956f390abf91e852edf9679fa17df45ecadb800/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f4c696e75782d737570706f727465642d737563636573733f6c6f676f3d6c696e7578266c6f676f436f6c6f723d7768697465">Linux: supported</a>
-  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/3993a23eb2eba46860b344cb43171b0100ae3e471779601991b3327656277c8b/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f6d61634f532d737570706f727465642d737563636573733f6c6f676f3d6170706c65266c6f676f436f6c6f723d7768697465">macOS: supported</a>
-  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/29850ca7250f567bd2487b21a169e8324f633ec706c7bbd0c15fa362b5507fc9/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f476f2d73746174696325323062696e6172792d3030414444383f6c6f676f3d676f266c6f676f436f6c6f723d7768697465">Go: static binary</a>
+  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/a13534bc36c80fcf9f6e2f569560b4055b6f12c69f17bd8b7aa5c5ed0ada34cd/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f4c696e75782d737570706f727465642d737563636573733f6c6f676f3d6c696e7578266c6f676f436f6c6f723d7768697465">Linux: supported</a>
+  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/4eaf5113814891a7a0ad117eed519acf7c22eaa280e96a17297b214820d0ecd8/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f6d61634f532d737570706f727465642d737563636573733f6c6f676f3d6170706c65266c6f676f436f6c6f723d7768697465">macOS: supported</a>
+  <a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/59171d93f14ea29dd59664d2a9680d8249cbca3a812a63833eedd22e58dbcf48/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f476f2d73746174696325323062696e6172792d3030414444383f6c6f676f3d676f266c6f676f436f6c6f723d7768697465">Go: static binary</a>
   <a href="https://github.com/fmatsos/dot/blob/main/LICENSE">License: Unlicense</a>
 </p>
 <p class="center">
@@ -336,7 +336,10 @@ git commit -m <span class="pl-s"><span class="pl-pds">"</span>harmless note<span
 <p>The guard reports file names, branches and commits, never the text it found, and it fails closed:
 a missing list or an unavailable scanner blocks instead of letting everything through (<code>dot push</code>
 is refused until <code>forbidden.local</code> exists). Images and fonts (<code>png</code>, <code>jpg</code>, <code>gif</code>, <code>webp</code>, <code>woff2</code>…) are not read for terms, since their bytes are
-not text (their names are checked, and the secret scan still reads them); any other binary file is. A
+not text (their names are checked, and the secret scan still reads them); any other binary file is. Lockfiles, whose hashes can match a short term by chance, are kept out the same way
+with <code>git config --global --add dotfiles.guardIgnore bun.lock</code> (one glob per value, repository or global config,
+never versioned): their names are still checked and the secret scan still reads them, but a CI run only knows the
+patterns of its own git config. A
 commit made with a work author identity in a personal repository is refused too. A work repository that names the employer on purpose opts
 out of the terms and keeps the secret scan: <code>git config dotfiles.guard secrets</code>. Finally,
 <code>dot terms</code> copies the list to the <code>FORBIDDEN_TERMS</code> secret of the origin repository (with <code>gh</code>),
