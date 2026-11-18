@@ -326,4 +326,16 @@ for p in 'a*' '^' 'x?' '(|a)'; do
 done
 u reset -q --hard
 
+# dotfiles.guardIgnore: a lockfile's content is not read for terms; its name and other files still are.
+echo "sha512-client zed" >"$R/bun.lock"; c add bun.lock
+expect block "lockfile without dotfiles.guardIgnore" "bun.lock" git -C "$R" commit -qm lock
+c config --add dotfiles.guardIgnore bun.lock
+expect pass  "lockfile in dotfiles.guardIgnore: commit" "" git -C "$R" commit -qm lock
+expect pass  "lockfile in dotfiles.guardIgnore: push" "" c push -q origin HEAD:refs/heads/guard-ignore
+echo "client zed" >"$R/other.txt"; c add other.txt
+expect block "dotfiles.guardIgnore: another file still blocked" "other.txt" git -C "$R" commit -qm other; c reset -q
+c config --add dotfiles.guardIgnore '**/x'
+expect block "dotfiles.guardIgnore: invalid pattern blocks" "" git -C "$R" commit -qm other
+c config --unset-all dotfiles.guardIgnore; reset
+
 echo "== $ok OK, $ko FAIL"; [ "$ko" = 0 ]

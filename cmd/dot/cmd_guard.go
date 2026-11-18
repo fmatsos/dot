@@ -46,14 +46,28 @@ func termsPath(env *Env) (string, error) {
 // gitConfigGet reads one key of the current repository's config; empty when the key is unset
 // (git exits 1), an error for any other failure.
 func gitConfigGet(key string) (string, error) {
+	out, err := gitConfig("--get", key)
+	return strings.TrimSpace(out), err
+}
+
+// gitConfigGetAll reads every value of a multi-valued key (--get would keep only the last one).
+func gitConfigGetAll(key string) ([]string, error) {
+	out, err := gitConfig("--get-all", key)
+	if out == "" {
+		return nil, err
+	}
+	return strings.Split(strings.TrimSuffix(out, "\n"), "\n"), err // one value per line; an empty one stays, to be refused
+}
+
+func gitConfig(args ...string) (string, error) {
 	var out bytes.Buffer
-	c := exec.Command("git", "config", "--get", key)
+	c := exec.Command("git", append([]string{"config"}, args...)...)
 	c.Stdout = &out
 	var x *exec.ExitError
 	if err := c.Run(); err != nil && !(errors.As(err, &x) && x.ExitCode() == 1) {
 		return "", err
 	}
-	return strings.TrimSpace(out.String()), nil
+	return out.String(), nil
 }
 
 // guardMode returns "" (terms and secrets) or "secrets" (betterleaks only). $DOTFILES_GUARD wins,
@@ -96,6 +110,13 @@ func newGuard(env *Env) (*guard.Guard, error) {
 			return nil, fmt.Errorf("forbidden terms list invalid (%s): a term matches the empty string, hence everything (a*, ^, x?…), refused", path)
 		}
 		return nil, fmt.Errorf("forbidden terms list invalid or unreadable (%s), refused", path)
+	}
+	ignore, err := gitConfigGetAll("dotfiles.guardIgnore")
+	if err != nil {
+		return nil, errors.New("dotfiles.guardIgnore unreadable, refused")
+	}
+	if g.Ignore, err = guard.ParseIgnore(ignore); err != nil {
+		return nil, errors.New("dotfiles.guardIgnore: invalid pattern (empty, ** or bad glob), refused")
 	}
 	return g, nil
 }
@@ -149,6 +170,12 @@ func newGuardCmd(env *Env) *cobra.Command {
 			"branches, tags or commits, never the text found.\n\n" +
 			"Images and fonts (png, jpg, gif, webp, avif, heic, ico, woff, woff2) are not read for terms: their\n" +
 			"bytes are not text. Their names are, and betterleaks reads them. Any other binary is read.\n\n" +
+			"\"git config --add dotfiles.guardIgnore <glob>\" (repository or global config, never versioned) keeps\n" +
+			"more files out of the terms check of contents, for staged, push and all: lockfiles, whose hashes\n" +
+			"match a short term by chance. A glob without / matches the base name at any depth (bun.lock), one\n" +
+			"with / the path from the repository root (web/package-lock.json, /bun.lock); * never crosses a /, ** and an\n" +
+			"empty pattern are refused. Names are still checked and betterleaks still reads the files. A CI run\n" +
+			"only knows the patterns of its own git config.\n\n" +
 			"Terms list: case-insensitive extended expressions (RE2 syntax), one per line;\n" +
 			"blank lines and lines starting with # are ignored. Escaped GNU operators\n" +
 			"(\\| \\+ \\? \\{ \\( \\)) and flags that turn case-insensitivity off ((?-i)) are rejected. Resolution order:\n" +

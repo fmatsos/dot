@@ -221,3 +221,36 @@ func TestGuardModeGitConfigFailureFailsClosed(t *testing.T) {
 		t.Fatal("unreadable config accepted")
 	}
 }
+
+func TestGuardIgnoreFromGitConfig(t *testing.T) {
+	env, repo := guardEnv(t)
+	terms := filepath.Join(t.TempDir(), "terms")
+	if err := os.WriteFile(terms, []byte("acmecorp\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DOTFILES_FORBIDDEN", terms)
+	gitc := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", repo, "config"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+	}
+	// Global and repository values add up, every one of them (not only the last).
+	gitc("--global", "--add", "dotfiles.guardIgnore", "bun.lock")
+	gitc("--add", "dotfiles.guardIgnore", "package-lock.json")
+	gitc("--add", "dotfiles.guardIgnore", "my file.lock")
+	g, err := newGuard(env)
+	if err != nil || strings.Join(g.Ignore, "|") != "bun.lock|package-lock.json|my file.lock" {
+		t.Fatalf("%v, %v", err, g)
+	}
+	// One invalid value refuses the whole guard, without echoing it.
+	gitc("--add", "dotfiles.guardIgnore", "**/x-acmecorp")
+	if _, err := newGuard(env); err == nil || strings.Contains(err.Error(), "acmecorp") {
+		t.Fatalf("invalid pattern: %v", err)
+	}
+	gitc("--unset-all", "dotfiles.guardIgnore")
+	gitc("--add", "dotfiles.guardIgnore", "")
+	if _, err := newGuard(env); err == nil {
+		t.Fatal("empty pattern accepted")
+	}
+}

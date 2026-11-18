@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -29,6 +30,7 @@ type Guard struct {
 	Dir    string                     // repository directory; "" = current directory
 	Scan   func(args ...string) error // runs the secret scanner with these arguments (after the global flags)
 	Stderr io.Writer
+	Ignore []string // files whose content is not read for terms (see ParseIgnore); names and secrets still checked
 }
 
 var shaRe = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
@@ -130,11 +132,47 @@ func isMedia(name string) bool {
 	return i >= 0 && slices.Contains(mediaExts, strings.ToLower(name[i+1:]))
 }
 
-// notMedia are the arguments that keep media files out of a `git log -p` content scan.
-func notMedia() []string {
-	args := []string{"--", "."}
+// ParseIgnore checks the patterns of files whose content is not read for terms (lockfiles, whose
+// hashes match a short term by chance). A pattern without "/" is a glob on the base name, at any
+// depth; with "/", a glob on the path from the repository root ("/bun.lock": the root one only). "*" never
+// crosses a "/". An empty pattern, "**" (read differently by git and path.Match) or an invalid glob
+// is refused, never echoed back.
+func ParseIgnore(patterns []string) ([]string, error) {
+	out := make([]string, 0, len(patterns))
+	for _, p := range patterns {
+		if _, err := path.Match(p, ""); strings.TrimPrefix(p, "/") == "" || err != nil || strings.Contains(p, "**") {
+			return nil, ErrInvalid
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// ignored reports whether a root-relative file name matches an Ignore pattern.
+func (g *Guard) ignored(name string) bool {
+	for _, p := range g.Ignore {
+		target := name
+		if !strings.Contains(p, "/") {
+			target = path.Base(name)
+		}
+		if ok, _ := path.Match(strings.TrimPrefix(p, "/"), target); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// notRead are the pathspecs that keep media and ignored files out of a `git log -p` content scan.
+func (g *Guard) notRead() []string {
+	args := []string{"--", ":/"}
 	for _, e := range mediaExts {
-		args = append(args, ":(exclude,glob,icase)**/*."+e)
+		args = append(args, ":(top,exclude,glob,icase)**/*."+e)
+	}
+	for _, p := range g.Ignore {
+		if !strings.Contains(p, "/") {
+			p = "**/" + p
+		}
+		args = append(args, ":(top,exclude,glob)"+strings.TrimPrefix(p, "/"))
 	}
 	return args
 }
@@ -150,7 +188,7 @@ func (g *Guard) history(revs ...string) error {
 		return fail("forbidden reference in the metadata or file names of: %s", r)
 	}
 	// --text: binary and -diff files are scanned too (media files excepted); first-parent: a merge shows what it adds.
-	added := append(append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format="}, revs...), notMedia()...)
+	added := append(append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format="}, revs...), g.notRead()...)
 	if hit, err := g.hits('+', added...); err != nil {
 		return err
 	} else if hit {
@@ -199,7 +237,7 @@ func (g *Guard) Staged() error {
 			fmt.Fprintf(&bad, "  <masked name> (file %d)\n", n)
 			continue
 		}
-		if strings.Contains(meta, " 160000 ") || isMedia(f) { // a gitlink has no blob here (its URL lives in .gitmodules); media is not read for terms
+		if strings.Contains(meta, " 160000 ") || isMedia(f) || g.ignored(f) { // a gitlink has no blob here (its URL lives in .gitmodules); media and ignored files are not read for terms
 			continue
 		}
 		hit, err := g.hits(0, "show", ":0:"+f)
@@ -347,7 +385,7 @@ func (g *Guard) All() error {
 	} else if hit {
 		return fail("forbidden reference in the metadata or file names of the history")
 	}
-	if hit, err := g.hits('+', append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format=", "--all"}, notMedia()...)...); err != nil {
+	if hit, err := g.hits('+', append([]string{"log", "-p", "-U0", "--text", "--diff-merges=first-parent", "--no-color", "--format=", "--all"}, g.notRead()...)...); err != nil {
 		return err
 	} else if hit {
 		return fail("forbidden reference in the content of the history")
