@@ -78,7 +78,7 @@ jobs:
           # the resolved path, so test fixtures built on the unresolved one would never match.
           mkdir -p "$RUNNER_TEMP/tmp"
           echo "TMPDIR=$(cd "$RUNNER_TEMP/tmp" && pwd -P)" >> "$GITHUB_ENV"
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         if: steps.mod.outputs.present == 'true'
         with:
           go-version-file: go.mod
